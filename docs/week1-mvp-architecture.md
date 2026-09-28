@@ -15,33 +15,41 @@ The main product hook is that the system does not wait until a disruption occurs
 
 ## MVP Scope
 
-### Core features
+### Core features from the current planning document
 
-- Traveler Profile / Filters
-  - budget
-  - dining preferences
-  - pet-friendly constraints
-  - child-friendly constraints
-  - traveler interests
-  - risk tolerance
-- Initial itinerary generation
-- Itinerary optimization under hard constraints
-- Refund / cancellation policy awareness
-- Risk detection
-- Proactive backup plans
-- Real-time replanning
-- Dependency-aware replanning
-- Alternative comparison
+- **Budget-aware travel planner**
+  - tracks budget constraints across the itinerary
+  - keeps cost-sensitive choices visible during planning and replanning
+- **Initial itinerary generation and optimization**
+  - builds a general travel plan under hard timing and traveler constraints
+- **Refund / cancellation policy awareness**
+  - uses structured policy information when comparing alternatives
+- **Proactive backup planner**
+  - creates Plan B/C options before the trip for vulnerable itinerary items
+  - compares alternatives by cost, convenience, time, refund loss, and experience quality
+- **Risk detection**
+  - flags tight connections, weather-sensitive activities, long drives, limited opening hours, and non-refundable bookings
+- **Real-time travel replanner**
+  - rebuilds affected parts of the trip after delays, cancellations, weather changes, closures, or user changes
+- **Dependency-aware replanning**
+  - understands that changing one booking may affect hotels, rental cars, restaurants, attractions, or later transportation
+- **Alternative comparison**
+  - presents replacement options with deterministic cost/time/refund comparisons plus an explanation of tradeoffs
 
-### Supplemental / stretch features
+### Supplemental features
 
-- persistent trip memory across trips
-- user feedback on suggested places
-- richer landmark recommendations
+- Traveler Profile / Trip Memory
+- hotel and restaurant filters or modes, including dietary, pet-friendly, and child-friendly constraints
+- suggested landmarks based on traveler interests
+- updates based on explicit user feedback about recommendations
+
+### Exploratory ideas outside the first MVP
+
+- disruption claims assistance using airline / hotel policies
+- user-selectable travel-insurance preferences or coverage strategy
 - live booking integrations
-- insurance recommendation / selection support
-- disruption claims assistance
-- monetization experiments such as mock ads or sponsorships
+- monetization experiments such as mock ads
+- sponsorships, subject to ranking-quality and conflict-of-interest concerns
 
 ## End-to-End Workflow
 
