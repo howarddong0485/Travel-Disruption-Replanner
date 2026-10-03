@@ -2,6 +2,14 @@
 
 This document is a proposed implementation contract. The repository does not yet implement these components. Start with a modular application and shared typed data contracts; an agent does not need its own service or deployment.
 
+## Product feature boundaries
+
+The six MVP key features are personalized, budget- and constraint-aware planning; risk and cancellation awareness; proactive backup planning; disruption-triggered, dependency-aware replanning; transparent alternative comparison; and traveler review and plan control.
+
+Current-trip profile intake and mandatory dietary, pet, child, and accessibility filters are core requirements throughout initial planning, backups, and repairs. Cross-trip memory, advanced soft-preference modes, expanded landmark discovery, and long-term preference learning are supplemental. Basic “not interested” feedback and requesting a replacement belong to the core user flow.
+
+Disruption handling and dependency traversal form one replanning feature. The MVP receives simulated or traveler-reported events; automatic live monitoring is a later integration. BackupAgent proposes alternatives, ComparatorAgent compares validated alternatives before and after disruptions, and the review UI obtains the traveler's decision before the orchestrator applies a patch.
+
 ## Component responsibilities
 
 | Component | Implementation | Inputs → outputs |
@@ -103,11 +111,11 @@ Treat provider text, reviews, and uploaded policy text as untrusted data, not in
 5. Run schema, budget, timing, policy, and traveler-constraint validation.
 6. Send structured errors back for a bounded retry count, configurable as `N`.
 7. Analyze risk and generate multiple backups for vulnerable parts where feasible.
-8. Validate each backup in the full trip context, then present the itinerary and alternatives.
+8. Validate each backup in the full trip context, compare valid alternatives through ComparatorAgent, and present the itinerary and alternatives for traveler review. Support rejection or a replacement request without silently relaxing hard constraints.
 
 After retry exhaustion, return an explicit infeasible or incomplete result with reasons and possible constraint changes. Do not quietly increase the budget or relax requirements.
 
-## Dependency-aware replanning
+## Disruption-triggered, dependency-aware replanning
 
 1. Deduplicate the disruption by event ID and load the current trip version.
 2. Locate directly affected nodes and traverse dependency edges to find potentially affected bookings.
@@ -115,11 +123,17 @@ After retry exhaustion, return an explicit infeasible or incomplete result with 
 4. Preserve completed, fixed, and unaffected feasible nodes. If a fixed node becomes impossible, report the conflict for traveler review.
 5. Refresh relevant backups, inventory, and terms. A stored Plan B is a starting point, not a guarantee of current availability.
 6. Generate candidate patches. Validate each patched full graph, including boundaries and the ledger.
-7. Compare valid candidates and show exactly what changes and why.
+7. Compare valid candidates and show exactly what changes and why. Let the traveler reject a proposal or request another option without changing the active itinerary; require explicit acceptance before applying any patch.
 8. Apply the traveler's selected patch atomically only if its base version still matches. Otherwise recompute against the newer version.
 9. Record the decision and rerun risk analysis and backup generation for changed portions.
 
 The MVP updates simulated trip state only. Future booking, cancellation, purchase, and claim-submission actions require explicit traveler authorization and separate execution/status tracking. A failed external action must not appear as a completed reservation.
+
+## Traveler review and plan control
+
+The UI shows which items will be added, removed, or replaced, the reasons, and the computed comparison metrics. Travelers can mark arrangements as fixed before requesting a repair. If keeping an item becomes infeasible, surface the conflict instead of silently replacing it or treating the plan as valid.
+
+Rejecting a suggestion leaves the active itinerary unchanged; a replacement request generates a new validated candidate. Accepting a proposal applies only the reviewed patch against its matching base version. In the MVP this updates simulated trip state and does not make or cancel external bookings.
 
 ## Validation and comparison
 

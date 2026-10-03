@@ -13,20 +13,25 @@ Travel Disruption Replanner is a proposed AI travel assistant that helps travele
 - [Data integrations](docs/DATA_SOURCES.md): candidate providers, limitations, and mock-to-live integration strategy.
 - [Contributing](CONTRIBUTING.md): component ownership, development workflow, and review expectations.
 
-## What the app is designed to do
+## Key features (MVP)
 
 | Capability | Intended behavior |
 | --- | --- |
-| Budget-aware planning | Build an itinerary using the traveler's total budget, category preferences, and contingency reserve. Account for known taxes and fees and identify estimates. |
-| Personalization and filters | Consider dining preferences, dietary restrictions, children, pets, interests, travel pace, and accessibility needs. Distinguish mandatory requirements from preferences. |
-| Itinerary optimization | Balance travel time, opening hours, cost, and experience quality while respecting hard constraints. |
-| Risk detection | Flag tight connections, weather-sensitive activities, long drives, limited opening hours, and financial exposure from restrictive bookings. |
-| Proactive backup planning | Prepare Plan B and Plan C for vulnerable activities or connected groups of bookings before the trip. |
-| Real-time replanning | Respond to delays, cancellations, closures, weather changes, or a traveler's change of plans. The MVP uses simulated events; live monitoring comes later. |
-| Dependency-aware repair | Repair the affected portion of the itinerary and check its effects on downstream bookings while preserving feasible plans. |
-| Alternative comparison | Explain differences in additional cost, refund loss, travel time, convenience, and experience fit. |
-| Refund-policy awareness | Summarize booking-specific cancellation terms, deadlines, fees, and uncertainties with links to source evidence. |
-| Trip memory and feedback | Remember approved preferences and use feedback such as “not interested” to improve suggestions. |
+| Personalized, Budget- and Constraint-Aware Planning | Collect the current trip profile and generate an itinerary within the budget, accounting for known taxes/fees, contingency, opening hours, and travel time. Dietary, pet, child, and accessibility requirements are core hard filters; distinguish them from soft preferences and surface missing eligibility evidence. |
+| Risk and Cancellation Awareness | Identify tight connections, weather-sensitive activities, long drives, limited hours, and restrictive bookings. Explain the affected items, supporting evidence, cancellation deadlines/fees, and possible mitigations; leave uncertain refund terms unknown. |
+| Proactive Backup Planning | Prepare validated Plan B/C options for vulnerable itinerary items or connected bookings before departure. Show activation conditions, checked time, and estimated costs; backups are suggestions, not reservations, and require refreshed evidence before selection. |
+| Disruption-Triggered, Dependency-Aware Replanning | After a delay, cancellation, weather change, closure, or traveler change, check downstream hotel, rental-car, restaurant, attraction, and transport dependencies and repair the affected portion while preserving feasible unaffected and traveler-fixed items. All replacements must still satisfy hard constraints. The MVP uses simulated or traveler-reported events; automatic live monitoring comes later. |
+| Transparent Alternative Comparison | Compare valid alternatives separately by additional cash needed now, refund loss, projected total trip cost, travel time, convenience, and subjective experience fit. Explain tradeoffs and uncertainties without double counting original payments; comparison applies to both proactive backups and disruption repairs. |
+| Traveler Review and Plan Control | Show the proposed changes and reasons, let travelers mark arrangements to keep, reject a suggestion or request a replacement, and explicitly accept a revised plan. Report conflicts with fixed items. Rejection leaves the current itinerary unchanged; acceptance updates only simulated trip state in the MVP. |
+
+## Supplemental features
+
+These extend the core workflow and are not prerequisites for a feasible MVP trip.
+
+- **Consented Cross-Trip Memory:** Save approved preferences across trips with correction and deletion controls. Current-trip profile intake is a core feature and does not depend on long-term memory.
+- **Advanced Preference Modes:** Offer optional travel-style presets and richer soft-preference filters beyond the mandatory dietary, pet, child, and accessibility checks included in core planning.
+- **Expanded Landmark Discovery:** Offer deeper interest-based exploration and optional landmark suggestions beyond the basic interest matching included in core planning.
+- **Long-Term Preference Learning:** Use consented feedback across trips to improve future recommendations. Basic “not interested” feedback and requesting a replacement are core interactions.
 
 Insurance preferences and disruption-claim assistance are part of the longer-term product vision. Travelers should be able to express preferences such as no insurance, flight coverage only, hotel coverage only, or both. A preference is not purchased coverage. Future claim support would assemble policy evidence and draft claim materials for review; eligibility and reimbursement must not be assumed.
 
@@ -36,7 +41,7 @@ Insurance preferences and disruption-claim assistance are part of the longer-ter
 2. The planner proposes a feasible itinerary and shows how much budget remains.
 3. The risk analyzer flags an outdoor activity and a tight arrival-day schedule. The backup planner prepares indoor alternatives and a later dinner option.
 4. A simulated flight delay changes the arrival time. The app checks transport, hotel check-in, and dinner dependencies.
-5. The traveler compares valid replacements, sees the costs and cancellation consequences, and accepts a revised itinerary.
+5. The traveler compares valid replacements, sees separate cash needs, refund loss, and projected total cost, and reviews the exact changes. They can keep important arrangements, reject an option, or accept a revised itinerary.
 
 Backup suggestions are not reservations. Availability, prices, and terms must be checked again before selection. In the MVP, accepting a plan changes only the simulated itinerary.
 
@@ -52,9 +57,11 @@ flowchart TD
     F --> G[Traveler reviews itinerary]
     G --> H[Disruption event]
     H --> I[Find affected dependencies]
-    I --> J[Generate and validate repairs]
+    I --> J[Generate and validate dependency-aware repairs]
     J --> K[Compare alternatives]
-    K --> L[Traveler accepts revised plan]
+    K --> L[Traveler reviews and accepts revised plan]
+    K --> M[Reject or request another option]
+    M --> J
     L --> E
 ```
 
@@ -89,7 +96,7 @@ cd Travel-Disruption-Replanner
 
 Read the architecture and roadmap, agree on the shared contracts, and assign component owners. A language, framework, LLM provider, storage layer, and deployment target have not yet been selected; installation and run instructions will be added when an executable prototype exists.
 
-The recommended first deliverable is one complete flow using fixture data: **profile → plan → validate → risks → backups → simulated disruption → repair → compare**.
+The recommended first deliverable is one complete flow using fixture data: **profile and hard filters → plan → validate → risks → backups → simulated disruption → dependency-aware repair → compare → traveler review and acceptance**.
 
 ## License
 
