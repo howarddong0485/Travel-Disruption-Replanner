@@ -69,17 +69,23 @@ The orchestrator is deterministic application code. LLMs interpret preferences, 
 
 ## Team ownership
 
-Assign one primary owner to each component to reduce overlapping edits. Person numbers are placeholders until the team assigns names.
+The basic travel planner is a shared foundation, built first by a temporary lead or pair as a separately scoped task. It accepts basic trip inputs, generates an initial itinerary from mock data, and provides a minimal itinerary view. This foundation task does not occupy one of the five ongoing feature-owner assignments.
+
+Person numbers are placeholders until the team assigns names.
 
 | Person | Owns | Proposed directories |
 | --- | --- | --- |
-| 1 — Integrator | Shared schemas, orchestration walkers, ConstraintValidator, CI | `schema/`, `walkers/`, `validate/`, `.github/` |
-| 2 | ProfileAgent, profile filtering, place tagging, budget ledger | `profile/`, `filter/`, `budget/` |
-| 3 | PlannerAgent and tool adapters, starting with mocks | `planner/`, `tools/` |
-| 4 | PolicyAgent, RiskAnalyzer, BackupAgent, cancellation tracker | `policy/`, `risk/`, `backup/` |
-| 5 | ReplanAgent, ComparatorAgent, disruption simulator, UI | `replan/`, `compare/`, `ui/` |
+| 1 | Personalization and feasibility: ProfileAgent, mandatory filters, budget ledger, ConstraintValidator, and profile/constraint UI | `profile/`, `filter/`, `budget/`, `validate/` |
+| 2 | Policies and risk detection: PolicyAgent, cancellation tracking, RiskAnalyzer, source evidence, and risk/policy UI | `policy/`, `risk/` |
+| 3 | Proactive backup planning: BackupAgent, alternative search/refresh adapters, validated Plan B/C options, and backup UI | `backup/`, `tools/alternatives/` |
+| 4 | Disruption and dependency-aware replanning: ReplanAgent, disruption simulator, dependency traversal, version-safe patch application, and disruption UI | `replan/`, `events/` |
+| 5 | Comparison and traveler control: ComparatorAgent, comparison explanations, review/accept/reject interactions, and shared page shell | `compare/`, `ui/review/`, `ui/shell/` |
 
-These directories are proposed boundaries, not existing application modules. Shared contract changes should be coordinated with the integrator before dependent work begins.
+Each feature owner owns its logic, feature-specific UI components, tests, and integration. Modules develop independently against agreed inputs/outputs and shared fixtures; runtime dependencies go through those interfaces. Person 5 owns the review UI and page shell, not every feature's UI.
+
+Person 1 supplies the authoritative budget and feasibility calculations; Person 2 supplies evidenced policy/refund rules; Person 5 consumes these outputs instead of duplicating monetary logic. Person 4 owns patch application and trip-version checks; Person 5 calls that interface only after explicit traveler acceptance.
+
+Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe future boundaries; the application is not yet implemented.
 
 ## Advertising and sponsorships
 

@@ -4,15 +4,23 @@ The project is currently in design. Read the [README](README.md), [architecture]
 
 ## Component ownership
 
-| Primary owner | Scope | Proposed directories |
-| --- | --- | --- |
-| Person 1 — Integrator | Schemas, orchestrator walkers, validator, CI, shared documentation coordination | `schema/`, `walkers/`, `validate/`, `.github/` |
-| Person 2 | Profiles, filters, place tagging, budget ledger | `profile/`, `filter/`, `budget/` |
-| Person 3 | Initial planner and mock/live tool adapters | `planner/`, `tools/` |
-| Person 4 | Policies, risks, backups, cancellation tracking | `policy/`, `risk/`, `backup/` |
-| Person 5 | Replanning, comparison, simulator, interface | `replan/`, `compare/`, `ui/` |
+The basic travel planner is a shared foundation, built first by a temporary lead or pair as a separately scoped task. It accepts basic trip inputs, generates an initial itinerary from mock data, and provides a minimal itinerary view. This foundation task does not occupy one of the five ongoing feature-owner assignments.
 
-These ownership boundaries apply to human contributors and coding agents. Assign one owner per component and scope each task to explicit files or directories. Collaborate through shared contracts rather than making broad rewrites across other owners' modules. Cross-component changes are allowed when coordinated with the affected owners.
+Person numbers are placeholders until the team assigns names.
+
+| Person | Owns | Proposed directories |
+| --- | --- | --- |
+| 1 | Personalization and feasibility: ProfileAgent, mandatory filters, budget ledger, ConstraintValidator, and profile/constraint UI | `profile/`, `filter/`, `budget/`, `validate/` |
+| 2 | Policies and risk detection: PolicyAgent, cancellation tracking, RiskAnalyzer, source evidence, and risk/policy UI | `policy/`, `risk/` |
+| 3 | Proactive backup planning: BackupAgent, alternative search/refresh adapters, validated Plan B/C options, and backup UI | `backup/`, `tools/alternatives/` |
+| 4 | Disruption and dependency-aware replanning: ReplanAgent, disruption simulator, dependency traversal, version-safe patch application, and disruption UI | `replan/`, `events/` |
+| 5 | Comparison and traveler control: ComparatorAgent, comparison explanations, review/accept/reject interactions, and shared page shell | `compare/`, `ui/review/`, `ui/shell/` |
+
+Each feature owner owns its logic, feature-specific UI components, tests, and integration. Modules develop independently against agreed inputs/outputs and shared fixtures; runtime dependencies go through those interfaces. Person 5 owns the review UI and page shell, not every feature's UI.
+
+Person 1 supplies the authoritative budget and feasibility calculations; Person 2 supplies evidenced policy/refund rules; Person 5 consumes these outputs instead of duplicating monetary logic. Person 4 owns patch application and trip-version checks; Person 5 calls that interface only after explicit traveler acceptance.
+
+Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe future boundaries; the application is not yet implemented.
 
 ## Development workflow
 
