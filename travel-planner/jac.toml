@@ -1,0 +1,34 @@
+[project]
+name = "travel-planner"
+version = "0.1.0"
+description = "Roam: trips, itineraries, reservations, packing, and budgets"
+jac-version = "==0.37.23"
+default-app = "travel"
+
+[dependencies]
+[dependencies.npm]
+react = "^19.2.0"
+react-dom = "^19.2.0"
+react-error-boundary = "^5.0.0"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.7.0"
+typescript = "^5.3.3"
+"@types/react" = "^19.2.0"
+"@types/react-dom" = "^19.2.0"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[apps.travel]
+kind = "web-app"
+entry-point = "main"
+
+[apps.server]
+kind = "service"
+entry-point = "server.main"
+
+[apps.cli]
+kind = "cli"
+entry-point = "cli.main"
