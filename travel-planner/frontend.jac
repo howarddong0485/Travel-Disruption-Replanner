@@ -1,6 +1,7 @@
 """Roam's responsive trip workspace."""
 import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip,
     list_items, save_item, set_item_state, delete_item }
+import from backup.frontend { BackupPanel }
 
 def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
@@ -138,6 +139,7 @@ def:pub app -> JsxElement {
                         {"Itinerary" if value == "itinerary" else "Bookings" if value == "bookings" else "Packing list" if value == "packing" else "Budget"}
                     </button> for value in ["itinerary", "bookings", "packing", "budget"]
                 ]}</nav>
+                {(<BackupPanel key={selected} trip={current} items={items}/>) if not loading and tab == "itinerary" else None}
                 {(<section className="budget-overview card"><div><p className="eyebrow">EVERY LITTLE THING ADDS UP</p><h2>Your trip, in numbers.</h2>
                     <p>Costs are counted once, in {current.currency}. Mark each cost paid as you go.</p></div><div className="budget-numbers">
                     <p><span>Budget</span><strong>{money(current.budget_cents, current.currency) if current.budget_cents else "Not set"}</strong></p>

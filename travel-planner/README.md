@@ -9,6 +9,7 @@ Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanne
 - **Bookings:** Store locations, confirmation references, and notes for transport and stays. Confirm/reopen reservations. The same record appears in the itinerary, bookings, and budget; it is not duplicated.
 - **Packing:** Add essentials and check them off. Packed/total counts appear in the trip summary.
 - **Budget:** Record costs on itinerary/booking items and add other costs such as insurance or shopping. Track planned total, paid total, unpaid total, remaining budget, and overspending. Mark payment independently from confirmation or completion.
+- **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Itinerary page. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Weekly plan and demo](../docs/GEHAO_DONG_PLAN.md).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
 - **Responsive design:** A calm green and cream interface with a CSS landscape, trip sidebar, overview cards, and four planning tabs. The web interface adapts to phones and tablets.
 
@@ -30,12 +31,7 @@ If Jac is missing from your shell:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-This workspace already has a working `.jac/venv`. If Jac's bundled Python cannot recreate it, use GoPlanner's project Python from this sibling folder:
-
-```sh
-../planner/.jac/python314/bin/python -m venv .jac/venv
-jac install
-```
+A fresh clone does not include `.jac/venv`. Use a working Jac installation to provision dependencies; do not rely on another developer's sibling project. The manifest pins 0.37.23; see the [week-one environment record](../docs/GEHAO_DONG_PLAN.md#环境验证边界) for this machine's 0.37.21 validation boundary.
 
 ## CLI
 
@@ -90,6 +86,8 @@ Roam records your plans and booking details; it does not make reservations. This
 ```sh
 jac check --nowarn
 jac test server/main.test.jac
+jac test backup/test_planner.jac
+jac test server/test_backup.jac
 jac build travel --as client
 ```
 

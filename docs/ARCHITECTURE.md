@@ -1,6 +1,6 @@
 # Architecture and LLM Inputs
 
-This document is a proposed implementation contract. The repository does not yet implement these components. Start with a modular application and shared typed data contracts; an agent does not need its own service or deployment.
+This document is a proposed implementation contract. The repository includes a basic planner and a [mock backup preview](GEHAO_DONG_PLAN.md), but does not yet implement the complete architecture below. Start with a modular application and shared typed data contracts; an agent does not need its own service or deployment.
 
 ## Product feature boundaries
 

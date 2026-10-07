@@ -4,15 +4,18 @@
 
 Travel Disruption Replanner is a proposed AI travel assistant that helps travelers build a trip within their budget, prepare alternatives before departure, and adjust affected plans when something changes. It considers the whole itinerary: a delayed flight can affect a rental car pickup, hotel check-in, dinner reservation, and the following day's activities.
 
-> **Project status:** Planning documentation and an initial local travel planner are available. [Roam](travel-planner/README.md) implements manual trip, itinerary, booking, packing, and budget management with a web UI, CLI, and SQLite service. The disruption-aware features and component layouts below describe the intended implementation; they are not yet integrated into Roam. The first disruption-replanning milestone uses mock travel data, simulated disruptions, and mock advertisements.
+> **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner. Gehao Dong's first-week work adds mock Plan B/C previews; complete constraint validation, automatic risk detection, comparison and replanning remain planned. The first milestone uses mock travel data and simulated disruptions.
 
 ## Documentation
 
-- [Progress report](docs/PROGRESS.md): completed planning work, the implemented travel planner, and remaining milestones.
+- [Progress report](docs/PROGRESS.md): delivered foundation and implementation limits.
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md): linked Issues, ownership and planned PR sequence.
+
 - [Architecture and LLM inputs](docs/ARCHITECTURE.md): agents, orchestration, data contracts, validation, and replanning.
 - [Product scope and roadmap](docs/ROADMAP.md): MVP boundaries, acceptance criteria, future work, and open decisions.
 - [Data integrations](docs/DATA_SOURCES.md): candidate providers, limitations, and mock-to-live integration strategy.
 - [Contributing](CONTRIBUTING.md): component ownership, development workflow, and review expectations.
+- [Gehao Dong weekly plan and week-one demo](docs/GEHAO_DONG_PLAN.md): four-week delivery plan, backup contracts, test commands, and current limitations.
 
 ## Key features (MVP)
 
@@ -72,21 +75,23 @@ The orchestrator is deterministic application code. LLMs interpret preferences, 
 
 The basic travel planner is a shared foundation, built first by a temporary lead or pair as a separately scoped task. It accepts basic trip inputs, generates an initial itinerary from mock data, and provides a minimal itinerary view. This foundation task does not occupy one of the five ongoing feature-owner assignments.
 
-Person numbers are placeholders until the team assigns names.
+Gehao Dong owns proactive backup planning. The remaining person numbers are placeholders until the team assigns names.
 
-| Person | Owns | Proposed directories |
+| Owner | Owns | Proposed directories |
 | --- | --- | --- |
 | 1 | Personalization and feasibility: ProfileAgent, mandatory filters, budget ledger, ConstraintValidator, and profile/constraint UI | `profile/`, `filter/`, `budget/`, `validate/` |
 | 2 | Policies and risk detection: PolicyAgent, cancellation tracking, RiskAnalyzer, source evidence, and risk/policy UI | `policy/`, `risk/` |
-| 3 | Proactive backup planning: BackupAgent, alternative search/refresh adapters, validated Plan B/C options, and backup UI | `backup/`, `tools/alternatives/` |
+| Gehao Dong | Proactive backup planning: BackupAgent, alternative search/refresh adapters, validated Plan B/C options, and backup UI | `backup/`, `tools/alternatives/` |
 | 4 | Disruption and dependency-aware replanning: ReplanAgent, disruption simulator, dependency traversal, version-safe patch application, and disruption UI | `replan/`, `events/` |
 | 5 | Comparison and traveler control: ComparatorAgent, comparison explanations, review/accept/reject interactions, and shared page shell | `compare/`, `ui/review/`, `ui/shell/` |
 
 Each feature owner owns its logic, feature-specific UI components, tests, and integration. Modules develop independently against agreed inputs/outputs and shared fixtures; runtime dependencies go through those interfaces. Person 5 owns the review UI and page shell, not every feature's UI.
 
+Build each feature's UI within the existing Roam application. Reuse its shared navigation, trip context, visual styles, and common controls; each owner designs and implements the forms, panels, states, and interactions their feature needs. Extend Roam with feature components or pages as needed. Person 5 coordinates shared shell changes and cross-feature navigation with the affected owners.
+
 Person 1 supplies the authoritative budget and feasibility calculations; Person 2 supplies evidenced policy/refund rules; Person 5 consumes these outputs instead of duplicating monetary logic. Person 4 owns patch application and trip-version checks; Person 5 calls that interface only after explicit traveler acceptance.
 
-Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe future boundaries; the disruption-aware application is not yet implemented.
+Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe feature boundaries; current implementation lives under `travel-planner/`.
 
 ## Advertising and sponsorships
 
@@ -101,9 +106,7 @@ git clone https://github.com/howarddong0485/Travel-Disruption-Replanner.git
 cd Travel-Disruption-Replanner
 ```
 
-To run the initial local planner, follow the [Roam setup and CLI instructions](travel-planner/README.md). It uses Jac 0.37.23 and SQLite.
-
-For disruption-replanning development, read the architecture and roadmap, agree on the shared contracts, and assign component owners. The LLM provider, live travel integrations, and deployment target remain open decisions.
+Follow the [Roam setup guide](travel-planner/README.md) to run the Jac + SQLite prototype. For Gehao Dong's storage-free demo, run `jac run backup/demo.jac` from `travel-planner/`. See the [weekly plan](docs/GEHAO_DONG_PLAN.md) for scope and validation details. Shared schemas, an LLM provider and a deployment target still need team agreement.
 
 The recommended first deliverable is one complete flow using fixture data: **profile and hard filters → plan → validate → risks → backups → simulated disruption → dependency-aware repair → compare → traveler review and acceptance**.
 

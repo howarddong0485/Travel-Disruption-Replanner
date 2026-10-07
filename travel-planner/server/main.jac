@@ -5,6 +5,8 @@ import uuid;
 import sqlite3;
 import datetime;
 import from decimal { Decimal }
+import from backup.models { BackupPreview }
+import from backup.planner { prepare }
 
 obj TripView {
     has id: str, title: str, destination: str, start_date: str, end_date: str,
@@ -114,6 +116,17 @@ def:pub list_items(trip_id: str) -> list[ItemView] {
     try {
         _require_trip(conn, trip_id);
         return [_item(row) for row in conn.execute("SELECT * FROM items WHERE trip_id = ? ORDER BY date = '', date, time = '', time, title, id", (trip_id,))];
+    } finally { conn.close(); }
+}
+
+def:pub preview_backups(trip_id: str, item_id: str, trigger: str) -> BackupPreview {
+    conn = _connect();
+    try {
+        # Read trip and items from the same SQLite snapshot; no itinerary writes.
+        conn.execute("BEGIN");
+        trip = dict(_require_trip(conn, trip_id));
+        items = [dict(row) for row in conn.execute("SELECT * FROM items WHERE trip_id=? ORDER BY id", (trip_id,))];
+        return prepare(trip, items, item_id, trigger, datetime.datetime.now(datetime.timezone.utc));
     } finally { conn.close(); }
 }
 
