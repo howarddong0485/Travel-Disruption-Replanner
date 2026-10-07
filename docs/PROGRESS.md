@@ -1,6 +1,6 @@
 # Project progress
 
-This report summarizes work present on `main` through commit `47719ca` (October 4, 2026). It separates implemented behavior from the disruption-replanning design.
+This report records the Roam foundation at commit `47719ca` (October 4, 2026) and the read-only mock backup preview added by this change. It separates implemented behavior from the remaining disruption-replanning design.
 
 ## Completed planning and design
 
@@ -25,11 +25,21 @@ The [travel-planner](../travel-planner/README.md) directory contains the initial
 
 The implementation was added in commit [`47719ca`](https://github.com/howarddong0485/Travel-Disruption-Replanner/commit/47719ca66bd4b01f72933f47132004ee5e8ce0ed). The planning documentation was introduced and refined in `243cf8d`, `479446e`, and `7a8ecdf`.
 
+## Read-only mock backup preview
+
+Gehao Dong's backup module adds Boston/USD Plan B/C drafts for rain-affected activities and delayed-arrival dinners in the existing Itinerary page. Synthetic inventory includes source, checked time and expiry; unavailable/unknown or stale evidence is screened out. The service returns `needs_validation` and does not write a replacement itinerary or budget.
+
+The module includes an independent two-scenario demo, eight unit tests and one isolated service integration test. See [the weekly plan](GEHAO_DONG_PLAN.md) for contracts and limitations. It does not implement automatic risk ingestion, full-trip constraint validation, changing inventory, comparison or acceptance.
+
 ## Current limits and next milestone
 
-Roam stores manually entered plans and booking details. It does not generate AI itineraries, search live inventory, make reservations, monitor disruptions, analyze cancellation policies, generate backups, or perform dependency-aware repairs. It is a local personal prototype with public service endpoints, not a deployed multi-user service. Costs use one currency per trip with no exchange-rate conversion; times are destination-local with no automatic timezone conversion.
+Roam stores manually entered plans and booking details. It does not generate AI itineraries, search live inventory, make reservations, monitor disruptions, analyze cancellation policies, generate fully validated backups, or perform dependency-aware repairs. It is a local personal prototype with public service endpoints, not a deployed multi-user service. Costs use one currency per trip with no exchange-rate conversion; times are destination-local with no automatic timezone conversion.
 
 The next integration milestone is the documented fixture-based flow: profile and hard filters → plan → validate → risks → backups → simulated disruption → dependency-aware repair → compare → traveler review and explicit acceptance. Shared contracts, named owners, an LLM provider, and deployment choices still need agreement.
+
+## Latest verification boundary
+
+For this delivery, Jac 0.37.21 passed the eight backup unit tests, static checks for all three app entries, the client production build and the storage-free demo. The manifest still pins 0.37.23; that version was not available for this check. The backup service integration test and all three existing service regressions also passed after rerunning with Jac's normal Postgres cache/socket paths and cache access. Earlier attempts failed at environment provisioning. Browser behavior was documented in the earlier local acceptance record; no fresh browser check was performed for this delivery. Issue #8 tracks pinned-runtime/clean-checkout verification.
 
 ## Validation available
 
@@ -38,6 +48,8 @@ The application includes the following documented checks, run from `travel-plann
 ```sh
 jac check --nowarn
 jac test server/main.test.jac
+jac test backup/test_planner.jac
+jac test server/test_backup.jac
 jac build travel --as client
 ```
 

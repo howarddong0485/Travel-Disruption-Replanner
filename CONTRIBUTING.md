@@ -1,26 +1,28 @@
 # Contributing
 
-The disruption-replanning workflow is currently in design, and an initial local planner is available in [travel-planner/](travel-planner/README.md). Read the [README](README.md), [architecture](docs/ARCHITECTURE.md), and [roadmap](docs/ROADMAP.md) before extending the implementation.
+The project has an early Jac prototype; full feature contracts are still being designed. Read the [README](README.md), [architecture](docs/ARCHITECTURE.md), and [roadmap](docs/ROADMAP.md) before beginning implementation.
 
 ## Component ownership
 
 The basic travel planner is a shared foundation, built first by a temporary lead or pair as a separately scoped task. It accepts basic trip inputs, generates an initial itinerary from mock data, and provides a minimal itinerary view. This foundation task does not occupy one of the five ongoing feature-owner assignments.
 
-Person numbers are placeholders until the team assigns names.
+Gehao Dong owns proactive backup planning. The remaining person numbers are placeholders until the team assigns names.
 
-| Person | Owns | Proposed directories |
+| Owner | Owns | Proposed directories |
 | --- | --- | --- |
 | 1 | Personalization and feasibility: ProfileAgent, mandatory filters, budget ledger, ConstraintValidator, and profile/constraint UI | `profile/`, `filter/`, `budget/`, `validate/` |
 | 2 | Policies and risk detection: PolicyAgent, cancellation tracking, RiskAnalyzer, source evidence, and risk/policy UI | `policy/`, `risk/` |
-| 3 | Proactive backup planning: BackupAgent, alternative search/refresh adapters, validated Plan B/C options, and backup UI | `backup/`, `tools/alternatives/` |
+| Gehao Dong | Proactive backup planning: BackupAgent, alternative search/refresh adapters, validated Plan B/C options, and backup UI | `backup/`, `tools/alternatives/` |
 | 4 | Disruption and dependency-aware replanning: ReplanAgent, disruption simulator, dependency traversal, version-safe patch application, and disruption UI | `replan/`, `events/` |
 | 5 | Comparison and traveler control: ComparatorAgent, comparison explanations, review/accept/reject interactions, and shared page shell | `compare/`, `ui/review/`, `ui/shell/` |
 
 Each feature owner owns its logic, feature-specific UI components, tests, and integration. Modules develop independently against agreed inputs/outputs and shared fixtures; runtime dependencies go through those interfaces. Person 5 owns the review UI and page shell, not every feature's UI.
 
+Build each feature's UI within the existing Roam application. Reuse its shared navigation, trip context, visual styles, and common controls; each owner designs and implements the forms, panels, states, and interactions their feature needs. Extend Roam with feature components or pages as needed. Person 5 coordinates shared shell changes and cross-feature navigation with the affected owners.
+
 Person 1 supplies the authoritative budget and feasibility calculations; Person 2 supplies evidenced policy/refund rules; Person 5 consumes these outputs instead of duplicating monetary logic. Person 4 owns patch application and trip-version checks; Person 5 calls that interface only after explicit traveler acceptance.
 
-Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe future boundaries; the disruption-aware application is not yet implemented.
+Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe feature boundaries; current implementation lives under `travel-planner/`.
 
 ## Development workflow
 
