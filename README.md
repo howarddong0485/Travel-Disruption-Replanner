@@ -4,10 +4,11 @@
 
 Travel Disruption Replanner is a proposed AI travel assistant that helps travelers build a trip within their budget, prepare alternatives before departure, and adjust affected plans when something changes. It considers the whole itinerary: a delayed flight can affect a rental car pickup, hotel check-in, dinner reservation, and the following day's activities.
 
-> **Project status:** Planning and design. This repository currently contains project documentation, not a runnable application. Features, components, and directory layouts below describe the intended implementation. The first milestone uses mock travel data, simulated disruptions, and mock advertisements.
+> **Project status:** Planning documentation and an initial local travel planner are available. [Roam](travel-planner/README.md) implements manual trip, itinerary, booking, packing, and budget management with a web UI, CLI, and SQLite service. The disruption-aware features and component layouts below describe the intended implementation; they are not yet integrated into Roam. The first disruption-replanning milestone uses mock travel data, simulated disruptions, and mock advertisements.
 
 ## Documentation
 
+- [Progress report](docs/PROGRESS.md): completed planning work, the implemented travel planner, and remaining milestones.
 - [Architecture and LLM inputs](docs/ARCHITECTURE.md): agents, orchestration, data contracts, validation, and replanning.
 - [Product scope and roadmap](docs/ROADMAP.md): MVP boundaries, acceptance criteria, future work, and open decisions.
 - [Data integrations](docs/DATA_SOURCES.md): candidate providers, limitations, and mock-to-live integration strategy.
@@ -85,7 +86,7 @@ Each feature owner owns its logic, feature-specific UI components, tests, and in
 
 Person 1 supplies the authoritative budget and feasibility calculations; Person 2 supplies evidenced policy/refund rules; Person 5 consumes these outputs instead of duplicating monetary logic. Person 4 owns patch application and trip-version checks; Person 5 calls that interface only after explicit traveler acceptance.
 
-Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe future boundaries; the application is not yet implemented.
+Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe future boundaries; the disruption-aware application is not yet implemented.
 
 ## Advertising and sponsorships
 
@@ -100,7 +101,9 @@ git clone https://github.com/howarddong0485/Travel-Disruption-Replanner.git
 cd Travel-Disruption-Replanner
 ```
 
-Read the architecture and roadmap, agree on the shared contracts, and assign component owners. A language, framework, LLM provider, storage layer, and deployment target have not yet been selected; installation and run instructions will be added when an executable prototype exists.
+To run the initial local planner, follow the [Roam setup and CLI instructions](travel-planner/README.md). It uses Jac 0.37.23 and SQLite.
+
+For disruption-replanning development, read the architecture and roadmap, agree on the shared contracts, and assign component owners. The LLM provider, live travel integrations, and deployment target remain open decisions.
 
 The recommended first deliverable is one complete flow using fixture data: **profile and hard filters → plan → validate → risks → backups → simulated disruption → dependency-aware repair → compare → traveler review and acceptance**.
 
