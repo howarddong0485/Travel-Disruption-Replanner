@@ -39,3 +39,9 @@ entry-point = "cli.main"
 "schema.*" = "server"
 "policy.*" = "server"
 "risk.*" = "server"
+
+# byLLM capability for the PolicyAgent. No default model on purpose: the team has
+# not chosen a provider. Set [byllm.model] default_model or BYLLM_DEFAULT_MODEL
+# (plus that provider's API key) to enable LLM extraction; otherwise the
+# PolicyAgent uses its rule-based extractor.
+[byllm]
