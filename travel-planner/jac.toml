@@ -32,3 +32,16 @@ entry-point = "server.main"
 [apps.cli]
 kind = "cli"
 entry-point = "cli.main"
+
+# Person 2 (policy/risk) and the proposed shared schema run server-side. Without
+# this, a module with no Python imports is compiled native, and its tests abort.
+[placement.pins]
+"schema.*" = "server"
+"policy.*" = "server"
+"risk.*" = "server"
+
+# byLLM capability for the PolicyAgent. No default model on purpose: the team has
+# not chosen a provider. Set [byllm.model] default_model or BYLLM_DEFAULT_MODEL
+# (plus that provider's API key) to enable LLM extraction; otherwise the
+# PolicyAgent uses its rule-based extractor.
+[byllm]
