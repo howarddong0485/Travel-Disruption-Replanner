@@ -1,6 +1,6 @@
 # Contributing
 
-The project is currently in design. Read the [README](README.md), [architecture](docs/ARCHITECTURE.md), and [roadmap](docs/ROADMAP.md) before beginning implementation.
+The disruption-replanning workflow is currently in design, and an initial local planner is available in [travel-planner/](travel-planner/README.md). Read the [README](README.md), [architecture](docs/ARCHITECTURE.md), and [roadmap](docs/ROADMAP.md) before extending the implementation.
 
 ## Component ownership
 
@@ -20,7 +20,7 @@ Each feature owner owns its logic, feature-specific UI components, tests, and in
 
 Person 1 supplies the authoritative budget and feasibility calculations; Person 2 supplies evidenced policy/refund rules; Person 5 consumes these outputs instead of duplicating monetary logic. Person 4 owns patch application and trip-version checks; Person 5 calls that interface only after explicit traveler acceptance.
 
-Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe future boundaries; the application is not yet implemented.
+Assign one named owner at a time to shared schemas, orchestration walkers, common tool adapters, fixtures, and CI. The integration role may rotate by phase and is not permanently assigned to Person 1. Shared contract changes require coordination with affected owners. Proposed directories describe future boundaries; the disruption-aware application is not yet implemented.
 
 ## Development workflow
 
