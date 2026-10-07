@@ -32,3 +32,10 @@ entry-point = "server.main"
 [apps.cli]
 kind = "cli"
 entry-point = "cli.main"
+
+# Person 2 (policy/risk) and the proposed shared schema run server-side. Without
+# this, a module with no Python imports is compiled native, and its tests abort.
+[placement.pins]
+"schema.*" = "server"
+"policy.*" = "server"
+"risk.*" = "server"
