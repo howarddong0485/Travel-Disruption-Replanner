@@ -7,3 +7,34 @@
 @media(max-width:650px){.app-shell{display:block}.sidebar{position:static;height:auto;padding:20px 18px;border-right:0;border-bottom:1px solid #dfe4d7}.brand{font-size:30px}.brand-icon{width:29px;height:29px;font-size:20px}.brand-caption{margin:5px 0 16px}.sidebar-heading,.sidebar-bottom{display:none}.trip-list{display:flex;overflow-x:auto;padding-bottom:6px}.trip-card{min-width:190px;width:auto;padding:12px 10px}.new-trip{margin-top:10px;padding:10px;width:100%}.workspace{padding:0 17px}.topbar{height:67px;letter-spacing:.8px;font-size:8px}.topbar-actions{gap:10px}.hero{padding:25px 22px;min-height:280px}.hero-content{max-width:100%}.hero h1{font-size:32px;max-width:95%}.hero .eyebrow{max-width:75%;line-height:1.8}.hero-landscape{opacity:.42}.tabs{gap:0;justify-content:space-between}.tabs button{font-size:12px;padding:0 5px 12px}.card{padding:20px 17px}.stats{padding:18px 5px}.stats strong{font-size:13px}.stats>div{padding:0 8px}.stats small{font-size:9px}.stat-icon{display:none}.section-heading h2{font-size:20px}.eyebrow{font-size:8px;letter-spacing:1.2px}.count-pill{font-size:9px;padding:4px 6px}.trip-fields{grid-template-columns:1fr 1fr}.trip-fields>div:nth-child(-n+2){grid-column:1/-1}.travel-item{gap:10px;flex-wrap:wrap}.item-symbol{width:29px;height:29px;font-size:16px}.item-title-line h3{font-size:13px}.item-cost{margin-left:39px}.welcome{padding:40px 20px;margin:20px 0}.welcome h1{font-size:30px}footer span{max-width:190px;text-align:right}.alert{font-size:11px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 .backup-panel{margin-bottom:24px}.backup-panel>p{margin-bottom:14px}.backup-panel .primary{max-width:300px;margin:14px 0}.backup-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.backup-option{border:1px solid var(--line);padding:20px;border-radius:12px;overflow-wrap:anywhere}.backup-option p,.backup-option li{font-size:13px;margin-top:8px}.backup-option ul{padding-left:20px}.backup-disclaimer{padding:12px;background:#fff4dc;border-radius:8px;margin-bottom:14px}.backup-panel details{margin-top:12px;font-size:13px}@media(max-width:950px){.backup-options{grid-template-columns:1fr}}
+
+/* Dependency-aware disruption simulator and proposal review. */
+.detail-grid[hidden] { display: none; }
+.demo-trip { margin-top: 12px; text-align: left; }
+.replan-workspace { display: grid; gap: 20px; }
+.replan-workspace .card { padding: 24px; }
+.replan-intro h2 { margin: 6px 0 12px; }
+.mock-badge { display: inline-block; padding: 7px 12px; border-radius: 8px; background: #f4ead3; color: #775b26; font-size: 12px; font-weight: 700; }
+.replan-setup { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.replan-workspace form { display: grid; gap: 9px; }
+.replan-workspace form label { font-size: 13px; font-weight: 600; margin-top: 8px; }
+.replan-workspace input:not([type=checkbox]), .replan-workspace select { width: 100%; padding: 10px 12px; border: 1px solid var(--border, #d9dfd7); border-radius: 8px; background: white; font: inherit; }
+.replan-check { display: flex; align-items: center; gap: 8px; }
+.replan-check input { width: 16px; height: 16px; }
+.replan-workspace .secondary { padding: 12px; border: 1px solid #b4c5b4; border-radius: 8px; background: #edf3eb; color: #274b36; cursor: pointer; font: inherit; }
+.dependency-list { padding-left: 20px; }
+.dependency-list li { padding: 8px 0; }
+.dependency-list button { margin-left: 12px; }
+.backup-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.backup-chip { display: grid; gap: 6px; padding: 14px; border: 1px solid #dde5d9; border-radius: 10px; }
+.backup-chip small { color: #637467; }
+.replan-proposals { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.proposal-metrics { display: grid; gap: 9px; margin: 15px 0; }
+.proposal-metrics p { display: grid; gap: 4px; margin: 0; }
+.proposal-metrics small { color: #637467; }
+.proposal-changes { list-style: none; padding: 0; display: grid; gap: 15px; }
+.proposal-changes li { display: grid; gap: 7px; padding-bottom: 12px; border-bottom: 1px solid #e6eadf; overflow-wrap: anywhere; }
+.proposal-changes span, .proposal-changes small { font-size: 13px; color: #637467; }
+.proposal-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 1150px) { .replan-setup, .replan-proposals { grid-template-columns: 1fr; } }
+@media (max-width: 650px) { .backup-grid { grid-template-columns: 1fr; } .replan-workspace .card { padding: 18px; } }

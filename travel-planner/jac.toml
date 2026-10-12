@@ -32,3 +32,8 @@ entry-point = "server.main"
 [apps.cli]
 kind = "cli"
 entry-point = "cli.main"
+
+# Used only when the traveler enables LLM-assisted combination selection.
+# Keep provider credentials in the server environment. BYLLM_DEFAULT_MODEL overrides this.
+[byllm.model]
+default_model = "gpt-4o-mini"

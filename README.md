@@ -4,7 +4,7 @@
 
 Travel Disruption Replanner is a proposed AI travel assistant that helps travelers build a trip within their budget, prepare alternatives before departure, and adjust affected plans when something changes. It considers the whole itinerary: a delayed flight can affect a rental car pickup, hotel check-in, dinner reservation, and the following day's activities.
 
-> **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner. Gehao Dong's first-week work adds mock Plan B/C previews; complete constraint validation, automatic risk detection, comparison and replanning remain planned. The first milestone uses mock travel data and simulated disruptions.
+> **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner, mock Plan B/C previews, and a [disruption-replanning prototype](travel-planner/replan/README.md) with dependency checks, combined backups, optional Jac LLM selection, and version-safe traveler-approved updates. Shared constraint validation, automatic risk detection, and multi-agent integration remain planned. This milestone uses synthetic travel data and simulated disruptions.
 
 ## Documentation
 
