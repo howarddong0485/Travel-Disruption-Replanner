@@ -11,7 +11,7 @@ Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanne
 - **Budget:** Record costs on itinerary/booking items and add other costs such as insurance or shopping. Track planned total, paid total, unpaid total, remaining budget, and overspending. Mark payment independently from confirmation or completion.
 - **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Itinerary page. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Weekly plan and demo](../docs/GEHAO_DONG_PLAN.md).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
-- **Responsive design:** A calm green and cream interface with a CSS landscape, trip sidebar, overview cards, and four planning tabs. The web interface adapts to phones and tablets.
+- **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and four planning tabs. The web interface adapts to phones and tablets.
 
 ## Start the app
 
