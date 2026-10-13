@@ -9,7 +9,7 @@ Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanne
 - **Bookings:** Store locations, confirmation references, and notes for transport and stays. Confirm/reopen reservations. The same record appears in the itinerary, bookings, and budget; it is not duplicated.
 - **Packing:** Add essentials and check them off. Packed/total counts appear in the trip summary.
 - **Budget:** Record costs on itinerary/booking items and add other costs such as insurance or shopping. Track planned total, paid total, unpaid total, remaining budget, and overspending. Mark payment independently from confirmation or completion.
-- **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Itinerary page. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Weekly plan and demo](../docs/GEHAO_DONG_PLAN.md).
+- **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Itinerary page. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Demo and limitations](#backup-preview-demo).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
 - **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and four planning tabs. The web interface adapts to phones and tablets.
 
@@ -31,7 +31,7 @@ If Jac is missing from your shell:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-A fresh clone does not include `.jac/venv`. Use a working Jac installation to provision dependencies; do not rely on another developer's sibling project. The manifest pins 0.37.23; see the [week-one environment record](../docs/GEHAO_DONG_PLAN.md#环境验证边界) for this machine's 0.37.21 validation boundary.
+A fresh clone does not include `.jac/venv`. Use a working Jac installation to provision dependencies; do not rely on another developer's sibling project. The manifest pins 0.37.23; see the [verification boundary](../docs/PROGRESS.md#latest-verification-boundary) for this machine's 0.37.21 validation results.
 
 ## CLI
 
@@ -61,6 +61,41 @@ jac run cli -- delete-trip TRIP_ID --yes
 
 Editing trip and item details is available in the web app. CLI `done` means completed, confirmed, or packed depending on category; `paid` changes only payment status.
 
+## Backup preview demo
+
+From `travel-planner/`, run the deterministic, storage-free demo:
+
+```sh
+jac run backup/demo.jac
+```
+
+In the web app, create a Boston/USD trip and add a dated, unfinished activity and dining item. In **Itinerary**, choose **Rain affects an outdoor activity** or **Delayed arrival affects dinner**, select the original item, and prepare Plan B/C. The panel shows up to two drafts with activation conditions, synthetic prices, mock sources, checked/expiry times and validation notes. Switching trips, scenarios or items clears the previous result. When the earliest evidence expires, the panel removes the drafts and prompts a refresh.
+
+Unsupported locations/currencies show an empty result or exclusion reasons. Unavailable/unknown inventory, missing sources, expired timestamps and invalid evidence are excluded. Preview success and failure preserve saved trip/items and costs. Drafts remain `needs_validation`; full-trip constraints, automatic risks, live inventory, comparison, acceptance, booking and trip changes are separate work.
+
+The draft contract is in `backup/models.jac`, the search/refresh adapter in `tools/alternatives/mock.jac`, and the public endpoint is `preview_backups(trip_id, item_id, trigger)`. These are local mock contracts, not the final shared AlternativePlan schema.
+
+### Browser regression check
+
+Start a separate test instance with an isolated database, using the App/API ports printed by Jac:
+
+```sh
+TRAVEL_DB_PATH=/tmp/roam-backup-browser.sqlite3 jac run --dev travel
+```
+
+In another terminal, install Playwright into a temporary test environment and run the browser checks with installed Chrome:
+
+```sh
+npm install --prefix /tmp/roam-browser-check playwright
+NODE_PATH=/tmp/roam-browser-check/node_modules \
+TRAVEL_BROWSER_CHANNEL=chrome \
+TRAVEL_APP_URL=http://localhost:8000 \
+TRAVEL_API_URL=http://localhost:8001/api/server \
+node tests/backup_preview.browser.cjs
+```
+
+The script creates and deletes its own synthetic trips. It checks both scenarios, mobile overflow, clearing results, request errors, delayed responses, empty states, automatic expiry/refresh and preservation of saved data. Override the URLs if Jac prints different ports. Without `TRAVEL_BROWSER_CHANNEL`, Playwright uses its installed Chromium instead.
+
 ## Project structure
 
 | Component | Files | Purpose |
@@ -68,7 +103,7 @@ Editing trip and item details is available in the web app. CLI `done` means comp
 | Web | `main.jac`, `frontend.jac`, `frontend.impl.jac`, `styles.css` | Trip workspace and responsive browser UI |
 | Service | `server/main.jac` | Shared trip/item API, validation, and SQLite storage |
 | CLI | `cli/main.jac` | Terminal commands using the same service |
-| Tests | `server/main.test.jac` | Endpoint lifecycle, persistence, validation, isolation, ordering, and cascade deletion |
+| Tests | `server/main.test.jac`, `backup/test_planner.jac`, `server/test_backup.jac`, `tests/backup_preview.browser.cjs` | Service regressions, draft screening, read-only storage checks, and browser states/expiry |
 | Configuration | `jac.toml` | Jac version, dependencies, and app declarations |
 
 ## Data and planning rules

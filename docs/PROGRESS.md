@@ -29,7 +29,7 @@ The implementation was added in commit [`47719ca`](https://github.com/howarddong
 
 Gehao Dong's backup module adds Boston/USD Plan B/C drafts for rain-affected activities and delayed-arrival dinners in the existing Itinerary page. Synthetic inventory includes source, checked time and expiry; unavailable/unknown or stale evidence is screened out. The service returns `needs_validation` and does not write a replacement itinerary or budget.
 
-The module includes an independent two-scenario demo, eight unit tests and one isolated service integration test. See [the weekly plan](GEHAO_DONG_PLAN.md) for contracts and limitations. It does not implement automatic risk ingestion, full-trip constraint validation, changing inventory, comparison or acceptance.
+The original delivery includes an independent two-scenario demo, eight unit tests and one isolated service integration test. See the [backup preview demo](../travel-planner/README.md#backup-preview-demo) for supported scenarios and limitations. It does not implement automatic risk ingestion, full-trip constraint validation, changing inventory, comparison or acceptance.
 
 ## Current limits and next milestone
 
@@ -39,7 +39,23 @@ The next integration milestone is the documented fixture-based flow: profile and
 
 ## Latest verification boundary
 
-For this delivery, Jac 0.37.21 passed the eight backup unit tests, static checks for all three app entries, the client production build and the storage-free demo. The manifest still pins 0.37.23; that version was not available for this check. The backup service integration test and all three existing service regressions also passed after rerunning with Jac's normal Postgres cache/socket paths and cache access. Earlier attempts failed at environment provisioning. Browser behavior was documented in the earlier local acceptance record; no fresh browser check was performed for this delivery. Issue #8 tracks pinned-runtime/clean-checkout verification.
+For the original PR #15 delivery, Jac 0.37.21 passed the eight backup unit tests, static checks for all three app entries, the client production build and the storage-free demo. The manifest still pins 0.37.23; that version was not available for this check. The backup service integration test and all three existing service regressions also passed after rerunning with Jac's normal Postgres cache/socket paths and cache access. Earlier attempts failed at environment provisioning. No fresh browser check was performed for the original delivery. Issue #8 tracks pinned-runtime/clean-checkout verification.
+
+### PR #15 follow-up audit — 2026-10-13
+
+The audit reproduced two missing boundaries: whitespace-only sources passed evidence screening, and preview cards stayed visible after their evidence expired. Source screening now rejects blank/whitespace-only references. The browser clears the drafts at their earliest evidence expiry, prompts a refresh, and cleans up its timer when the preview changes or the panel unmounts. Public demo links now point to the planner README.
+
+Fresh verification on local Jac 0.37.21:
+
+- Backup unit tests: 9 passed, including a regression that failed before the source fix.
+- Backup service integration: 1 passed, checking storage snapshots after both successful scenarios and missing, foreign, completed, undated, wrong-category, unsupported-trigger and deleted-item requests.
+- Original service regressions: 3 passed.
+- All three app entrypoint checks and the client production build passed.
+- Storage-free demo: rain and arrival-delay each returned two `needs_validation` drafts.
+- [Browser regression](../travel-planner/tests/backup_preview.browser.cjs): 9 checks passed in headless Chrome with Playwright 1.62.1 and a dedicated temporary SQLite database. Checks cover both scenarios, a 390-pixel viewport, clearing old results, visible errors, late responses after trip switches, empty states, expiry/refresh and saved-data preservation. The expiry check failed before the timer fix.
+- Checked 29 relative documentation targets and Git diff whitespace.
+
+This remains a read-only mock preview. Pinned Jac 0.37.23 and clean-checkout CI are still unverified; complete trip validation, automatic risks and accepting/applying alternatives remain separate issues.
 
 ## Validation available
 
@@ -53,4 +69,4 @@ jac test server/test_backup.jac
 jac build travel --as client
 ```
 
-The server tests use temporary databases and do not modify saved trips. These commands describe the available validation workflow; this report does not assert a fresh application test run. For this documentation update, verify relative links and run `git diff --check`.
+The server tests use temporary databases and do not modify saved trips. These commands describe the available validation workflow; the dated verification records above identify what was actually run. For documentation-only changes, verify relative links and run `git diff --check`.
