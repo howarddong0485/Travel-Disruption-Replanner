@@ -81,7 +81,7 @@ def:pub app -> JsxElement {
     <div className="app-shell">
         <aside className="sidebar">
             <a className="brand" href="#"><span className="brand-icon">↗</span>roam<span className="brand-dot">.</span></a>
-            <p className="brand-caption">Good trips start here.</p>
+            <p className="brand-caption">Travel planning workspace.</p>
             <div className="sidebar-heading"><span>YOUR TRIPS</span><span>{str(len(trips))}</span></div>
             <div className="trip-list">{[
                 <button type="button" key={trip.id} className="trip-card" data-active={trip.id == selected}
@@ -93,16 +93,16 @@ def:pub app -> JsxElement {
             ]}</div>
             <button type="button" className="new-trip" onClick={lambda { openTrip(); }} disabled={busy or loading}>＋ Plan a new trip</button>
             <button type="button" className="text-button demo-trip" onClick={createDemo} disabled={busy or loading}>Try a mock replanning trip ↗</button>
-            <div className="sidebar-bottom"><span className="little-sun">✳</span><p>Less scattered.<br/>More out there.</p><small>Your plans, all in one place.</small></div>
+            <div className="sidebar-bottom"><p>Organized travel.</p><small>Your plans, all in one place.</small></div>
         </aside>
         <main className="workspace">
-            <header className="topbar"><span>YOUR PERSONAL TRAVEL PLANNER</span><div className="topbar-actions">
+            <header className="topbar"><span>TRAVEL MANAGEMENT WORKSPACE</span><div className="topbar-actions">
                 <button type="button" className="text-button" onClick={refresh} disabled={busy or loading}>{"Refreshing…" if loading else "↻ Refresh"}</button>
                 <span className="avatar" title="Personal travel workspace">ZL</span></div></header>
             {(<div className="alert error" role="alert">{error}<button type="button" aria-label="Dismiss error" onClick={lambda { error = ""; }}>×</button></div>) if error else None}
             {(<div className="alert success" role="status">{notice}</div>) if notice else None}
             {(<section className="trip-editor card">
-                <div className="section-heading"><div><p className="eyebrow">THE NEXT ADVENTURE</p><h2>{"Edit your trip" if editing_trip else "Where are you headed?"}</h2></div>
+                <div className="section-heading"><div><p className="eyebrow">TRIP DETAILS</p><h2>{"Edit your trip" if editing_trip else "Where are you headed?"}</h2></div>
                     <button type="button" className="text-button" onClick={lambda { trip_form = False; }} disabled={busy}>Cancel</button></div>
                 <form onSubmit={submitTrip}>
                     <div className="trip-fields">
@@ -117,15 +117,15 @@ def:pub app -> JsxElement {
                     <button className="primary" type="submit" disabled={busy}>{"Saving…" if busy else "Save changes" if editing_trip else "Create trip ↗"}</button>
                 </form>
             </section>) if trip_form else None}
-            {(<section className="welcome card"><div className="welcome-art" aria-hidden="true">↗</div><p className="eyebrow">MAKE ROOM FOR ADVENTURE</p>
-                <h1>{"Loading your trips…" if loading else "Your next chapter starts with a plan."}</h1>
+            {(<section className="welcome card"><div className="welcome-art" aria-hidden="true">↗</div><p className="eyebrow">YOUR TRAVEL WORKSPACE</p>
+                <h1>{"Loading your trips…" if loading else "Plan your travel with confidence."}</h1>
                 <p>Keep your itinerary, reservations, packing list, and budget together. Add your first trip to get started.</p>
                 <button type="button" className="primary" onClick={lambda { openTrip(); }} disabled={busy or loading}>Plan my first trip ↗</button>
             </section>) if not current else (
             <div>
                 <section className="hero">
-                    <div className="hero-landscape" aria-hidden="true"><div className="sun"/><div className="hill hill-back"/><div className="hill hill-front"/><div className="landscape-line"/></div>
-                    <div className="hero-content"><span className="status-pill">{status(current)}</span><p className="eyebrow">A LITTLE PLANNING. A LOT TO LOOK FORWARD TO.</p>
+
+                    <div className="hero-content"><span className="status-pill">{status(current)}</span><p className="eyebrow">TRIP OVERVIEW</p>
                         <h1>{current.title}</h1><p className="destination">◎ {current.destination}</p>
                         <p className="trip-dates">{prettyDate(current.start_date) + " — " + prettyDate(current.end_date)}</p>
                         <button type="button" className="hero-edit" onClick={lambda { openTrip(current); }} disabled={busy or loading}>Edit trip ↗</button>
