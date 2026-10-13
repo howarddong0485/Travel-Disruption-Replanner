@@ -10,8 +10,9 @@ Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanne
 - **Packing:** Add essentials and check them off. Packed/total counts appear in the trip summary.
 - **Budget:** Record costs on itinerary/booking items and add other costs such as insurance or shopping. Track planned total, paid total, unpaid total, remaining budget, and overspending. Mark payment independently from confirmation or completion.
 - **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Itinerary page. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Demo and limitations](#backup-preview-demo).
+- **Replanning:** Simulate delayed/interrupted items, combine synthetic backup inventory, edit dependencies and schedule rules, optionally use a Jac LLM to select combinations, and accept/reject version-safe revisions. Try the separate demo trip from the sidebar; see [the replanning guide](replan/README.md).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
-- **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and four planning tabs. The web interface adapts to phones and tablets.
+- **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and five planning tabs. The web interface adapts to phones and tablets.
 
 ## Start the app
 
@@ -31,7 +32,7 @@ If Jac is missing from your shell:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-A fresh clone does not include `.jac/venv`. Use a working Jac installation to provision dependencies; do not rely on another developer's sibling project. The manifest pins 0.37.23; see the [verification boundary](../docs/PROGRESS.md#latest-verification-boundary) for this machine's 0.37.21 validation results.
+A fresh clone does not include `.jac/venv`. Use a working Jac installation to provision dependencies; do not rely on another developer's sibling project. The manifest pins Jac 0.37.23; see the [verification boundary](../docs/PROGRESS.md#latest-verification-boundary) for dated validation results.
 
 ## CLI
 

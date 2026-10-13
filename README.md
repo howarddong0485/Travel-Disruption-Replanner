@@ -4,7 +4,7 @@
 
 Travel Disruption Replanner is a proposed AI travel assistant that helps travelers build a trip within their budget, prepare alternatives before departure, and adjust affected plans when something changes. It considers the whole itinerary: a delayed flight can affect a rental car pickup, hotel check-in, dinner reservation, and the following day's activities.
 
-> **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner. Gehao Dong's first-week work adds mock Plan B/C previews; complete constraint validation, automatic risk detection, comparison and replanning remain planned. The first milestone uses mock travel data and simulated disruptions.
+> **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner, mock Plan B/C previews, and a [disruption-replanning prototype](travel-planner/replan/README.md) with dependency checks, combined backups, optional Jac LLM selection, and version-safe traveler-approved updates. Shared constraint validation, automatic risk detection, and multi-agent integration remain planned. This milestone uses synthetic travel data and simulated disruptions.
 
 ## Documentation
 
@@ -106,7 +106,7 @@ git clone https://github.com/howarddong0485/Travel-Disruption-Replanner.git
 cd Travel-Disruption-Replanner
 ```
 
-Follow the [Roam setup guide](travel-planner/README.md) to run the Jac + SQLite prototype. For Gehao Dong's storage-free demo, run `jac run backup/demo.jac` from `travel-planner/`. See the [backup preview demo](travel-planner/README.md#backup-preview-demo) for scope and validation details. Shared schemas, an LLM provider and a deployment target still need team agreement.
+Follow the [Roam setup guide](travel-planner/README.md) to run the Jac + SQLite prototype. For Gehao Dong's storage-free demo, run `jac run backup/demo.jac` from `travel-planner/`. See the [backup preview demo](travel-planner/README.md#backup-preview-demo) for supported backup scenarios and the [replanning guide](travel-planner/replan/README.md) for the disruption example, optional LLM setup and validation limits. Shared agent contracts and a deployment target still need team agreement.
 
 The recommended first deliverable is one complete flow using fixture data: **profile and hard filters → plan → validate → risks → backups → simulated disruption → dependency-aware repair → compare → traveler review and acceptance**.
 

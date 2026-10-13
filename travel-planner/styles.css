@@ -19,6 +19,37 @@
 @media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 .backup-panel{margin-bottom:24px}.backup-panel>p{margin-bottom:14px}.backup-panel .primary{max-width:300px;margin:14px 0}.backup-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.backup-option{border:1px solid var(--line);padding:20px;border-radius:12px;overflow-wrap:anywhere}.backup-option p,.backup-option li{font-size:13px;margin-top:8px}.backup-option ul{padding-left:20px}.backup-disclaimer{padding:12px;background:var(--warning-bg);border-radius:8px;margin-bottom:14px}.backup-panel details{margin-top:12px;font-size:13px}@media(max-width:950px){.backup-options{grid-template-columns:1fr}}
 
+/* Dependency-aware disruption simulator and proposal review. */
+.detail-grid[hidden] { display: none; }
+.demo-trip { margin-top: 12px; text-align: left; }
+.replan-workspace { display: grid; gap: 20px; }
+.replan-workspace .card { padding: 24px; }
+.replan-intro h2 { margin: 6px 0 12px; }
+.mock-badge { display: inline-block; padding: 7px 12px; border-radius: 8px; background: var(--warning-bg); color: #77551c; font-size: 12px; font-weight: 700; }
+.replan-setup { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.replan-workspace form { display: grid; gap: 9px; }
+.replan-workspace form label { font-size: 13px; font-weight: 600; margin-top: 8px; }
+.replan-workspace input:not([type=checkbox]), .replan-workspace select { width: 100%; padding: 10px 12px; border: 1px solid var(--border, var(--line)); border-radius: 8px; background: white; font: inherit; }
+.replan-check { display: flex; align-items: center; gap: 8px; }
+.replan-check input { width: 16px; height: 16px; }
+.replan-workspace .secondary { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); color: var(--accent); cursor: pointer; font: inherit; }
+.dependency-list { padding-left: 20px; }
+.dependency-list li { padding: 8px 0; }
+.dependency-list button { margin-left: 12px; }
+.backup-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.backup-chip { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.backup-chip small { color: var(--muted); }
+.replan-proposals { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.proposal-metrics { display: grid; gap: 9px; margin: 15px 0; }
+.proposal-metrics p { display: grid; gap: 4px; margin: 0; }
+.proposal-metrics small { color: var(--muted); }
+.proposal-changes { list-style: none; padding: 0; display: grid; gap: 15px; }
+.proposal-changes li { display: grid; gap: 7px; padding-bottom: 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.proposal-changes span, .proposal-changes small { font-size: 13px; color: var(--muted); }
+.proposal-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+@media (max-width: 1150px) { .replan-setup, .replan-proposals { grid-template-columns: 1fr; } }
+@media (max-width: 650px) { .backup-grid { grid-template-columns: 1fr; } .replan-workspace .card { padding: 18px; } }
+
 /* Restrained surfaces, typography and controls for a business workspace. */
 .brand { font-size: 32px; letter-spacing: -1px; }
 .brand-icon { border-radius: 8px; }
@@ -44,7 +75,7 @@ input, select, textarea, .primary { border-radius: 5px; }
 .welcome h1 { font-weight: 650; }
 .welcome-art { font-size: 42px; }
 .backup-disclaimer { color: #77551c; border: 1px solid #e7d7b2; border-radius: 5px; }
-/* Keep the separately reviewed replanning feature on the same palette. */
+/* Replanning controls share the business palette. */
 .replan-workspace .secondary { background: var(--surface-muted); color: var(--accent); border: 1px solid var(--line); border-radius: 5px; }
 .replan-workspace .backup-chip { border-color: var(--line); border-radius: 6px; }
 .replan-workspace .backup-chip small, .replan-workspace .proposal-metrics small,
