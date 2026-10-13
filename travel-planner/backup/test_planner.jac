@@ -85,6 +85,14 @@ test "missing provenance negative prices and currency mismatch are rejected" {
     assert screen(candidate, "USD", clock()) != "";
 }
 
+test "whitespace-only provenance is missing evidence" {
+    for source in [" ", "\t\n"] {
+        candidate = search("Boston", "activity", clock())[0];
+        candidate.source_ref = source;
+        assert screen(candidate, "USD", clock()) != "";
+    }
+}
+
 test "refresh returns fresh evidence without mutating an earlier candidate" {
     old = refresh("indoor-gallery", clock());
     fresh = refresh("indoor-gallery", clock() + datetime.timedelta(minutes=20));

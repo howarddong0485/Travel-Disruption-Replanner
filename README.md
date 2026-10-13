@@ -15,7 +15,7 @@ Travel Disruption Replanner is a proposed AI travel assistant that helps travele
 - [Product scope and roadmap](docs/ROADMAP.md): MVP boundaries, acceptance criteria, future work, and open decisions.
 - [Data integrations](docs/DATA_SOURCES.md): candidate providers, limitations, and mock-to-live integration strategy.
 - [Contributing](CONTRIBUTING.md): component ownership, development workflow, and review expectations.
-- [Mock backup demo](travel-planner/backup/demo.jac): standalone backup scenarios; see the [Roam guide](travel-planner/README.md) for test commands and limitations.
+- [Backup preview demo](travel-planner/README.md#backup-preview-demo): supported mock scenarios, demo commands, and current limitations.
 
 ## Key features (MVP)
 
@@ -106,7 +106,7 @@ git clone https://github.com/howarddong0485/Travel-Disruption-Replanner.git
 cd Travel-Disruption-Replanner
 ```
 
-Follow the [Roam setup guide](travel-planner/README.md) to run the Jac + SQLite prototype. For Gehao Dong's storage-free demo, run `jac run backup/demo.jac` from `travel-planner/`. See the [replanning guide](travel-planner/replan/README.md) for the disruption example, optional LLM setup and validation limits. Shared agent contracts and a deployment target still need team agreement.
+Follow the [Roam setup guide](travel-planner/README.md) to run the Jac + SQLite prototype. For Gehao Dong's storage-free demo, run `jac run backup/demo.jac` from `travel-planner/`. See the [backup preview demo](travel-planner/README.md#backup-preview-demo) for supported backup scenarios and the [replanning guide](travel-planner/replan/README.md) for the disruption example, optional LLM setup and validation limits. Shared agent contracts and a deployment target still need team agreement.
 
 The recommended first deliverable is one complete flow using fixture data: **profile and hard filters → plan → validate → risks → backups → simulated disruption → dependency-aware repair → compare → traveler review and acceptance**.
 
