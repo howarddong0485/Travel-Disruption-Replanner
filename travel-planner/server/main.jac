@@ -6,7 +6,10 @@ import sqlite3;
 import datetime;
 import from decimal { Decimal }
 import from backup.models { BackupPreview }
-import from backup.planner { prepare }
+import from backup.planner { prepare as prepare_backup }
+import from replan.engine { install_schema, snapshot, save_rules, save_dependency,
+    prepare, candidates, model_packet, store_proposals, decide, seed_demo, custom_proposal }
+import from replan.agent { select_combinations }
 
 obj TripView {
     has id: str, title: str, destination: str, start_date: str, end_date: str,
@@ -29,6 +32,7 @@ def _connect -> sqlite3.Connection {
     conn.execute("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE, title TEXT NOT NULL, category TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL, location TEXT NOT NULL, reference TEXT NOT NULL, notes TEXT NOT NULL, cost_cents INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, paid INTEGER NOT NULL DEFAULT 0)");
     conn.execute("CREATE INDEX IF NOT EXISTS items_trip ON items(trip_id)");
     conn.commit();
+    install_schema(conn);
     return conn;
 }
 
@@ -126,7 +130,7 @@ def:pub preview_backups(trip_id: str, item_id: str, trigger: str) -> BackupPrevi
         conn.execute("BEGIN");
         trip = dict(_require_trip(conn, trip_id));
         items = [dict(row) for row in conn.execute("SELECT * FROM items WHERE trip_id=? ORDER BY id", (trip_id,))];
-        return prepare(trip, items, item_id, trigger, datetime.datetime.now(datetime.timezone.utc));
+        return prepare_backup(trip, items, item_id, trigger, datetime.datetime.now(datetime.timezone.utc));
     } finally { conn.close(); }
 }
 
@@ -203,4 +207,64 @@ def:pub delete_trip(trip_id: str) -> bool {
         conn.commit();
         return result.rowcount > 0;
     } finally { conn.close(); }
+}
+
+
+# Replanning endpoints share the same SQLite connection and transaction boundary.
+def:pub replan_state(trip_id: str) -> dict[str, any] {
+    conn = _connect();
+    try { return snapshot(conn, trip_id); }
+    finally { conn.close(); }
+}
+def:pub replan_save_rules(trip_id: str, item_id: str, duration_minutes: int = 60,
+    latest_start: str = "", fixed: bool = False) -> dict[str, any] {
+    conn = _connect();
+    try { return save_rules(conn, trip_id, item_id, duration_minutes, latest_start, fixed); }
+    finally { conn.close(); }
+}
+def:pub replan_save_dependency(trip_id: str, prerequisite_id: str, dependent_id: str,
+    buffer_minutes: int = 0, remove: bool = False) -> dict[str, any] {
+    conn = _connect();
+    try { return save_dependency(conn, trip_id, prerequisite_id, dependent_id, buffer_minutes, remove); }
+    finally { conn.close(); }
+}
+def:pub replan_demo -> dict[str, any] {
+    conn = _connect();
+    try { return seed_demo(conn); }
+    finally { conn.close(); }
+}
+def:pub propose_replan(trip_id: str, item_id: str, kind: str,
+    delay_minutes: int = 120, event_id: str = "", use_llm: bool = False) -> dict[str, any] {
+    conn = _connect();
+    try {
+        packet = prepare(conn, trip_id, item_id, kind, delay_minutes, event_id);
+        (options, warnings) = candidates(packet);
+        if not options {
+            return {"event_id": packet["event"]["id"], "proposals": [], "warnings": warnings,
+                "affected": [i for i in packet["state"]["items"] if i["id"] in packet["affected"]],
+                "backups": packet["backups"], "mode": "mock"};
+        }
+        if use_llm {
+            try {
+                selection = select_combinations(model_packet(packet, options));
+                return store_proposals(conn, packet, options, selection.combination_ids,
+                    selection.explanation, "llm", warnings);
+            } except Exception {
+                # Never return provider exception text, which may contain secrets or prompts.
+                warnings.append("LLM selection unavailable or invalid. Showing validated mock combinations instead.");
+            }
+        }
+        return store_proposals(conn, packet, options, None, "", "mock", warnings);
+    } finally { conn.close(); }
+}
+def:pub review_replan(trip_id: str, proposal_id: str, accept: bool) -> dict[str, any] {
+    conn = _connect();
+    try { return decide(conn, trip_id, proposal_id, accept); }
+    finally { conn.close(); }
+}
+
+def:pub combine_replan(trip_id: str, event_id: str, choices: dict[str, str]) -> dict[str, any] {
+    conn = _connect();
+    try { return custom_proposal(conn, trip_id, event_id, choices); }
+    finally { conn.close(); }
 }

@@ -4,11 +4,27 @@ import from backup.models { BackupPreview as PreviewState }
 
 def:pub BackupPanel(trip: TripView, items: list[ItemView]) -> JsxElement {
     has target: str = "", trigger: str = "rain", pending: bool = False,
-        failure: str = "", preview: PreviewState | None = None;
+        failure: str = "", preview: PreviewState | None = None,
+        expired: bool = False, expiryTimer: Ref[int] = Ref(0);
+
+    can with [preview] entry {
+        if expiryTimer.current {
+            window.clearTimeout(expiryTimer.current); expiryTimer.current = 0;
+        }
+        if preview and len(preview.options) > 0 {
+            deadline = min([Date.parse(option.candidate.expires_at) for option in preview.options]);
+            expiryTimer.current = window.setTimeout(lambda {
+                preview = None; expired = True;
+            }, max(0.0, deadline - Date.now()));
+        }
+    }
+    can with exit {
+        if expiryTimer.current { window.clearTimeout(expiryTimer.current); }
+    }
 
     async def generate -> None {
         if pending { return; }
-        pending = True; failure = ""; preview = None;
+        pending = True; failure = ""; preview = None; expired = False;
         try { preview = await preview_backups(trip_id=trip.id, item_id=target, trigger=trigger); }
         except Exception as exc { failure = str(exc); }
         finally { pending = False; }
@@ -24,18 +40,19 @@ def:pub BackupPanel(trip: TripView, items: list[ItemView]) -> JsxElement {
             These are suggestions, not reservations. Generating ideas leaves your itinerary and budget unchanged.</p>
         <div className="form-pair">
             <div><label htmlFor="backup-trigger">Activation scenario</label>
-                <select id="backup-trigger" value={trigger} disabled={pending} onChange={lambda (e: ChangeEvent) { trigger = e.target.value; target = ""; preview = None; failure = ""; }}>
+                <select id="backup-trigger" value={trigger} disabled={pending} onChange={lambda (e: ChangeEvent) { trigger = e.target.value; target = ""; preview = None; failure = ""; expired = False; }}>
                     <option value="rain">Rain affects an outdoor activity</option>
                     <option value="arrival_delay">Delayed arrival affects dinner</option>
                 </select></div>
             <div><label htmlFor="backup-target">Original itinerary item</label>
-                <select id="backup-target" value={target} disabled={pending} onChange={lambda (e: ChangeEvent) { target = e.target.value; preview = None; failure = ""; }}>
+                <select id="backup-target" value={target} disabled={pending} onChange={lambda (e: ChangeEvent) { target = e.target.value; preview = None; failure = ""; expired = False; }}>
                     <option value="">Choose an item</option>
                     {[<option key={item.id} value={item.id}>{item.title + " · " + item.date}</option> for item in eligible]}
                 </select></div>
         </div>
         {(<p role="status">Add a dated, unfinished {"activity" if trigger == "rain" else "dining item"} to preview backups.</p>) if len(eligible) == 0 else None}
-        <button type="button" className="primary" disabled={pending or not target} onClick={generate}>{"Checking mock inventory…" if pending else "Refresh mock ideas" if preview else "Prepare Plan B / C"}</button>
+        <button type="button" className="primary" disabled={pending or not target} onClick={generate}>{"Checking mock inventory…" if pending else "Refresh mock ideas" if preview or expired else "Prepare Plan B / C"}</button>
+        {(<p className="backup-disclaimer" role="status">These backup ideas have expired. Refresh to check the mock inventory again.</p>) if expired else None}
         {(<p className="alert error" role="alert">{failure}</p>) if failure else None}
         {(<div aria-live="polite">
             <p className="backup-disclaimer">{preview.message}</p>

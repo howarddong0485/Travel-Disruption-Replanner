@@ -9,7 +9,7 @@ def screen(candidate: BackupCandidate, currency: str, now: datetime.datetime) ->
     if candidate.currency != currency { return "Currency mismatch; no conversion evidence"; }
     if candidate.estimated_cost_minor < 0 { return "Invalid negative cost"; }
     if candidate.availability != "available" { return "Inventory " + candidate.availability; }
-    if not candidate.source_ref { return "Missing source evidence"; }
+    if not candidate.source_ref.strip() { return "Missing source evidence"; }
     try {
         checked = datetime.datetime.fromisoformat(candidate.checked_at);
         expires = datetime.datetime.fromisoformat(candidate.expires_at);

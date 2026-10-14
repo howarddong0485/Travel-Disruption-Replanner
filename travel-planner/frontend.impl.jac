@@ -108,3 +108,13 @@ impl app.removeTrip -> None {
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
 }
+
+impl app.createDemo -> None {
+    if busy or loading { return; } busy = True; error = "";
+    try {
+        demo = await replan_demo(); selected = demo["trip_id"]; day = "";
+        trip_form = False; tab = "replan"; resetItem(); await refresh();
+        notice = "Mock trip created. Delay Flight arrival by 180 minutes to try the repair flow.";
+    } except Exception as exc { error = str(exc); }
+    finally { busy = False; }
+}

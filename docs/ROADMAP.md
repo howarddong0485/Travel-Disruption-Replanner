@@ -1,6 +1,6 @@
 # Product Scope and Roadmap
 
-This roadmap proposes implementation stages rather than delivery dates. The repository now includes the Roam basic planner and Gehao Dong's week-one mock backup preview; the full milestone acceptance criteria below remain planned. See the [Gehao Dong weekly plan](GEHAO_DONG_PLAN.md) for implemented scope and remaining integration work.
+This roadmap proposes implementation stages rather than delivery dates. The repository now includes the Roam basic planner and Gehao Dong's week-one mock backup preview; the full milestone acceptance criteria below remain planned. See the [backup preview demo](../travel-planner/README.md#backup-preview-demo) for implemented scope and current limits.
 
 ## Feature priorities
 
