@@ -1,7 +1,8 @@
 """Roam's responsive trip workspace."""
 import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip,
-    list_items, save_item, set_item_state, delete_item }
+    list_items, save_item, set_item_state, delete_item, replan_demo }
 import from backup.frontend { BackupPanel }
+import from replan.frontend { ReplanPanel }
 
 def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
@@ -57,6 +58,7 @@ def:pub app -> JsxElement {
     async def toggle(item: ItemView, payment: bool = False) -> None;
     async def removeItem(item: ItemView) -> None;
     async def removeTrip -> None;
+    async def createDemo -> None;
     async can with entry {
         document.title = "Roam — Travel Planner";
         await refresh();
@@ -79,7 +81,7 @@ def:pub app -> JsxElement {
     <div className="app-shell">
         <aside className="sidebar">
             <a className="brand" href="#"><span className="brand-icon">↗</span>roam<span className="brand-dot">.</span></a>
-            <p className="brand-caption">Good trips start here.</p>
+            <p className="brand-caption">Travel planning workspace.</p>
             <div className="sidebar-heading"><span>YOUR TRIPS</span><span>{str(len(trips))}</span></div>
             <div className="trip-list">{[
                 <button type="button" key={trip.id} className="trip-card" data-active={trip.id == selected}
@@ -90,16 +92,17 @@ def:pub app -> JsxElement {
                 </button> for trip in trips
             ]}</div>
             <button type="button" className="new-trip" onClick={lambda { openTrip(); }} disabled={busy or loading}>＋ Plan a new trip</button>
-            <div className="sidebar-bottom"><span className="little-sun">✳</span><p>Less scattered.<br/>More out there.</p><small>Your plans, all in one place.</small></div>
+            <button type="button" className="text-button demo-trip" onClick={createDemo} disabled={busy or loading}>Try a mock replanning trip ↗</button>
+            <div className="sidebar-bottom"><p>Organized travel.</p><small>Your plans, all in one place.</small></div>
         </aside>
         <main className="workspace">
-            <header className="topbar"><span>YOUR PERSONAL TRAVEL PLANNER</span><div className="topbar-actions">
+            <header className="topbar"><span>TRAVEL MANAGEMENT WORKSPACE</span><div className="topbar-actions">
                 <button type="button" className="text-button" onClick={refresh} disabled={busy or loading}>{"Refreshing…" if loading else "↻ Refresh"}</button>
                 <span className="avatar" title="Personal travel workspace">ZL</span></div></header>
             {(<div className="alert error" role="alert">{error}<button type="button" aria-label="Dismiss error" onClick={lambda { error = ""; }}>×</button></div>) if error else None}
             {(<div className="alert success" role="status">{notice}</div>) if notice else None}
             {(<section className="trip-editor card">
-                <div className="section-heading"><div><p className="eyebrow">THE NEXT ADVENTURE</p><h2>{"Edit your trip" if editing_trip else "Where are you headed?"}</h2></div>
+                <div className="section-heading"><div><p className="eyebrow">TRIP DETAILS</p><h2>{"Edit your trip" if editing_trip else "Where are you headed?"}</h2></div>
                     <button type="button" className="text-button" onClick={lambda { trip_form = False; }} disabled={busy}>Cancel</button></div>
                 <form onSubmit={submitTrip}>
                     <div className="trip-fields">
@@ -114,15 +117,15 @@ def:pub app -> JsxElement {
                     <button className="primary" type="submit" disabled={busy}>{"Saving…" if busy else "Save changes" if editing_trip else "Create trip ↗"}</button>
                 </form>
             </section>) if trip_form else None}
-            {(<section className="welcome card"><div className="welcome-art" aria-hidden="true">↗</div><p className="eyebrow">MAKE ROOM FOR ADVENTURE</p>
-                <h1>{"Loading your trips…" if loading else "Your next chapter starts with a plan."}</h1>
+            {(<section className="welcome card"><div className="welcome-art" aria-hidden="true">↗</div><p className="eyebrow">YOUR TRAVEL WORKSPACE</p>
+                <h1>{"Loading your trips…" if loading else "Plan your travel with confidence."}</h1>
                 <p>Keep your itinerary, reservations, packing list, and budget together. Add your first trip to get started.</p>
                 <button type="button" className="primary" onClick={lambda { openTrip(); }} disabled={busy or loading}>Plan my first trip ↗</button>
             </section>) if not current else (
             <div>
                 <section className="hero">
-                    <div className="hero-landscape" aria-hidden="true"><div className="sun"/><div className="hill hill-back"/><div className="hill hill-front"/><div className="landscape-line"/></div>
-                    <div className="hero-content"><span className="status-pill">{status(current)}</span><p className="eyebrow">A LITTLE PLANNING. A LOT TO LOOK FORWARD TO.</p>
+
+                    <div className="hero-content"><span className="status-pill">{status(current)}</span><p className="eyebrow">TRIP OVERVIEW</p>
                         <h1>{current.title}</h1><p className="destination">◎ {current.destination}</p>
                         <p className="trip-dates">{prettyDate(current.start_date) + " — " + prettyDate(current.end_date)}</p>
                         <button type="button" className="hero-edit" onClick={lambda { openTrip(current); }} disabled={busy or loading}>Edit trip ↗</button>
@@ -136,8 +139,8 @@ def:pub app -> JsxElement {
                 </section>
                 <nav className="tabs" aria-label="Travel sections">{[
                     <button type="button" key={value} data-active={tab == value} onClick={lambda { chooseTab(value); }} disabled={busy or loading}>
-                        {"Itinerary" if value == "itinerary" else "Bookings" if value == "bookings" else "Packing list" if value == "packing" else "Budget"}
-                    </button> for value in ["itinerary", "bookings", "packing", "budget"]
+                        {"Itinerary" if value == "itinerary" else "Bookings" if value == "bookings" else "Packing list" if value == "packing" else "Replan" if value == "replan" else "Budget"}
+                    </button> for value in ["itinerary", "bookings", "packing", "budget", "replan"]
                 ]}</nav>
                 {(<BackupPanel key={selected} trip={current} items={items}/>) if not loading and tab == "itinerary" else None}
                 {(<section className="budget-overview card"><div><p className="eyebrow">EVERY LITTLE THING ADDS UP</p><h2>Your trip, in numbers.</h2>
@@ -147,7 +150,8 @@ def:pub app -> JsxElement {
                     <p><span>Still to pay</span><strong>{money(total - paid, current.currency)}</strong></p>
                     {(<p className="over-budget">{"Over budget by " + money(total - current.budget_cents, current.currency)}</p>) if current.budget_cents and total > current.budget_cents else None}
                 </div></section>) if tab == "budget" else None}
-                <div className="detail-grid">
+                {(<ReplanPanel key={selected} trip_id={selected} currency={current.currency} onApplied={refresh}/>) if tab == "replan" else None}
+                <div className="detail-grid" hidden={tab == "replan"}>
                     <div>
                         <section className="card plan-card">
                             <div className="section-heading"><div><p className="eyebrow">{"SMALL THINGS, BIG DIFFERENCE" if tab == "packing" else "KEEP THE DETAILS HANDY" if tab == "bookings" else "MAKE IT ALL ADD UP" if tab == "budget" else "LEAVE A LITTLE ROOM TO WANDER"}</p>
