@@ -12,6 +12,7 @@ import from risk.analyzer { analyze_trip }
 
 glob FIXTURE: str = os.path.join(os.path.dirname(__file__), "..", "fixtures", "demo-trip.json");
 glob NOW: str = "2026-10-27T12:00:00-04:00";
+glob FAKE_KEY: dict[str, str] = {"OPENAI_API_KEY": "test-only-not-a-real-key"};
 glob HOTEL_TERMS: str = ("Free cancellation until 6:00 PM local time on October 28, 2026. "
     + "Cancellations after that time are charged one night’s rate ($260.00); the remainder "
     + "is refunded to the original payment method. No-shows are charged the full stay.");
@@ -38,8 +39,10 @@ def faithful_draft -> PolicyDraft {
 
 def with_llm(draft: PolicyDraft, req: PolicyRequest) -> tuple[PolicyExtraction, MockLLM] {
     model = MockLLM(outputs=[draft]);
-    with patch(draft_policy_with_llm.__module__ + ".llm", model) {
-        result = extract_policy(req, use_llm=True);
+    with patch.dict(os.environ, FAKE_KEY) {
+        with patch(draft_policy_with_llm.__module__ + ".llm", model) {
+            result = extract_policy(req, use_llm=True);
+        }
     }
     return (result, model);
 }
@@ -146,23 +149,36 @@ test "instruction-like text in the terms forces review even if the draft looks v
 }
 
 test "an LLM failure falls back to the rule-based extractor" {
-    with patch(extract_policy.__module__ + ".draft_policy_with_llm", side_effect=RuntimeError("provider down")) {
-        r = extract_policy(request(), use_llm=True);
+    with patch.dict(os.environ, FAKE_KEY) {
+        with patch(extract_policy.__module__ + ".draft_policy_with_llm", side_effect=RuntimeError("provider down")) {
+            r = extract_policy(request(), use_llm=True);
+        }
     }
     assert r.method == ExtractionMethod.RULES;
     assert "LLM extraction failed (RuntimeError)" in r.notes[0];
     assert r.policy.tiers[1].fee_minor == 26000;
 }
 
-test "without a configured model the LLM is not called" {
-    with patch.dict(os.environ, {}, clear=True) {
-        assert llm_configured() is False;
+test "the LLM is opt-in even when credentials are present" {
+    with patch.dict(os.environ, FAKE_KEY) {
         with patch(extract_policy.__module__ + ".draft_policy_with_llm", side_effect=AssertionError("called")) {
-            assert extract_policy(request()).method == ExtractionMethod.RULES;
+            r = extract_policy(request());
         }
     }
-    with patch.dict(os.environ, {"BYLLM_DEFAULT_MODEL": "some-model"}, clear=True) {
-        assert llm_configured() is True;
+    assert r.method == ExtractionMethod.RULES and r.notes == [];
+}
+
+test "a requested LLM is skipped without provider credentials" {
+    with patch.dict(os.environ, {}, clear=True) {
+        assert not llm_credentials_present();
+        with patch(extract_policy.__module__ + ".draft_policy_with_llm", side_effect=AssertionError("called")) {
+            r = extract_policy(request(), use_llm=True);
+        }
+    }
+    assert r.method == ExtractionMethod.RULES;
+    assert "no provider credentials" in r.notes[0];
+    with patch.dict(os.environ, {"BYLLM_DEFAULT_MODEL": "ollama/llama3.2"}, clear=True) {
+        assert llm_credentials_present();
     }
 }
 

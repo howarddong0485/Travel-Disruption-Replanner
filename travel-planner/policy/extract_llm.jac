@@ -1,28 +1,20 @@
-"""LLM extraction of a PolicyDraft. Provider-neutral: uses the project's byLLM default model.
+"""LLM extraction of a PolicyDraft with the project's byLLM model ([byllm.model] in jac.toml).
 
-No provider is configured yet (see jac.toml). llm_configured() reports whether a
-model is available, so callers can skip the call instead of waiting on a failure.
+LLM use is opt-in, as in replan/agent.jac. llm_credentials_present() reports whether
+the server environment can reach a model, so callers can skip a call that would fail.
 """
 import os;
-import tomllib;
 import from policy.draft { PolicyDraft }
 
 glob PROVIDER_KEYS: list[str] = [
     "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
     "MISTRAL_API_KEY", "GROQ_API_KEY", "TOGETHER_API_KEY", "DEEPSEEK_API_KEY"
 ];
-glob PROJECT_TOML: str = os.path.join(os.path.dirname(__file__), "..", "jac.toml");
 
-"""True when byLLM can resolve a model: an explicit default model, or a provider key it auto-detects."""
-def llm_configured -> bool {
+"""True when the server environment names a model override or holds a provider API key."""
+def llm_credentials_present -> bool {
     if os.environ.get("BYLLM_DEFAULT_MODEL") { return True; }
-    if `any(os.environ.get(k) for k in PROVIDER_KEYS) { return True; }
-    try {
-        with open(PROJECT_TOML, "rb") as handle {
-            config = tomllib.load(handle);
-        }
-    } except (OSError, tomllib.TOMLDecodeError) { return False; }
-    return bool(config.get("byllm", {}).get("model", {}).get("default_model"));
+    return `any(os.environ.get(k) for k in PROVIDER_KEYS);
 }
 
 def draft_policy_with_llm(terms: str, booking_title: str, booking_kind: str,

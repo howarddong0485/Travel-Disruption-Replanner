@@ -14,7 +14,7 @@ jac run risk/demo.jac -- --json       # same report as JSON
 jac test -d schema && jac test -d policy && jac test -d risk
 ```
 
-Run `jac install` first; the `[byllm]` section in `jac.toml` installs the LLM
+Run `jac install` first; the `[byllm.model]` section in `jac.toml` installs the LLM
 library. If it fails creating `.jac/venv` with
 `symbol not found in flat namespace '_PyExc_MemoryError'`, create the venv with
 another Python 3.14 (for example one under `~/Library/Caches/jac/rt/*/python/bin/`
@@ -56,11 +56,12 @@ checks it against the source:
   reports, or instruction-like text in the terms sends the whole policy to review:
   its terms become unknown and `needs_review` is set.
 
-The LLM is used only when byLLM can resolve a model (`BYLLM_DEFAULT_MODEL`,
-`[byllm.model] default_model`, or a provider API key). Otherwise, or if the call
-fails, the rule-based extractor runs. The prompt contains the terms text and the
-booking's title, kind, start, zone and currency, never traveler or payment details.
-Tests use `MockLLM`.
+LLM extraction is opt-in, as in `replan/`: call `extract_policy(req, use_llm=True)`.
+It uses the project model (`[byllm.model]`, currently `gpt-4o-mini`) and runs only when
+the server environment has a provider key or `BYLLM_DEFAULT_MODEL`; otherwise, or if
+the call fails, the rule-based extractor runs and a note says why. The prompt contains
+the terms text and the booking's title, kind, start, zone and currency, never traveler
+or payment details. Tests use `MockLLM`.
 
 ## Rules
 
@@ -88,7 +89,6 @@ flag rather than treating it as safe.
 ## Open decisions for the team
 
 - Agree on (or replace) the `schema/` contracts.
-- Choose the LLM provider and model (`[byllm.model] default_model`).
 - Default thresholds in `risk/config.jac` (transfer buffers, drive limit, rain threshold, deadline warning window).
 - Roam records have no end times, zones, dependencies or policies; decide whether
   the foundation should store them or whether the adapter stays lossy.
