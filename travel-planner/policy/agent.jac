@@ -16,7 +16,7 @@ import from schema.common { Evidence, Origin, valid_local, parse_amount_minor }
 import from schema.itinerary { ItineraryNode }
 import from schema.policy { RefundPolicy, CancellationTier, RefundForm }
 import from policy.draft { PolicyDraft, DraftTier }
-import from policy.extract_llm { draft_policy_with_llm, llm_configured }
+import from policy.extract_llm { draft_policy_with_llm, llm_credentials_present }
 import from policy.extract_rules { extract_terms_rules }
 
 enum ExtractionMethod: str { LLM = "llm", RULES = "rules" }
@@ -72,7 +72,7 @@ obj _Review {
     has reasons: list[str] = [];
 }
 
-def _check_tier(t: DraftTier, req: PolicyRequest, currency: str, evidence_id: str,
+def _check_tier(t: DraftTier, currency: str, evidence_id: str,
     found: str, notes: list[str], review: _Review) -> CancellationTier {
     tier = CancellationTier(evidence_id=evidence_id);
     if t.refund_percent is not None {
@@ -141,7 +141,7 @@ def verify_draft(draft: PolicyDraft, req: PolicyRequest) -> PolicyExtraction {
             review.reasons.append(f"excerpt not found in the terms: {t.excerpt}");
             continue;
         }
-        tiers.append(_check_tier(t, req, currency, cite(found), found, notes, review));
+        tiers.append(_check_tier(t, currency, cite(found), found, notes, review));
     }
     open_ended = [i for (i, t) in enumerate(tiers) if not t.deadline_local and t.hours_before_start is None];
     if len(open_ended) > 1 or (open_ended and open_ended[0] != len(tiers) - 1) {
@@ -185,10 +185,13 @@ def verify_draft(draft: PolicyDraft, req: PolicyRequest) -> PolicyExtraction {
         needs_review=bool(review.reasons), notes=review.reasons + notes);
 }
 
-"""Extract an evidenced RefundPolicy. use_llm=None uses the LLM only when a model is configured."""
-def extract_policy(req: PolicyRequest, use_llm: bool | None = None) -> PolicyExtraction {
-    want_llm = llm_configured() if use_llm is None else use_llm;
+"""Extract an evidenced RefundPolicy. The LLM is opt-in and is skipped without provider credentials."""
+def extract_policy(req: PolicyRequest, use_llm: bool = False) -> PolicyExtraction {
     notes: list[str] = [];
+    want_llm = use_llm and llm_credentials_present();
+    if use_llm and not want_llm {
+        notes.append("LLM extraction requested but no provider credentials are set; used the rule-based extractor");
+    }
     terms = req.terms_text;
     if len(terms) > MAX_TERMS_CHARS {
         notes.append(f"terms truncated to {MAX_TERMS_CHARS} characters for extraction");
