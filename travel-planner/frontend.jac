@@ -3,6 +3,7 @@ import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip
     list_items, save_item, set_item_state, delete_item, replan_demo }
 import from backup.frontend { BackupPanel }
 import from replan.frontend { ReplanPanel }
+import from backup.validation_frontend { ValidationLab }
 
 def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
@@ -101,6 +102,7 @@ def:pub app -> JsxElement {
                 <span className="avatar" title="Personal travel workspace">ZL</span></div></header>
             {(<div className="alert error" role="alert">{error}<button type="button" aria-label="Dismiss error" onClick={lambda { error = ""; }}>×</button></div>) if error else None}
             {(<div className="alert success" role="status">{notice}</div>) if notice else None}
+            <ValidationLab/>
             {(<section className="trip-editor card">
                 <div className="section-heading"><div><p className="eyebrow">TRIP DETAILS</p><h2>{"Edit your trip" if editing_trip else "Where are you headed?"}</h2></div>
                     <button type="button" className="text-button" onClick={lambda { trip_form = False; }} disabled={busy}>Cancel</button></div>

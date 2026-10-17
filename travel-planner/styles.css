@@ -88,3 +88,32 @@ input, select, textarea, .primary { border-radius: 5px; }
   .tabs { overflow-x: auto; gap: 12px; justify-content: flex-start; }
   .tabs button { white-space: nowrap; }
 }
+
+/* Standalone backup validation lab; reuses the shared Roam controls. */
+.validation-lab { margin: 20px 0; padding: 0; overflow: hidden; }
+.validation-lab > summary { padding: 20px 24px; cursor: pointer; font-weight: 650; }
+.validation-lab > summary small { display: block; margin: 6px 0 0 20px; color: var(--muted); font-weight: 400; }
+.validation-content { padding: 0 24px 24px; }
+.validation-content > p { max-width: 850px; line-height: 1.6; }
+.validation-controls { display: grid; grid-template-columns: 1.3fr 1.2fr 1fr; gap: 16px; margin: 20px 0; }
+.validation-controls > div, .validation-option { min-width: 0; }
+.validation-results { margin-top: 22px; }
+.validation-status { padding: 9px 12px; border-radius: 8px; background: #fff3d4; color: #77530a; font-weight: 600; }
+.validation-status[data-status="passed_fixture_checks"] { background: #e5f2ea; color: #245538; }
+.validation-status[data-status="invalid"] { background: #fbe9e8; color: #8d3530; }
+.validation-costs > div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.validation-costs dt { color: var(--muted); }
+.validation-costs dd { margin: 0; font-weight: 600; white-space: nowrap; }
+.validation-reasons { padding-left: 20px; line-height: 1.6; }
+.validation-option details { margin: 14px 0; overflow-wrap: anywhere; }
+.validation-option details > summary { cursor: pointer; font-weight: 600; }
+.validation-timeline { padding-left: 22px; }
+.validation-timeline li { margin: 12px 0; }
+.validation-timeline span, .validation-timeline small { display: block; margin-top: 4px; }
+.validation-evidence { display: block; color: var(--muted); overflow-wrap: anywhere; line-height: 1.6; }
+@media (max-width: 850px) { .validation-controls { grid-template-columns: 1fr; } }
+@media (max-width: 540px) {
+    .validation-content { padding: 0 16px 18px; }
+    .validation-lab > summary { padding: 18px 16px; }
+    .validation-costs > div { flex-direction: column; gap: 3px; }
+}

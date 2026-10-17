@@ -10,6 +10,11 @@ import from backup.planner { prepare as prepare_backup }
 import from replan.engine { install_schema, snapshot, save_rules, save_dependency,
     prepare, candidates, model_packet, store_proposals, decide, seed_demo, custom_proposal }
 import from replan.agent { select_combinations }
+import from backup.validation_fixtures { run_fixture }
+
+def:pub preview_backup_validation(scenario: str = "rain", profile_name: str = "family", budget: str = "600") -> dict[str, any] {
+    return run_fixture(scenario, profile_name, budget);
+}
 
 obj TripView {
     has id: str, title: str, destination: str, start_date: str, end_date: str,
