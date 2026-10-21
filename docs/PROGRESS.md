@@ -4,8 +4,8 @@ This report separates delivery on `main` from implementations still under review
 
 ## Progress snapshot — 2026-10-21
 
-- **Delivered on main:** `0bb9bfff` (October 13) includes the Roam foundation, read-only backup previews in [PR #15](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/15), the business theme in [PR #21](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/21), and standalone mock replanning in [PR #19](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/19). No later main commit was present at this check.
-- **New since the Week 3 report:** [draft PR #23](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/23), implementation commit `e7c9d76`, adds standalone full-itinerary backup validation. It is pushed but not merged; it partially implements [issue #11](https://github.com/howarddong0485/Travel-Disruption-Replanner/issues/11).
+- **Delivered on main:** the October 13 baseline `0bb9bfff` includes the Roam foundation, read-only backup previews in [PR #15](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/15), the business theme in [PR #21](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/21), and standalone mock replanning in [PR #19](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/19). On October 21, main advanced to `6526fc5`, incorporating PR #23 and its progress documentation.
+- **New since the Week 3 report:** [PR #23](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/23), implementation commit `e7c9d76`, adds standalone full-itinerary backup validation and is now merged. It partially implements [issue #11](https://github.com/howarddong0485/Travel-Disruption-Replanner/issues/11); the parent issue remains open.
 - **Other work under review:** [draft PR #16](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/16) contains proposed policy/risk contracts and logic, including an October 14 change making PolicyAgent LLM extraction opt-in. [PR #22](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/22) contains a draft traveler-profile contract, fixtures and structural checks. Neither is merged or an agreed shared integration.
 - **Open issues:** #5, #7, #8, #10, #11, #12, #13 and #18. There are no newly completed issues beyond the Week 3 delivery recorded above.
 
@@ -25,7 +25,7 @@ Fresh checks on October 21:
 
 The October 17 PR record remains the earlier Jac verification boundary: Jac 0.37.21 passed all three app checks; the combined suite had 21 passes and one existing replanning LLM failure; the client build failed in generated replanning JavaScript. Both failures were also reproduced on the then-current base main. These results do not establish a successful current full-app build or pinned-runtime verification.
 
-Issue #11 remains open for shared RiskFlag/profile/authoritative-validator/ledger integration, dynamic inventory/provider-failure refresh, versioned persistence and downstream handoff. PR #23 remains draft while the recorded full-app validation blockers are unresolved.
+Issue #11 remains open for shared RiskFlag/profile/authoritative-validator/ledger integration, dynamic inventory/provider-failure refresh, versioned persistence and downstream handoff. PR #23 landed on main on October 21. The recorded full-app validation blockers remain unresolved; merging the implementation does not establish successful Jac tests, a client build or browser validation.
 
 ## Completed planning and design
 
