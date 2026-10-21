@@ -10,6 +10,7 @@ Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanne
 - **Packing:** Add essentials and check them off. Packed/total counts appear in the trip summary.
 - **Budget:** Record costs on itinerary/booking items and add other costs such as insurance or shopping. Track planned total, paid total, unpaid total, remaining budget, and overspending. Mark payment independently from confirmation or completion.
 - **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Itinerary page. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Demo and limitations](#backup-preview-demo).
+- **Standalone backup validation (PR #23, draft):** Check synthetic replacements against an entire sample itinerary, including traveler requirements, costs, scheduling, opening hours and transfers. The read-only validation lab uses its own fixtures and is not connected to saved trips or the shared validator. [Commands and scope](backup/VALIDATION.md).
 - **Replanning:** Simulate delayed/interrupted items, combine synthetic backup inventory, edit dependencies and schedule rules, optionally use a Jac LLM to select combinations, and accept/reject version-safe revisions. Try the separate demo trip from the sidebar; see [the replanning guide](replan/README.md).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
 - **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and five planning tabs. The web interface adapts to phones and tablets.
@@ -76,6 +77,17 @@ Unsupported locations/currencies show an empty result or exclusion reasons. Unav
 
 The draft contract is in `backup/models.jac`, the search/refresh adapter in `tools/alternatives/mock.jac`, and the public endpoint is `preview_backups(trip_id, item_id, trigger)`. These are local mock contracts, not the final shared AlternativePlan schema.
 
+### Standalone full-itinerary validation demo
+
+The draft implementation in [PR #23](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/23) adds a separate synthetic validation lab. From this folder:
+
+```sh
+python3 -m backup.validation_demo --scenario rain --budget 450
+python3 -m unittest backup.test_validation -v
+```
+
+The rain example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. In Roam, expand **Plan B / C · Validation lab** and choose **Run sample checks**. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the dated progress record](../docs/PROGRESS.md#progress-snapshot--2026-10-21).
+
 ### Browser regression check
 
 Start a separate test instance with an isolated database, using the App/API ports printed by Jac:
@@ -104,6 +116,7 @@ The script creates and deletes its own synthetic trips. It checks both scenarios
 | Web | `main.jac`, `frontend.jac`, `frontend.impl.jac`, `styles.css` | Trip workspace and responsive browser UI |
 | Service | `server/main.jac` | Shared trip/item API, validation, and SQLite storage |
 | CLI | `cli/main.jac` | Terminal commands using the same service |
+| Standalone backup validation | `backup/validation.py`, `backup/validation_models.py`, `backup/validation_fixtures.py`, `backup/validation_demo.py`, `backup/validation_frontend.jac` | Synthetic full-itinerary checks, CLI and read-only lab in draft PR #23 |
 | Tests | `server/main.test.jac`, `backup/test_planner.jac`, `server/test_backup.jac`, `tests/backup_preview.browser.cjs` | Service regressions, draft screening, read-only storage checks, and browser states/expiry |
 | Configuration | `jac.toml` | Jac version, dependencies, and app declarations |
 
@@ -124,6 +137,8 @@ jac check --nowarn
 jac test server/main.test.jac
 jac test backup/test_planner.jac
 jac test server/test_backup.jac
+python3 -m unittest backup.test_validation -v
+jac test server/test_validation.jac
 jac build travel --as client
 ```
 

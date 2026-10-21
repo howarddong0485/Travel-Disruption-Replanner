@@ -1,6 +1,31 @@
 # Project progress
 
-This report records the Roam foundation at commit `47719ca` (October 4, 2026) and the read-only mock backup preview added by this change. It separates implemented behavior from the remaining disruption-replanning design.
+This report separates delivery on `main` from implementations still under review. Dated verification records identify the code, runtime and scope that were actually checked.
+
+## Progress snapshot — 2026-10-21
+
+- **Delivered on main:** `0bb9bfff` (October 13) includes the Roam foundation, read-only backup previews in [PR #15](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/15), the business theme in [PR #21](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/21), and standalone mock replanning in [PR #19](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/19). No later main commit was present at this check.
+- **New since the Week 3 report:** [draft PR #23](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/23), implementation commit `e7c9d76`, adds standalone full-itinerary backup validation. It is pushed but not merged; it partially implements [issue #11](https://github.com/howarddong0485/Travel-Disruption-Replanner/issues/11).
+- **Other work under review:** [draft PR #16](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/16) contains proposed policy/risk contracts and logic, including an October 14 change making PolicyAgent LLM extraction opt-in. [PR #22](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/22) contains a draft traveler-profile contract, fixtures and structural checks. Neither is merged or an agreed shared integration.
+- **Open issues:** #5, #7, #8, #10, #11, #12, #13 and #18. There are no newly completed issues beyond the Week 3 delivery recorded above.
+
+### Standalone backup validation in PR #23
+
+The independent validator checks each synthetic replacement in the full proposed itinerary: mandatory dietary/pet/child/accessibility requirements, budget including reserve and retained original payments, scheduling, opening windows, timezones/DST, transfers, dependencies, and fixed/completed items. Missing or expired evidence remains unresolved. A passing result is explicitly `passed_fixture_checks` with `standalone_fixture` scope.
+
+Seven sample scenarios, family/solo profiles, a CLI and a read-only Roam validation lab are implemented. Input changes and evidence expiry invalidate displayed results. Saved trips are not changed. See [the validation guide](../travel-planner/backup/VALIDATION.md) for commands, semantics and remaining integration work.
+
+Fresh checks on October 21:
+
+- `python3 -m unittest backup.test_validation -v`: **26 passed**.
+- Rain scenario, USD 450 budget: Plan B passes the implemented fixture checks at USD 440; Plan C is invalid at USD 470.
+- Delayed-arrival scenario, USD 400 budget: Plan B passes at USD 395; Plan C is invalid at USD 425.
+- Missing-evidence and expired-evidence scenarios return `needs_validation` for the affected candidate, with unknown total cost.
+- Jac tests, client build and browser checks were not rerun. Even `jac --version` failed during launcher initialization with `could not publish the extracted runtime`.
+
+The October 17 PR record remains the earlier Jac verification boundary: Jac 0.37.21 passed all three app checks; the combined suite had 21 passes and one existing replanning LLM failure; the client build failed in generated replanning JavaScript. Both failures were also reproduced on the then-current base main. These results do not establish a successful current full-app build or pinned-runtime verification.
+
+Issue #11 remains open for shared RiskFlag/profile/authoritative-validator/ledger integration, dynamic inventory/provider-failure refresh, versioned persistence and downstream handoff. PR #23 remains draft while the recorded full-app validation blockers are unresolved.
 
 ## Completed planning and design
 
