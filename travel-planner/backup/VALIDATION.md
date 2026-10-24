@@ -10,10 +10,10 @@ panel lives inside Roam, and never reads or writes saved trips. Week-one
 From `travel-planner/`:
 
 ```sh
-python3 -m backup.validation_demo --scenario rain
-python3 -m backup.validation_demo --scenario arrival_delay --budget 400
-python3 -m backup.validation_demo --scenario missing_evidence
-python3 -m unittest backup.test_validation -v
+jac run backup/validation_demo.jac -- --scenario rain
+jac run backup/validation_demo.jac -- --scenario arrival_delay --budget 400
+jac run backup/validation_demo.jac -- --scenario missing_evidence
+jac test backup/test_validation.jac
 jac test server/test_validation.jac
 jac run --host 127.0.0.1 --port 8310 travel
 ```
@@ -64,10 +64,11 @@ establish a pass. Fixtures make no claims about real venues or availability.
 
 ## Files and scope
 
-- `validation_models.py`: module-owned input records.
-- `validation.py`: pure validator, with no database or provider dependencies.
-- `validation_fixtures.py`: synthetic facts and isolated scenario runner.
-- `validation_demo.py`: reproducible CLI.
+- `validation_models.jac`: module-owned input records.
+- `validation.jac`: pure validator, with no database or provider dependencies.
+- `validation_fixtures.jac`: synthetic facts and isolated scenario runner.
+- `validation_demo.jac`: reproducible CLI.
+- `test_validation.jac`: 26 native Jac boundary tests.
 - `validation_frontend.jac`: Roam fixture panel.
 - `server.main.preview_backup_validation`: thin local demo entry point.
 

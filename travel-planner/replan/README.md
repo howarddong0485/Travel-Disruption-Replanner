@@ -39,9 +39,9 @@ No key is required for the deterministic mock workflow or MockLLM tests. LLM sel
 
 | File | Responsibility |
 | --- | --- |
-| `../events/simulator.py` | Normalize delayed/interrupted simulated events with stable IDs and UTC observation timestamps |
-| `backups.py` | Three synthetic backups per transport, stay, food, and activity category |
-| `engine.py` | Dependency traversal, bounded combination search, scheduling, validation, proposal persistence and atomic application |
+| `../events/simulator.jac` | Normalize delayed/interrupted simulated events with stable IDs and UTC observation timestamps |
+| `backups.jac` | Three synthetic backups per transport, stay, food, and activity category |
+| `engine.jac` | Dependency traversal, bounded combination search, scheduling, validation, proposal persistence and atomic application |
 | `agent.jac` | Typed Jac LLM selection over supplied combinations |
 | `frontend.jac` | Simulation, schedule/dependency editing, inventory, custom combinations and proposal review |
 | `../server/main.jac` | Public Jac endpoints sharing the existing SQLite connection |

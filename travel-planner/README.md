@@ -2,6 +2,8 @@
 
 Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Keep multiple trips, daily itineraries, reservations, packing lists, notes, and costs together in one workspace.
 
+Application code, backend helpers, demos, and tests are written in `.jac` files. Jac imports Python standard-library modules for SQLite, dataclasses, date/time handling, and CLI argument parsing; no project-owned Python source files are required.
+
 ## Features
 
 - **Trips:** Create and edit a trip name, destination, departure/return dates, currency, budget, and notes. Switch between saved trips; upcoming, current, and past status follows the local calendar.
@@ -82,8 +84,8 @@ The draft contract is in `backup/models.jac`, the search/refresh adapter in `too
 The implementation in [PR #23](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/23) adds a separate synthetic validation lab. From this folder:
 
 ```sh
-python3 -m backup.validation_demo --scenario rain --budget 450
-python3 -m unittest backup.test_validation -v
+jac run backup/validation_demo.jac -- --scenario rain --budget 450
+jac test backup/test_validation.jac
 ```
 
 The rain example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. In Roam, expand **Plan B / C · Validation lab** and choose **Run sample checks**. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the dated progress record](../docs/PROGRESS.md#progress-snapshot--2026-10-21).
@@ -116,8 +118,8 @@ The script creates and deletes its own synthetic trips. It checks both scenarios
 | Web | `main.jac`, `frontend.jac`, `frontend.impl.jac`, `styles.css` | Trip workspace and responsive browser UI |
 | Service | `server/main.jac` | Shared trip/item API, validation, and SQLite storage |
 | CLI | `cli/main.jac` | Terminal commands using the same service |
-| Standalone backup validation | `backup/validation.py`, `backup/validation_models.py`, `backup/validation_fixtures.py`, `backup/validation_demo.py`, `backup/validation_frontend.jac` | Synthetic full-itinerary checks, CLI and read-only lab from PR #23 |
-| Tests | `server/main.test.jac`, `backup/test_planner.jac`, `server/test_backup.jac`, `tests/backup_preview.browser.cjs` | Service regressions, draft screening, read-only storage checks, and browser states/expiry |
+| Standalone backup validation | `backup/validation.jac`, `backup/validation_models.jac`, `backup/validation_fixtures.jac`, `backup/validation_demo.jac`, `backup/validation_frontend.jac` | Synthetic full-itinerary checks, CLI and read-only lab from PR #23 |
+| Tests | `server/main.test.jac`, `backup/test_planner.jac`, `backup/test_validation.jac`, `server/test_backup.jac`, `server/test_validation.jac`, `tests/backup_preview.browser.cjs` | Service regressions, draft screening, full-itinerary validation, read-only storage checks, and browser states/expiry |
 | Configuration | `jac.toml` | Jac version, dependencies, and app declarations |
 
 ## Data and planning rules
@@ -137,7 +139,7 @@ jac check --nowarn
 jac test server/main.test.jac
 jac test backup/test_planner.jac
 jac test server/test_backup.jac
-python3 -m unittest backup.test_validation -v
+jac test backup/test_validation.jac
 jac test server/test_validation.jac
 jac build travel --as client
 ```

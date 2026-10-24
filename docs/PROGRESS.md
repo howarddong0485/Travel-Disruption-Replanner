@@ -2,6 +2,20 @@
 
 This report separates delivery on `main` from implementations still under review. Dated verification records identify the code, runtime and scope that were actually checked.
 
+## Jac migration verification — 2026-10-24
+
+The migration based on `20505d5` converts all eight project-owned Python files to Jac: the standalone validator, records, fixtures, CLI and tests, plus the disruption simulator, mock inventory and replanning engine. Module paths and service signatures are preserved. The 26 validation cases now run with `jac test backup/test_validation.jac`. Python standard-library imports remain supported through Jac.
+
+Verified with local Jac **0.37.21**, using an isolated temporary runtime cache and Postgres test instance:
+
+- `jac check --nowarn`: all three application entries passed.
+- The combined Jac suite (`server/main.test.jac`, `server/test_backup.jac`, `server/test_validation.jac`, `backup/test_planner.jac`, `backup/test_validation.jac`): **47 passed, 1 failed**. Both HTTP backup integration tests passed; their test databases are temporary.
+- The remaining MockLLM selection failure was reproduced in the unchanged `20505d5` snapshot: its original Jac suite had **21 passed, 1 failed**, and its Python validation suite had **26 passed**.
+- Compared complete serialized results for seven scenarios, two profiles and five budgets: **70 of 70** matched the original Python implementation, including check messages, costs, proposed items and snapshot fingerprints.
+- `jac build travel --as client` still fails on the generated computed dictionary key in `replan/frontend.js`. The unchanged snapshot produced the same error at the same generated statement. This migration does not establish a successful client build or browser verification.
+
+The manifest still pins Jac 0.37.23; that version was not available for these checks. The dated records below describe earlier implementations and commands.
+
 ## Progress snapshot — 2026-10-21
 
 - **Delivered on main:** the October 13 baseline `0bb9bfff` includes the Roam foundation, read-only backup previews in [PR #15](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/15), the business theme in [PR #21](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/21), and standalone mock replanning in [PR #19](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/19). On October 21, main advanced to `6526fc5`, incorporating PR #23 and its progress documentation.
@@ -93,6 +107,8 @@ jac check --nowarn
 jac test server/main.test.jac
 jac test backup/test_planner.jac
 jac test server/test_backup.jac
+jac test backup/test_validation.jac
+jac test server/test_validation.jac
 jac build travel --as client
 ```
 
