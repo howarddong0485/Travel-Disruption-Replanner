@@ -33,7 +33,15 @@ entry-point = "server.main"
 kind = "cli"
 entry-point = "cli.main"
 
-# Used only when the traveler enables LLM-assisted combination selection.
-# Keep provider credentials in the server environment. BYLLM_DEFAULT_MODEL overrides this.
+# Person 2 (policy/risk) and the proposed shared schema run server-side. Without
+# this, a module with no Python imports is compiled native, and its tests abort.
+[placement.pins]
+"schema.*" = "server"
+"policy.*" = "server"
+"risk.*" = "server"
+
+# Used only when the traveler enables LLM-assisted combination selection or
+# PolicyAgent extraction. Keep provider credentials in the server environment.
+# BYLLM_DEFAULT_MODEL overrides this.
 [byllm.model]
 default_model = "gpt-4o-mini"
