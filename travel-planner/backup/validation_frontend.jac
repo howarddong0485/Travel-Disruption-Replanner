@@ -32,7 +32,7 @@ def:pub ValidationLab -> JsxElement {
         return "Needs more evidence";
     }
     return <details className="card validation-lab">
-        <summary><span>Plan B / C · Validation lab</span><small>Independent synthetic demo · Gehao Dong</small></summary>
+        <summary><span>Explore validation with a sample trip</span></summary>
         <div className="validation-content">
             <p>Explore whole-trip checks using a Boston sample itinerary. This sample is separate from your saved trips.
                 All venues, availability, prices and policies are synthetic. Passing these checks is not a booking or a shared-validator approval.</p>

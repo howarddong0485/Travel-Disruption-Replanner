@@ -18,8 +18,8 @@ jac test server/test_validation.jac
 jac run --host 127.0.0.1 --port 8310 travel
 ```
 
-Open `http://127.0.0.1:8310/`, expand **Plan B / C · Validation lab**, and choose
-**Run sample checks**. No saved trip is required. A USD 400 family budget rejects
+Open `http://127.0.0.1:8310/`, select a trip, open **Backup plans**, expand **Explore validation with a sample trip**, and choose
+**Run sample checks**. Select or create a trip to access the panel; sample checks do not use its saved data. A USD 400 family budget rejects
 both rain options; USD 600 allows them. Empty budget means unknown, not zero.
 Changing a control clears prior results. Results clear after 15 minutes and can
 be refreshed by running the sample again.
