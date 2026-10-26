@@ -11,11 +11,32 @@ Application code, backend helpers, demos, and tests are written in `.jac` files.
 - **Bookings:** Store locations, confirmation references, and notes for transport and stays. Confirm/reopen reservations. The same record appears in the itinerary, bookings, and budget; it is not duplicated.
 - **Packing:** Add essentials and check them off. Packed/total counts appear in the trip summary.
 - **Budget:** Record costs on itinerary/booking items and add other costs such as insurance or shopping. Track planned total, paid total, unpaid total, remaining budget, and overspending. Mark payment independently from confirmation or completion.
-- **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Itinerary page. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Demo and limitations](#backup-preview-demo).
+- **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Backup plans tab. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Demo and limitations](#backup-preview-demo).
 - **Standalone backup validation (PR #23):** Check synthetic replacements against an entire sample itinerary, including traveler requirements, costs, scheduling, opening hours and transfers. The read-only validation lab uses its own fixtures and is not connected to saved trips or the shared validator. [Commands and scope](backup/VALIDATION.md).
 - **Replanning:** Simulate delayed/interrupted items, combine synthetic backup inventory, edit dependencies and schedule rules, optionally use a Jac LLM to select combinations, and accept/reject version-safe revisions. Try the separate demo trip from the sidebar; see [the replanning guide](replan/README.md).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
 - **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and five planning tabs. The web interface adapts to phones and tablets.
+
+## Guided backup and replan demo
+
+Click **Start backup & replan demo** in the sidebar. Each start saves a separate Boston/USD trip with six scheduled items, a USD 1,500 budget, dependencies and a protected museum visit.
+
+1. **Generate backups:** Dinner is preselected. Click **Generate Plan B / C** to fetch two synthetic dining alternatives. For rain backups, select the rain scenario and **Outdoor harbor walk**.
+2. **Simulate & replan:** Continue, keep **Flight arrival** delayed by **180 minutes**, and click **Generate replan options**. Compare three alternatives, optionally build a custom combination, then accept or reject a proposal.
+3. **Updated itinerary:** Acceptance persists the revision and opens an original-versus-saved schedule with revised costs. Click **Open updated itinerary** to inspect the regular workspace.
+
+Backup previews and proposal generation leave itinerary items unchanged. Acceptance updates only this demo trip. The backup preview catalog and replanning catalog are separate synthetic modules; preview cards are not directly applied. No provider credentials are required.
+
+## Workspace navigation
+
+Use the three workflow shortcuts to **build your itinerary → generate backup plans → replan a disruption**.
+
+- **Itinerary:** Add and edit the active trip's activities, meals, stays and transport.
+- **Backup plans:** Generate mock Plan B / C suggestions for eligible saved items. Expand **Explore validation with a sample trip** for the separate fixture-based checks.
+- **Replan:** Report a delay or interruption, generate replan options, compare changes and explicitly accept or reject a revised plan. Expand **Schedule rules and dependencies** to configure timing and connections; customize backup combinations below the proposals.
+- **Bookings, Packing list, Budget:** Manage reservations, essentials and trip spending.
+
+Backup previews and the sample validator remain separate from the replanning engine; previews do not apply changes to saved trips.
 
 ## Start the app
 
@@ -73,7 +94,7 @@ From `travel-planner/`, run the deterministic, storage-free demo:
 jac run backup/demo.jac
 ```
 
-In the web app, create a Boston/USD trip and add a dated, unfinished activity and dining item. In **Itinerary**, choose **Rain affects an outdoor activity** or **Delayed arrival affects dinner**, select the original item, and prepare Plan B/C. The panel shows up to two drafts with activation conditions, synthetic prices, mock sources, checked/expiry times and validation notes. Switching trips, scenarios or items clears the previous result. When the earliest evidence expires, the panel removes the drafts and prompts a refresh.
+In the web app, create a Boston/USD trip and add a dated, unfinished activity and dining item. In **Backup plans**, choose **Rain affects an outdoor activity** or **Delayed arrival affects dinner**, select the original item, and prepare Plan B/C. The panel shows up to two drafts with activation conditions, synthetic prices, mock sources, checked/expiry times and validation notes. Switching trips, scenarios or items clears the previous result. When the earliest evidence expires, the panel removes the drafts and prompts a refresh.
 
 Unsupported locations/currencies show an empty result or exclusion reasons. Unavailable/unknown inventory, missing sources, expired timestamps and invalid evidence are excluded. Preview success and failure preserve saved trip/items and costs. Drafts remain `needs_validation`; full-trip constraints, automatic risks, live inventory, comparison, acceptance, booking and trip changes are separate work.
 
@@ -88,7 +109,7 @@ jac run backup/validation_demo.jac -- --scenario rain --budget 450
 jac test backup/test_validation.jac
 ```
 
-The rain example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. In Roam, expand **Plan B / C · Validation lab** and choose **Run sample checks**. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the dated progress record](../docs/PROGRESS.md#progress-snapshot--2026-10-21).
+The rain example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. In Roam, open **Backup plans**, expand **Explore validation with a sample trip** and choose **Run sample checks**. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the dated progress record](../docs/PROGRESS.md#progress-snapshot--2026-10-21).
 
 ### Browser regression check
 

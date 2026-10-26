@@ -89,6 +89,49 @@ input, select, textarea, .primary { border-radius: 5px; }
   .tabs button { white-space: nowrap; }
 }
 
+/* Trip planning, proactive backups and disruption repair. */
+.trip-workflow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 24px; }
+.trip-workflow button { display: flex; align-items: center; gap: 12px; padding: 16px; text-align: left; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); min-width: 0; }
+.trip-workflow button:hover, .trip-workflow button[data-active="true"] { border-color: var(--accent); background: var(--surface-muted); }
+.workflow-number { display: grid; place-items: center; width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%; background: var(--accent); color: white; font-size: 12px; font-weight: 700; }
+.trip-workflow strong, .trip-workflow small { display: block; }
+.trip-workflow strong { font-size: 13px; }
+.trip-workflow small { font-size: 11px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+.backup-workspace { display: grid; gap: 20px; }
+.backup-workspace .backup-panel, .backup-workspace .validation-lab { margin: 0; }
+.workflow-intro h2, .replan-results-heading h2 { margin: 6px 0 10px; }
+.workflow-intro p:not(.eyebrow), .replan-results-heading > p:not(.eyebrow) { font-size: 13px; color: var(--muted); max-width: 800px; }
+.workflow-intro .text-button { margin-top: 14px; }
+.replan-disruption form { max-width: 650px; }
+.replan-disruption h3 { margin-top: 6px; }
+.replan-settings > summary, .replan-inventory > summary { cursor: pointer; font-weight: 650; }
+.replan-settings[open] > summary, .replan-inventory[open] > summary { margin-bottom: 16px; }
+.replan-settings .replan-setup { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 20px; }
+.replan-inventory .backup-grid { margin-top: 16px; }
+.replan-proposals:empty { display: none; }
+summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+@media (max-width: 950px) { .trip-workflow { grid-template-columns: 1fr; } }
+@media (max-width: 650px) { .replan-settings .replan-setup { grid-template-columns: 1fr; } }
+
+/* Guided demo uses the same saved-trip services as the regular workspace. */
+.guided-demo { display: grid; gap: 20px; }
+.demo-intro h2, .demo-complete h2 { margin: 6px 0 12px; }
+.demo-intro > p, .demo-instructions > p, .demo-complete > p { margin-top: 10px; }
+.demo-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.demo-steps button { border: 1px solid var(--line); border-radius: 6px; padding: 14px; color: var(--accent); background: var(--surface); font-weight: 600; text-align: left; }
+.demo-steps button[data-active="true"] { color: white; background: var(--accent); border-color: var(--accent); }
+.demo-instructions { margin-bottom: 20px; background: var(--surface-muted); }
+.demo-next .primary, .demo-complete > .primary { max-width: 360px; }
+.demo-totals { display: flex; flex-wrap: wrap; gap: 28px; margin: 24px 0; }
+.demo-totals small, .demo-totals strong { display: block; }
+.demo-totals small { color: var(--muted); margin-bottom: 6px; }
+.demo-table-wrap { overflow-x: auto; margin: 20px 0; }
+.demo-timeline { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.demo-timeline th, .demo-timeline td { padding: 12px; border-bottom: 1px solid var(--line); line-height: 1.6; }
+.demo-timeline th { color: var(--muted); }
+.demo-timeline tr[data-changed="true"] { background: var(--success-bg); }
+@media (max-width: 650px) { .demo-steps { grid-template-columns: 1fr; } .demo-timeline { min-width: 620px; } }
+
 /* Standalone backup validation lab; reuses the shared Roam controls. */
 .validation-lab { margin: 20px 0; padding: 0; overflow: hidden; }
 .validation-lab > summary { padding: 20px 24px; cursor: pointer; font-weight: 650; }

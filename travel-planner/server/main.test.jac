@@ -274,3 +274,31 @@ test "failed application rolls back changes retained payments and event status" 
         assert review_replan(trip, proposal["id"], True)["status"] == "accepted";
     }
 }
+
+test "guided demo supports both backup scenarios and saved dependency-aware replanning" {
+    with tempfile.TemporaryDirectory() as directory {
+        os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
+        trip = replan_demo()["trip_id"];
+        before = replan_state(trip);
+        assert before["trip"]["destination"] == "Boston";
+        dinner = [i for i in before["items"] if i["category"] == "food"][0];
+        walk = [i for i in before["items"] if i["title"] == "Outdoor harbor walk"][0];
+        flight = [i for i in before["items"] if i["title"] == "Flight arrival"][0];
+        for (item, scenario) in [(dinner, "arrival_delay"), (walk, "rain")] {
+            preview = preview_backups(trip, item["id"], scenario);
+            assert len(preview.options) == 2;
+            assert preview.status == "needs_validation";
+        }
+        assert replan_state(trip)["version"] == before["version"];
+        plans = propose_replan(trip, flight["id"], "delayed", 180)["proposals"];
+        assert len(plans) == 3;
+        assert replan_state(trip)["items"] == before["items"];
+        selected = plans[0];
+        assert review_replan(trip, selected["id"], True)["status"] == "accepted";
+        # Reopen the saved state rather than inspecting only the proposal response.
+        saved = replan_state(trip);
+        assert [i for i in saved["items"] if i["id"] == flight["id"]][0]["time"] == "18:00";
+        assert [i for i in saved["items"] if i["id"] == walk["id"]][0] == walk;
+        assert sum([i["cost_cents"] for i in saved["items"]]) == selected["projected_total_cents"];
+    }
+}

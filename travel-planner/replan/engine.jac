@@ -809,13 +809,13 @@ def seed_demo(conn: any) -> dict[str, any] {
             'INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)',
             (
                 trip_id,
-                'Replanning demo — mock trip',
-                'Chicago (mock inventory)',
+                'Backup & replan demo',
+                'Boston',
                 '2026-11-01',
                 '2026-11-03',
                 'USD',
                 150000,
-                'Synthetic trip for trying disruption repairs. Times are destination-local.'
+                'Synthetic Boston trip for generating dinner and rain backups, then repairing a 180-minute flight delay. No real reservations.'
             )
         );
         definitions = [
@@ -868,6 +868,16 @@ def seed_demo(conn: any) -> dict[str, any] {
                 90,
                 '2026-11-02T10:00',
                 True
+            ),
+            (
+                'Outdoor harbor walk',
+                'activity',
+                '2026-11-02',
+                '14:00',
+                1000,
+                60,
+                '',
+                False
             )
         ];
         ids = [];
@@ -892,7 +902,7 @@ def seed_demo(conn: any) -> dict[str, any] {
                     category,
                     date,
                     time,
-                    'Mock Chicago',
+                    'Mock Boston',
                     '',
                     'Synthetic demo item',
                     cost
