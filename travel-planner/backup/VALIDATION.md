@@ -83,7 +83,11 @@ the fixture scope.
 
 ## Refreshing synthetic inventory
 
-The validation panel now uses `refresh_backup_validation`, while the existing
+The versioned-history follow-up saves observations and adds history to this panel; see
+[saved refresh history](HISTORY.md) for storage, restoration and retry semantics.
+The stateless refresh endpoint described below remains available for compatibility.
+
+The original refresh slice uses `refresh_backup_validation`, while the existing
 `preview_backup_validation` and Week 1 preview calls retain their behavior.
 Choose **Inventory on next refresh**, then **Refresh and recheck Plan B / C**.
 
