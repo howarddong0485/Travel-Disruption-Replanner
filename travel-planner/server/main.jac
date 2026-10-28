@@ -11,6 +11,22 @@ import from replan.engine { install_schema, snapshot, save_rules, save_dependenc
     prepare, candidates, model_packet, store_proposals, decide, seed_demo, custom_proposal }
 import from replan.agent { select_combinations }
 import from backup.validation_fixtures { run_fixture }
+import from backup.history { read_history, save_refresh }
+
+def:pub load_backup_history(session_id: str) -> dict[str, any] {
+    return read_history(session_id);
+}
+
+def:pub save_backup_refresh(session_id: str, request_id: str, expected_revision: any,
+    scenario: str = "rain", profile_name: str = "family", budget: str = "600",
+    inventory_change: str = "unchanged", sample_date: str = "") -> dict[str, any] {
+    # Preserve raw JSON types: the bridge would otherwise coerce True or "1" to int.
+    if type(expected_revision) is not int or expected_revision < 0 {
+        raise ValueError("Expected revision must be a nonnegative integer");
+    }
+    return save_refresh(session_id, request_id, expected_revision, scenario, profile_name,
+        budget, inventory_change, sample_date);
+}
 
 def:pub preview_backup_validation(scenario: str = "rain", profile_name: str = "family", budget: str = "600") -> dict[str, any] {
     return run_fixture(scenario, profile_name, budget);
