@@ -13,6 +13,7 @@ Application code, backend helpers, demos, and tests are written in `.jac` files.
 - **Budget:** Record costs on itinerary/booking items and add other costs such as insurance or shopping. Track planned total, paid total, unpaid total, remaining budget, and overspending. Mark payment independently from confirmation or completion.
 - **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Backup plans tab. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Demo and limitations](#backup-preview-demo).
 - **Standalone backup validation (PR #23):** Check synthetic replacements against an entire sample itinerary, including traveler requirements, costs, scheduling, opening hours and transfers. The read-only validation lab uses its own fixtures and is not connected to saved trips or the shared validator. [Commands and scope](backup/VALIDATION.md).
+- **Backup refresh:** Simulate price changes, sold-out inventory, expired evidence and provider failures; rerun full-trip checks and discard old conclusions. The sample panel in **Backup plans** and the standalone `backup_refresh` app use the same component. Refresh never changes a saved itinerary. [Refresh demo](backup/VALIDATION.md#refreshing-synthetic-inventory).
 - **Replanning:** Simulate delayed/interrupted items, combine synthetic backup inventory, edit dependencies and schedule rules, optionally use a Jac LLM to select combinations, and accept/reject version-safe revisions. Try the separate demo trip from the sidebar; see [the replanning guide](replan/README.md).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
 - **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and five planning tabs. The web interface adapts to phones and tablets.
@@ -109,7 +110,15 @@ jac run backup/validation_demo.jac -- --scenario rain --budget 450
 jac test backup/test_validation.jac
 ```
 
-The rain example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. In Roam, open **Backup plans**, expand **Explore validation with a sample trip** and choose **Run sample checks**. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the dated progress record](../docs/PROGRESS.md#progress-snapshot--2026-10-21).
+The rain example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. In Roam, open **Backup plans**, expand **Explore validation with a sample trip** and choose **Refresh and recheck Plan B / C**. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the dated progress record](../docs/PROGRESS.md#backup-refresh-delivery--2026-10-28).
+
+To run the changing-inventory sequence and its isolated web demo:
+
+```sh
+jac run backup/refresh_demo.jac
+jac test backup/test_refresh.jac server/test_refresh.jac
+jac run --host 127.0.0.1 --port 8320 backup_refresh
+```
 
 ### Browser regression check
 
@@ -162,6 +171,7 @@ jac test backup/test_planner.jac
 jac test server/test_backup.jac
 jac test backup/test_validation.jac
 jac test server/test_validation.jac
+jac test backup/test_refresh.jac server/test_refresh.jac
 jac build travel --as client
 ```
 
