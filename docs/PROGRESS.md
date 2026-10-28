@@ -1,6 +1,45 @@
 # Project progress
 
-This report records the Roam foundation at commit `47719ca` (October 4, 2026) and the read-only mock backup preview added by this change. It separates implemented behavior from the remaining disruption-replanning design.
+This report separates delivery on `main` from implementations still under review. Dated verification records identify the code, runtime and scope that were actually checked.
+
+## Jac migration verification — 2026-10-24
+
+The migration based on `20505d5` converts all eight project-owned Python files to Jac: the standalone validator, records, fixtures, CLI and tests, plus the disruption simulator, mock inventory and replanning engine. Module paths and service signatures are preserved. The 26 validation cases now run with `jac test backup/test_validation.jac`. Python standard-library imports remain supported through Jac.
+
+Verified with local Jac **0.37.21**, using an isolated temporary runtime cache and Postgres test instance:
+
+- `jac check --nowarn`: all three application entries passed.
+- The combined Jac suite (`server/main.test.jac`, `server/test_backup.jac`, `server/test_validation.jac`, `backup/test_planner.jac`, `backup/test_validation.jac`): **47 passed, 1 failed**. Both HTTP backup integration tests passed; their test databases are temporary.
+- The remaining MockLLM selection failure was reproduced in the unchanged `20505d5` snapshot: its original Jac suite had **21 passed, 1 failed**, and its Python validation suite had **26 passed**.
+- Compared complete serialized results for seven scenarios, two profiles and five budgets: **70 of 70** matched the original Python implementation, including check messages, costs, proposed items and snapshot fingerprints.
+- `jac build travel --as client` still fails on the generated computed dictionary key in `replan/frontend.js`. The unchanged snapshot produced the same error at the same generated statement. This migration does not establish a successful client build or browser verification.
+
+The manifest still pins Jac 0.37.23; that version was not available for these checks. The dated records below describe earlier implementations and commands.
+
+## Progress snapshot — 2026-10-21
+
+- **Delivered on main:** the October 13 baseline `0bb9bfff` includes the Roam foundation, read-only backup previews in [PR #15](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/15), the business theme in [PR #21](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/21), and standalone mock replanning in [PR #19](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/19). On October 21, main advanced to `6526fc5`, incorporating PR #23 and its progress documentation.
+- **New since the Week 3 report:** [PR #23](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/23), implementation commit `e7c9d76`, adds standalone full-itinerary backup validation and is now merged. It partially implements [issue #11](https://github.com/howarddong0485/Travel-Disruption-Replanner/issues/11); the parent issue remains open.
+- **Other work under review:** [draft PR #16](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/16) contains proposed policy/risk contracts and logic, including an October 14 change making PolicyAgent LLM extraction opt-in. [PR #22](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/22) contains a draft traveler-profile contract, fixtures and structural checks. Neither is merged or an agreed shared integration.
+- **Open issues:** #5, #7, #8, #10, #11, #12, #13 and #18. There are no newly completed issues beyond the Week 3 delivery recorded above.
+
+### Standalone backup validation in PR #23
+
+The independent validator checks each synthetic replacement in the full proposed itinerary: mandatory dietary/pet/child/accessibility requirements, budget including reserve and retained original payments, scheduling, opening windows, timezones/DST, transfers, dependencies, and fixed/completed items. Missing or expired evidence remains unresolved. A passing result is explicitly `passed_fixture_checks` with `standalone_fixture` scope.
+
+Seven sample scenarios, family/solo profiles, a CLI and a read-only Roam validation lab are implemented. Input changes and evidence expiry invalidate displayed results. Saved trips are not changed. See [the validation guide](../travel-planner/backup/VALIDATION.md) for commands, semantics and remaining integration work.
+
+Fresh checks on October 21:
+
+- `python3 -m unittest backup.test_validation -v`: **26 passed**.
+- Rain scenario, USD 450 budget: Plan B passes the implemented fixture checks at USD 440; Plan C is invalid at USD 470.
+- Delayed-arrival scenario, USD 400 budget: Plan B passes at USD 395; Plan C is invalid at USD 425.
+- Missing-evidence and expired-evidence scenarios return `needs_validation` for the affected candidate, with unknown total cost.
+- Jac tests, client build and browser checks were not rerun. Even `jac --version` failed during launcher initialization with `could not publish the extracted runtime`.
+
+The October 17 PR record remains the earlier Jac verification boundary: Jac 0.37.21 passed all three app checks; the combined suite had 21 passes and one existing replanning LLM failure; the client build failed in generated replanning JavaScript. Both failures were also reproduced on the then-current base main. These results do not establish a successful current full-app build or pinned-runtime verification.
+
+Issue #11 remains open for shared RiskFlag/profile/authoritative-validator/ledger integration, dynamic inventory/provider-failure refresh, versioned persistence and downstream handoff. PR #23 landed on main on October 21. The recorded full-app validation blockers remain unresolved; merging the implementation does not establish successful Jac tests, a client build or browser validation.
 
 ## Completed planning and design
 
@@ -68,6 +107,8 @@ jac check --nowarn
 jac test server/main.test.jac
 jac test backup/test_planner.jac
 jac test server/test_backup.jac
+jac test backup/test_validation.jac
+jac test server/test_validation.jac
 jac build travel --as client
 ```
 
@@ -75,6 +116,6 @@ The server tests use temporary databases and do not modify saved trips. These co
 
 ## Disruption replanning and business theme
 
-Roam now includes a synthetic disruption simulator, dependency traversal, per-item backup combinations, optional typed Jac LLM selection, and atomic version-safe acceptance. The separate Chicago demo covers arrival-delay cascades and fixed-item conflicts. See the [replanning guide](../travel-planner/replan/README.md) for setup, endpoints, tests and limits. Shared profile/eligibility validation, policy evidence and cross-agent review integration remain tracked in [issue #18](https://github.com/howarddong0485/Travel-Disruption-Replanner/issues/18).
+Roam now includes a synthetic disruption simulator, dependency traversal, per-item backup combinations, optional typed Jac LLM selection, and atomic version-safe acceptance. The separate Boston demo covers arrival-delay cascades and fixed-item conflicts. See the [replanning guide](../travel-planner/replan/README.md) for setup, endpoints, tests and limits. Shared profile/eligibility validation, policy evidence and cross-agent review integration remain tracked in [issue #18](https://github.com/howarddong0485/Travel-Disruption-Replanner/issues/18).
 
 The web workspace uses a navy, slate and white business palette, with a flat trip overview and shared theme colors across backup and replanning panels.
