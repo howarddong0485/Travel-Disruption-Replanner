@@ -16,6 +16,12 @@ def:pub preview_backup_validation(scenario: str = "rain", profile_name: str = "f
     return run_fixture(scenario, profile_name, budget);
 }
 
+def:pub refresh_backup_validation(scenario: str = "rain", profile_name: str = "family",
+    budget: str = "600", inventory_change: str = "unchanged", sample_date: str = "") -> dict[str, any] {
+    if not inventory_change { raise ValueError("Choose an inventory change"); }
+    return run_fixture(scenario, profile_name, budget, inventory_change=inventory_change, sample_date=sample_date);
+}
+
 obj TripView {
     has id: str, title: str, destination: str, start_date: str, end_date: str,
         currency: str, budget_cents: int, notes: str;

@@ -19,10 +19,10 @@ jac run --host 127.0.0.1 --port 8310 travel
 ```
 
 Open `http://127.0.0.1:8310/`, select a trip, open **Backup plans**, expand **Explore validation with a sample trip**, and choose
-**Run sample checks**. Select or create a trip to access the panel; sample checks do not use its saved data. A USD 400 family budget rejects
+**Refresh and recheck Plan B / C**. Select or create a trip to access the panel; sample checks do not use its saved data. A USD 400 family budget rejects
 both rain options; USD 600 allows them. Empty budget means unknown, not zero.
-Changing a control clears prior results. Results clear after 15 minutes and can
-be refreshed by running the sample again.
+Changing a control clears prior results. Results clear within 15 minutes, or
+earlier when contributing evidence expires, and can be refreshed again.
 
 Seven scenarios cover rain, late dinner, missing evidence, hard requirement
 conflicts, schedule conflicts, protected targets, and stale evidence. Family
@@ -71,8 +71,87 @@ establish a pass. Fixtures make no claims about real venues or availability.
 - `test_validation.jac`: 26 native Jac boundary tests.
 - `validation_frontend.jac`: Roam fixture panel.
 - `server.main.preview_backup_validation`: thin local demo entry point.
+- `refresh.jac`: independent synthetic observations and fresh full-trip checks.
+- `refresh_demo.jac` / `refresh_app.jac`: CLI sequence and standalone web entry.
+- `test_refresh.jac` / `server/test_refresh.jac`: refresh boundaries and saved-trip isolation.
+- `server.main.refresh_backup_validation`: refresh entry point used by the panel.
 
 The validator is not the authoritative shared project validator. Shared risk,
 profile, budget and itinerary mapping, real inventory, persistence, acceptance,
 and applying changes are not integrated. All passing statuses explicitly retain
 the fixture scope.
+
+## Refreshing synthetic inventory
+
+The validation panel now uses `refresh_backup_validation`, while the existing
+`preview_backup_validation` and Week 1 preview calls retain their behavior.
+Choose **Inventory on next refresh**, then **Refresh and recheck Plan B / C**.
+
+| Inventory snapshot | Expected family / USD 600 result |
+| --- | --- |
+| Fresh original prices | Plan B USD 440, Plan C USD 470: both pass fixture checks |
+| Plan B price increase | Whole-party quote rises by USD 200; total USD 640 is rejected |
+| Plan B sold out | Plan B rejected; Plan C still passes |
+| Both sold out | No passing alternative, with availability reasons |
+| Expired evidence | Plan B needs validation; old price is not shown as a current total |
+| Both providers fail | Both need validation; old prices, policies and routes are discarded |
+| Plan B provider fails | Plan B needs validation; Plan C is checked independently |
+| Fresh original prices again | New observation can recover both candidates |
+
+Snapshots are independent, not cumulative price adjustments. The sample date
+stays fixed across refreshes, even across midnight. Controls changing, a request
+starting, and report expiry all clear prior results. A request identity prevents
+an obsolete response from restoring an old result; already-expired responses
+are discarded. There are no booking/apply controls.
+
+`backup/refresh.jac` copies its input, fetches deterministic synthetic candidate
+observations, and reruns the whole-itinerary validator. It does not extend the
+expiry of retained trip/risk evidence or invent missing requirements, operating
+hours or routes. Passing results expire at the earliest contributing evidence
+deadline. Failed/unresolved reports have no `valid_until`; their display can be
+retained for up to 15 minutes to explain the failure.
+
+The demo runner supplies a fresh synthetic trip/risk fixture on every run while
+preserving the sample date. This is deliberately separate from real saved-trip
+facts. The core refresh function accepts existing trip/risk snapshots and keeps
+expired retained evidence unresolved. It does not implement upstream integration.
+Each report has a unique refresh ID and each result has an evidence fingerprint;
+these are transient observations, not persisted or authoritative trip versions.
+
+Run the sequence and tests from `travel-planner/`:
+
+```sh
+jac run backup/refresh_demo.jac
+jac test backup/test_refresh.jac server/test_refresh.jac
+```
+
+The same panel also has an independent web entry, so other feature UIs are not
+needed for the demo:
+
+```sh
+jac build backup_refresh --as client
+jac run --host 127.0.0.1 --port 8320 backup_refresh
+```
+
+Open `http://127.0.0.1:8320/` and expand the validation lab. This demo uses the
+existing shared styles and the exact component included in Roam.
+
+### Local verification — 2026-10-28
+
+On Jac **0.37.21**, all four app entrypoint checks and the standalone
+`backup_refresh` client build pass. After incorporating main `fc118b0` (including
+the guided demo and renamed navigation), the combined suite has **64 passed, 1 failed**,
+including 15 new core refresh cases and one new HTTP/database isolation case.
+The remaining failure is the previously recorded replanning MockLLM test. The
+full `travel` client build still fails at the previously recorded computed
+property in generated `replan/frontend.js`. Pinned Jac 0.37.23 and clean-install
+CI are not verified. Persistence, live providers and shared-agent handoff are
+outside this implementation.
+
+Before that rebase, browser checks on the standalone entry verified all seven inventory selections,
+recovery to original prices, clearing results on inventory/budget changes,
+both alternatives rejected at USD 400, and a readable error for an invalid
+budget. Provider failures showed unknown costs instead of old passing quotes.
+The sample date remained unchanged through those refreshes. The 15-minute
+client timer and late-response guard were reviewed in source; expiry boundaries
+were tested with a deterministic server clock, not a real-time browser wait.

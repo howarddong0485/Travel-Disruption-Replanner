@@ -160,3 +160,6 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
     .validation-lab > summary { padding: 18px 16px; }
     .validation-costs > div { flex-direction: column; gap: 3px; }
 }
+.validation-refresh-control { margin: 16px 0; }
+.validation-refresh-control p { margin: 8px 0; font-size: 13px; }
+.validation-provider-error { color: var(--danger); font-weight: 600; }
