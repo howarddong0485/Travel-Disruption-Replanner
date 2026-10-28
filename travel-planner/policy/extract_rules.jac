@@ -13,10 +13,27 @@ glob DATE_PATTERN: str = r"(?P<date>(?:" + MONTHS + r")\s+\d{1,2},\s*\d{4})";
 glob RELATIVE_PATTERN: str = r"(?P<count>\d+)\s*(?P<unit>hours?|days?)\s+(?:before|prior to)";
 glob AMOUNT_PATTERN: str = r"(?P<symbol>[$€£¥])\s?(?P<amount>\d[\d,]*(?:\.\d{1,2})?)";
 glob SYMBOL_CURRENCY: dict[str, str] = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY"};
+glob DEADLINE_CUE: str = r"\b(?:until|till|before|by|through|up to|prior to)\b|\d";
+glob FREE_PATTERN: str = r"(?:free cancellation|full refund|cancel free of charge)";
+glob NONREFUNDABLE_PATTERN: str = r"non-?refundable|no refunds";
 glob DISCRETIONARY: list[str] = ["discretion", "may be considered", "subject to approval", "case-by-case", "case by case"];
 
+def _mixes_periods(clause: str) -> bool {
+    lowered = clause.lower();
+    return re.search(FREE_PATTERN, lowered) is not None and re.search(NONREFUNDABLE_PATTERN, lowered) is not None;
+}
+
+"""Split terms into sentences. A sentence that mixes free and non-refundable terms is split at
+semicolons when each part then states only one of them, so each period is read separately."""
 def split_sentences(text: str) -> list[str] {
-    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()];
+    clauses: list[str] = [];
+    for sentence in re.split(r"(?<=[.!?])\s+", text.strip()) {
+        parts = [p.strip() for p in re.split(r"(?<=;)\s+", sentence) if p.strip()];
+        if _mixes_periods(sentence) and len(parts) > 1 and not `any(_mixes_periods(p) for p in parts) {
+            clauses.extend(parts);
+        } elif sentence.strip() { clauses.append(sentence.strip()); }
+    }
+    return clauses;
 }
 
 def _parse_time(text: str) -> str | None {
@@ -70,15 +87,23 @@ def extract_terms_rules(terms: str) -> PolicyDraft {
             }
             continue;
         }
-        if re.search(r"non-?refundable|no refunds", lowered) {
+        if _mixes_periods(sentence) {
+            draft.ambiguities.append(f"one clause states both refundable and non-refundable terms: {sentence}");
+            continue;
+        }
+        if re.search(NONREFUNDABLE_PATTERN, lowered) {
             draft.tiers.append(DraftTier(excerpt=sentence, refund_percent=0, fee_amount="0", refund_form="none"));
             continue;
         }
-        if re.search(r"(?:free cancellation|full refund|cancel free of charge)", lowered) {
+        if re.search(FREE_PATTERN, lowered) {
             tier = DraftTier(excerpt=sentence, refund_percent=100, fee_amount="0", refund_form=_form(sentence));
             tier.hours_before_start = _relative_hours(sentence);
             if tier.hours_before_start is None {
+                noted = len(draft.ambiguities);
                 tier.deadline_local = _absolute_deadline(sentence, draft.ambiguities);
+                if not tier.deadline_local and len(draft.ambiguities) == noted and re.search(DEADLINE_CUE, lowered) {
+                    draft.ambiguities.append(f"deadline not recognized: {sentence}");
+                }
             }
             draft.tiers.append(tier);
             continue;

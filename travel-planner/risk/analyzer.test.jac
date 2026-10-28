@@ -94,6 +94,15 @@ test "a closed day is a high-severity hours conflict" {
     assert "closed on 2026-10-31" in flag.summary;
 }
 
+test "incomplete opening hours are unresolved instead of crashing the report" {
+    data = fixture_data();
+    data["place_hours"][2]["open_local"] = "";
+    flags = analyze_trip(bundle_from_dict(data), NOW);
+    museum = [f for f in flags if f.id == "opening_hours:museum-01"][0];
+    assert museum.status == FlagStatus.UNRESOLVED and "incomplete" in museum.summary;
+    assert len(flags) == 8;
+}
+
 test "flags serialize to plain JSON" {
     text = json.dumps(to_plain(analyze_trip(load_bundle(FIXTURE), NOW)));
     first = json.loads(text)[0];
