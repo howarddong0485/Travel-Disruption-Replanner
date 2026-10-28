@@ -1,6 +1,7 @@
 """Synthetic, module-owned facts. These are not provider or teammate contracts."""
 import from dataclasses { replace }
-import from datetime { datetime, timedelta, timezone }
+import from datetime { date, datetime, timedelta, timezone }
+import from backup.refresh { refresh_alternatives }
 import from decimal { Decimal }
 import re;
 import from backup.validation { validate_replacement }
@@ -20,7 +21,7 @@ glob SCENARIOS = ("rain", "arrival_delay", "missing_evidence", "eligibility_conf
     "schedule_conflict", "fixed_item", "stale_evidence");
 glob PROFILES = ("family", "solo");
 
-def build_fixture(scenario: str, profile_name: str, now: datetime) -> tuple[TripContext, RiskContext, tuple[Replacement, ...]] {
+def build_fixture(scenario: str, profile_name: str, now: datetime, sample_date: str = "") -> tuple[TripContext, RiskContext, tuple[Replacement, ...]] {
     if (scenario not in SCENARIOS) {
         raise ValueError("Choose a supported fixture scenario");
     }
@@ -31,6 +32,12 @@ def build_fixture(scenario: str, profile_name: str, now: datetime) -> tuple[Trip
         raise ValueError("Fixture clock needs a UTC offset");
     }
     day = (now.astimezone(timezone.utc).date() + timedelta(days=7)).isoformat();
+    if sample_date {
+        if len(sample_date) != 10 or date.fromisoformat(sample_date).isoformat() != sample_date {
+            raise ValueError("Use a valid sample date in YYYY-MM-DD format");
+        }
+        day = sample_date;
+    }
     def moment(time: str) -> Moment {
         return Moment((day + "T" + time), "America/New_York");
     }
@@ -198,10 +205,11 @@ def run_fixture(
     scenario: str = "rain",
     profile_name: str = "family",
     budget: str = "600",
-    now: (datetime | None) = None
+    now: (datetime | None) = None,
+    inventory_change: str = "", sample_date: str = ""
 ) -> dict[str, any] {
     now = now or datetime.now(timezone.utc);
-    (trip, risk, candidates) = build_fixture(scenario, profile_name, now);
+    (trip, risk, candidates) = build_fixture(scenario, profile_name, now, sample_date);
     if (not isinstance(budget, str) or (len(budget) > 24)) {
         raise ValueError("Budget must be a USD decimal string");
     }
@@ -221,10 +229,12 @@ def run_fixture(
         amount = None;
     }
     trip = replace(trip, budget_minor=amount);
-    results = [
+    refreshed: dict[str, any] | None = None;
+    if inventory_change { refreshed = refresh_alternatives(trip, risk, candidates, inventory_change, now); }
+    results = refreshed["results"] if refreshed else [
         validate_replacement(trip, risk, candidate, now) for candidate in candidates
     ];
-    return {
+    response = {
         "scenario": scenario,
         "profile": profile_name,
         "trip_date": trip.start_date,
@@ -238,4 +248,6 @@ def run_fixture(
             for status in ("passed_fixture_checks", "invalid", "needs_validation")
         }
     };
+    if refreshed { response.update(refreshed); }
+    return response;
 }

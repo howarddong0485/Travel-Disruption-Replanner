@@ -33,6 +33,10 @@ entry-point = "server.main"
 kind = "cli"
 entry-point = "cli.main"
 
+[apps.backup_refresh]
+kind = "web-app"
+entry-point = "backup.refresh_app"
+
 # Used only when the traveler enables LLM-assisted combination selection.
 # Keep provider credentials in the server environment. BYLLM_DEFAULT_MODEL overrides this.
 [byllm.model]
