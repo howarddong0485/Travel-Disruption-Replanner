@@ -37,6 +37,7 @@ const previewRoute = '**/function/preview_backups';
   };
   const selectTrip = async trip => {
     await page.getByRole('button', {name: new RegExp(trip.title)}).click();
+    await page.getByRole('button', {name: 'Backup plans', exact: true}).click();
     await page.getByLabel('Original itinerary item').waitFor();
   };
   const generate = async itemId => {

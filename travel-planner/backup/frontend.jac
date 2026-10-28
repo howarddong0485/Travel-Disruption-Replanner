@@ -2,8 +2,9 @@
 import from server.main { TripView, ItemView, preview_backups }
 import from backup.models { BackupPreview as PreviewState }
 
-def:pub BackupPanel(trip: TripView, items: list[ItemView]) -> JsxElement {
-    has target: str = "", trigger: str = "rain", pending: bool = False,
+def:pub BackupPanel(trip: TripView, items: list[ItemView], initial_target: str = "",
+    initial_trigger: str = "rain", onGenerated: any = None) -> JsxElement {
+    has target: str = initial_target, trigger: str = initial_trigger, pending: bool = False,
         failure: str = "", preview: PreviewState | None = None,
         expired: bool = False, expiryTimer: Ref[int] = Ref(0);
 
@@ -25,7 +26,10 @@ def:pub BackupPanel(trip: TripView, items: list[ItemView]) -> JsxElement {
     async def generate -> None {
         if pending { return; }
         pending = True; failure = ""; preview = None; expired = False;
-        try { preview = await preview_backups(trip_id=trip.id, item_id=target, trigger=trigger); }
+        try {
+            preview = await preview_backups(trip_id=trip.id, item_id=target, trigger=trigger);
+            if onGenerated and len(preview.options) > 0 { onGenerated(); }
+        }
         except Exception as exc { failure = str(exc); }
         finally { pending = False; }
     }
@@ -34,8 +38,8 @@ def:pub BackupPanel(trip: TripView, items: list[ItemView]) -> JsxElement {
     }
     eligible = [item for item in items if item.category == ("activity" if trigger == "rain" else "food") and not item.done and item.date];
     return <section className="card backup-panel" aria-label="Proactive backups">
-        <p className="eyebrow">PREPARE BEFORE PLANS CHANGE · MOCK DEMO</p>
-        <h2>A little room for Plan B.</h2>
+        <p className="eyebrow">PLAN B / C · MOCK INVENTORY</p>
+        <h2>Generate backup plans</h2>
         <p>Preview backup ideas for a dated activity or dinner. The demo inventory covers Boston in USD.
             These are suggestions, not reservations. Generating ideas leaves your itinerary and budget unchanged.</p>
         <div className="form-pair">
@@ -51,7 +55,7 @@ def:pub BackupPanel(trip: TripView, items: list[ItemView]) -> JsxElement {
                 </select></div>
         </div>
         {(<p role="status">Add a dated, unfinished {"activity" if trigger == "rain" else "dining item"} to preview backups.</p>) if len(eligible) == 0 else None}
-        <button type="button" className="primary" disabled={pending or not target} onClick={generate}>{"Checking mock inventory…" if pending else "Refresh mock ideas" if preview or expired else "Prepare Plan B / C"}</button>
+        <button type="button" className="primary" disabled={pending or not target} onClick={generate}>{"Checking mock inventory…" if pending else "Refresh mock ideas" if preview or expired else "Generate Plan B / C"}</button>
         {(<p className="backup-disclaimer" role="status">These backup ideas have expired. Refresh to check the mock inventory again.</p>) if expired else None}
         {(<p className="alert error" role="alert">{failure}</p>) if failure else None}
         {(<div aria-live="polite">
