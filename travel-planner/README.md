@@ -157,6 +157,7 @@ Roam records your plans and booking details; it does not make reservations. This
 
 ```sh
 jac check --nowarn
+jac test budget/test_ledger.jac
 jac test server/main.test.jac
 jac test backup/test_planner.jac
 jac test server/test_backup.jac
