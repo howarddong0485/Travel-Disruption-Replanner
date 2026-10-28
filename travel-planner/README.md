@@ -162,6 +162,7 @@ jac test backup/test_planner.jac
 jac test server/test_backup.jac
 jac test backup/test_validation.jac
 jac test server/test_validation.jac
+jac test profile/test_models.jac
 jac build travel --as client
 ```
 
