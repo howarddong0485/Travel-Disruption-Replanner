@@ -5,6 +5,7 @@ references, valid zones and local times. Budget and traveler-constraint
 validation belong to the ConstraintValidator (Person 1).
 """
 import json;
+import re;
 import from schema.common { Evidence, Origin, valid_zone, valid_local }
 import from schema.itinerary {
     ItineraryNode, ItineraryEdge, ItineraryGraph, NodeKind, BookingStatus,
@@ -109,6 +110,11 @@ def structural_problems(bundle: TripBundle) -> list[str] {
     for h in bundle.place_hours {
         if h.node_id not in node_ids { problems.append(f"hours for unknown node '{h.node_id}'"); }
         if h.evidence_id not in evidence_ids { problems.append(f"hours for {h.node_id}: unknown evidence '{h.evidence_id}'"); }
+        for clock in [h.open_local, h.close_local] {
+            if clock and re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", clock) is None {
+                problems.append(f"hours for {h.node_id}: time '{clock}' is not HH:MM");
+            }
+        }
     }
     for f in bundle.forecasts {
         _check_times(f"forecast {f.id}", f.tz, [f.start_local, f.end_local], problems);

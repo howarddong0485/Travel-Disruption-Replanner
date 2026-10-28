@@ -85,6 +85,27 @@ test "a date with no time is not guessed" {
     assert r.needs_review and "deadline time not stated" in " ".join(r.notes);
 }
 
+test "a deadline the rules cannot parse goes to review instead of staying free" {
+    r = extract_policy(request("Free cancellation until 2026-10-28 at 18:00."));
+    assert r.needs_review and "deadline not recognized" in " ".join(r.notes);
+    after = evaluate_cancellation(r.policy, hotel(), parse_instant("2026-10-29T12:00:00-06:00"));
+    assert after.state == CancelState.UNKNOWN;
+}
+
+test "a free period and a non-refundable period in one sentence become two tiers" {
+    r = extract_policy(request("Free cancellation until 6:00 PM local time on October 28, 2026; after that time the booking is non-refundable."));
+    assert not r.needs_review and len(r.policy.tiers) == 2;
+    assert r.policy.tiers[0].deadline_local == "2026-10-28T18:00" and r.policy.tiers[1].refund_percent == 0;
+    before = evaluate_cancellation(r.policy, hotel(), parse_instant("2026-10-27T12:00:00-06:00"));
+    after = evaluate_cancellation(r.policy, hotel(), parse_instant("2026-10-29T12:00:00-06:00"));
+    assert before.state == CancelState.FREE_CANCEL_OPEN and after.state == CancelState.NO_REFUND;
+}
+
+test "one clause with both refundable and non-refundable terms goes to review" {
+    r = extract_policy(request("Free cancellation applies, but promotional rates are non-refundable."));
+    assert r.needs_review and "both refundable and non-refundable" in " ".join(r.notes);
+}
+
 test "a faithful LLM draft is accepted, and the prompt carries no payment details" {
     (r, model) = with_llm(faithful_draft(), request());
     assert r.method == ExtractionMethod.LLM and not r.needs_review;

@@ -36,6 +36,15 @@ test "every structural problem is reported together" {
     assert "unknown evidence 'ev-missing'" in message;
 }
 
+test "malformed opening-hour times are structural problems" {
+    data = fixture_data();
+    data["place_hours"][0]["close_local"] = "25:99";
+    message = "";
+    try { bundle_from_dict(data); }
+    except ValueError as e { message = str(e); }
+    assert "time '25:99' is not HH:MM" in message;
+}
+
 test "unknown enum values are rejected" {
     data = fixture_data();
     data["itinerary"]["nodes"][0]["kind"] = "teleport";

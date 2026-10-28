@@ -3,6 +3,7 @@
 When a rule cannot evaluate an item because evidence is missing, it reports an
 UNRESOLVED flag instead of treating the item as safe.
 """
+import re;
 import from datetime { datetime, timedelta }
 import from schema.common { local_to_instant, minutes_between, format_money, to_local_text }
 import from schema.itinerary { ItineraryNode, NodeKind, BookingStatus, EdgeRelation }
@@ -19,6 +20,8 @@ def _flag(rule_id: str, category: RiskCategory, severity: Severity, status: Flag
         mitigation=mitigation, evaluated_at=now.isoformat(), evidence_ids=sorted(set(evidence_ids)),
         probability_pct=probability_pct);
 }
+
+glob CLOCK_PATTERN: str = r"(?:[01][0-9]|2[0-3]):[0-5][0-9]";
 
 def _active(n: ItineraryNode) -> bool {
     return n.booking_status not in [BookingStatus.CANCELLED, BookingStatus.COMPLETED];
@@ -178,6 +181,12 @@ def check_opening_hours(bundle: TripBundle, config: RiskConfig, now: datetime) -
         if h.closed {
             flags.append(_flag(rule, RiskCategory.OPENING_HOURS, Severity.HIGH, FlagStatus.FLAGGED, [n.id],
                 f"{n.title} is closed on {date}.", "Move it to another day or replace it.", now, [h.evidence_id]));
+            continue;
+        }
+        if re.fullmatch(CLOCK_PATTERN, h.open_local) is None or re.fullmatch(CLOCK_PATTERN, h.close_local) is None {
+            flags.append(_flag(rule, RiskCategory.OPENING_HOURS, Severity.LOW, FlagStatus.UNRESOLVED, [n.id],
+                f"Opening hours for {n.title} on {date} are incomplete (missing opening or closing time).",
+                "Confirm the hours for that date.", now, [h.evidence_id]));
             continue;
         }
         start = local_to_instant(n.start_local, n.tz);
