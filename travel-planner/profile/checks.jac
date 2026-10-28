@@ -32,13 +32,25 @@ def soft_preferences(profile: TravelerProfile) -> list[ProfileRequirement] {
     return result;
 }
 
+"""True only for a real whole number. True and False are rejected even though Python treats them as 1 and 0."""
+def is_whole_number(value: any) -> bool {
+    if isinstance(value, bool) {
+        return False;
+    }
+    return isinstance(value, int);
+}
+
 def _party_problems(profile: TravelerProfile) -> list[str] {
     problems: list[str] = [];
-    if profile.adults < 1 {
+    if not is_whole_number(profile.adults) {
+        problems.append("Number of adults must be a whole number, not " + repr(profile.adults));
+    } elif profile.adults < 1 {
         problems.append("A profile needs at least one adult");
     }
     for age in profile.child_ages {
-        if age < 0 or age > MAX_CHILD_AGE {
+        if not is_whole_number(age) {
+            problems.append("Each child age must be a whole number, not " + repr(age));
+        } elif age < 0 or age > MAX_CHILD_AGE {
             problems.append("Child age " + str(age) + " must be between 0 and " + str(MAX_CHILD_AGE));
         }
     }
