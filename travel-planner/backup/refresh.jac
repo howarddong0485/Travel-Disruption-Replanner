@@ -7,6 +7,8 @@ import json;
 import uuid;
 import from backup.validation { validate_replacement, evidence_problem }
 import from backup.validation_models { Evidence, Replacement, RiskContext, TripContext }
+import from backup.changes { describe_changes }
+import from tools.alternatives.mock { refresh as refresh_inventory }
 
 glob INVENTORY_CHANGES = ("unchanged", "price_increase", "sold_out", "all_sold_out",
     "expired_evidence", "provider_failure", "partial_failure");
@@ -16,9 +18,13 @@ def observe(candidate: Replacement, change: str, now: datetime) -> Replacement {
     if change == "provider_failure" or (change == "partial_failure" and candidate.id == "plan-b") {
         raise TimeoutError("Synthetic provider timeout");
     }
-    fresh = Evidence("fixture://inventory/refresh/" + change + "/" + candidate.id,
+    found = refresh_inventory(candidate.provider_id, now) if candidate.provider_id else None;
+    if candidate.provider_id and (found is None or found.id != candidate.provider_id) { raise LookupError("Inventory ID no longer exists"); }
+    fresh = Evidence("fixture://inventory/refresh/" + change + "/" + (candidate.provider_id or candidate.id),
         now.isoformat(), (now + timedelta(minutes=15)).isoformat());
-    item = replace(candidate.item, evidence=fresh);
+    item = replace(candidate.item, evidence=fresh,
+        availability=found.availability if found is not None else candidate.item.availability,
+        currency=found.currency if found is not None else candidate.item.currency);
     if change == "price_increase" and candidate.id == "plan-b" and item.cost_minor is not None {
         item = replace(item, cost_minor=item.cost_minor + 20000);
     }
@@ -45,7 +51,7 @@ def refresh_alternatives(trip: TripContext, risk: RiskContext,
     for candidate in candidates {
         failed = False;
         try { updated = observe(candidate, change, now); }
-        except TimeoutError {
+        except (TimeoutError, LookupError) {
             failed = True;
             # Do not reuse a previously passing quote, policy or route after fetch failure.
             updated = replace(candidate, item=replace(candidate.item, evidence=None,
@@ -55,6 +61,7 @@ def refresh_alternatives(trip: TripContext, risk: RiskContext,
         }
         result = validate_replacement(trip, risk, updated, now);
         result["refresh_state"] = "provider_error" if failed else "received";
+        result["provider_id"] = candidate.provider_id or candidate.id;
         if failed {
             result["checks"].append({"code": "provider_refresh", "status": "unknown",
                 "message": "Inventory provider did not respond. Previous evidence was discarded; retry refresh.",
@@ -79,6 +86,8 @@ def refresh_alternatives(trip: TripContext, risk: RiskContext,
         result["observed_candidate"] = asdict(updated);
         result["source"] = updated.item.evidence.source if updated.item.evidence is not None else "";
         result["evidence_expires_at"] = updated.item.evidence.expires_at if updated.item.evidence is not None else None;
+        result["changes"] = describe_changes(trip, updated, result, now);
+        if result["changes"] { deadlines.append(datetime.fromisoformat(result["changes"]["expires_at"])); }
         results.append(result);
     }
     summary = {status: sum(r["status"] == status for r in results)

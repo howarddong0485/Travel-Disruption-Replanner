@@ -217,9 +217,9 @@ def validate_replacement(
     nodes = [replacement.item if (item.id == old.id) else item for item in nodes];
     profile = trip.profile;
     party_size = (profile.adults if `type(profile.adults) is int else 0) + len(profile.child_ages);
+    missing_adults = profile.adults is None and not profile.complete;
     if (
-        (`type(profile.adults) is not int)
-        or (profile.adults < 1)
+        (not missing_adults and ((`type(profile.adults) is not int) or (profile.adults < 1)))
         or `any(
             ((`type(age) is not int) or not (0 <= age <= 17))
             for age in profile.child_ages
@@ -228,6 +228,9 @@ def validate_replacement(
         record(
             "profile", "fail", "Party requires adults and child ages from 0 through 17"
         );
+    }
+    if missing_adults {
+        record("profile", "unknown", "Traveler party composition is missing");
     }
     if not profile.complete {
         record("profile", "unknown", "Traveler hard requirements are incomplete");

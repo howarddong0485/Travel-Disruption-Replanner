@@ -3,7 +3,6 @@ import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip
     list_items, save_item, set_item_state, delete_item, replan_demo }
 import from backup.frontend { BackupPanel }
 import from replan.frontend { ReplanPanel }
-import from backup.validation_frontend { ValidationLab }
 import from demo.frontend { GuidedDemo }
 
 def:pub app -> JsxElement {
@@ -161,7 +160,6 @@ def:pub app -> JsxElement {
                         <button type="button" className="text-button" onClick={lambda { chooseTab("replan"); }}>Replan after a disruption →</button>
                     </div>
                     <BackupPanel key={selected} trip={current} items={items}/>
-                    <ValidationLab/>
                 </section>) if not loading and tab == "backups" else None}
                 {(<section className="budget-overview card"><div><p className="eyebrow">EVERY LITTLE THING ADDS UP</p><h2>Your trip, in numbers.</h2>
                     <p>Costs are counted once, in {current.currency}. Mark each cost paid as you go.</p></div><div className="budget-numbers">
