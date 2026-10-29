@@ -30,7 +30,7 @@ class Window {
 @dataclass(frozen=True)
 class Profile {
     with entry {
-        adults: int;
+        adults: (int | None);
         child_ages: tuple[int, ...] = ();
         dietary: tuple[str, ...] = ();
         pet: str = "";
@@ -118,5 +118,6 @@ class Replacement {
         replaces_id: str;
         item: ScheduledItem;
         transfers: tuple[Transfer, ...];
+        provider_id: str = "";
     }
 }

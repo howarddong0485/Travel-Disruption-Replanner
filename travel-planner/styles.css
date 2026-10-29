@@ -169,3 +169,9 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .validation-history-entry[open] > summary { margin-bottom: 12px; }
 .validation-history-entry p { margin: 8px 0; }
 .validation-history-entry p, .validation-history-entry li { font-size: 13px; line-height: 1.6; }
+.backup-changes { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 14px; overflow-wrap: anywhere; }
+.backup-changes h4 { margin: 0 0 10px; }
+.backup-changes p, .backup-changes li { font-size: 13px; line-height: 1.6; }
+.backup-changes small { color: var(--muted); }
+.backup-changes dd { white-space: normal; text-align: right; }
+@media (max-width: 540px) { .backup-changes dd { text-align: left; } }

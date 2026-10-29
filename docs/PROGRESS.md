@@ -2,6 +2,35 @@
 
 This report separates delivery on `main` from implementations still under review. Dated verification records identify the code, runtime and scope that were actually checked.
 
+## Unified backup workflow and demo presentation — 2026-10-29
+
+Gehao Dong's `codex/backup-workflow` branch extends the unmerged storage/history
+stack (#30 → #31). It is separate from delivered `main` at `06009b1`.
+
+- Sample and saved-trip inputs now share search, initial validation, refresh of
+  the same provider IDs, revalidation, immutable saving and rendering.
+- Saved-trip mapping keeps missing traveler/timing/quote/route facts unresolved.
+  Per-trip history namespaces, expected revisions, retries and content checks
+  prevent obsolete observations from becoming current after trip edits.
+- Plan B/C explain original/proposed totals, cost differences, budget remaining
+  and elapsed-time changes when supported. History preserves recorded values.
+- The normal website and guided demo omit developer check logs, history,
+  inventory IDs, raw source URIs and fault-injection controls. They retain the
+  alternatives, cost/time comparison, concise failure/uncertainty messages and
+  simulated-inventory label. Diagnostics require the standalone app's explicit
+  `?diagnostics=1` URL. Returning to the plain URL restores normal inventory.
+
+Jac 0.37.21 regression: **105 passed, 1 existing replanning MockLLM failure**,
+including all 25 new metric/history-compatibility/workflow tests. Four app checks
+and the standalone backup client build pass. The known full-travel generated
+`replan/frontend.js` build blocker was last reproduced on October 28; full Roam
+browser success, pinned Jac 0.37.23 and clean-install CI are not claimed.
+
+Issue #11 remains open for shared contracts and downstream handoff. This branch
+does not merge the existing draft PRs or change the active itinerary. See
+[WORKFLOW.md](../travel-planner/backup/WORKFLOW.md) for demo/diagnostics instructions,
+storage boundaries and the detailed verification record.
+
 ## Backup refresh delivery — 2026-10-28
 
 Gehao Dong's next standalone slice adds synthetic inventory refresh and stale-result

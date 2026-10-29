@@ -1,7 +1,7 @@
 """Synthetic, module-owned facts. These are not provider or teammate contracts."""
 import from dataclasses { replace }
 import from datetime { date, datetime, timedelta, timezone }
-import from backup.refresh { refresh_alternatives }
+import from backup.workflow { discover, run_workflow }
 import from decimal { Decimal }
 import re;
 import from backup.validation { validate_replacement }
@@ -21,7 +21,7 @@ glob SCENARIOS = ("rain", "arrival_delay", "missing_evidence", "eligibility_conf
     "schedule_conflict", "fixed_item", "stale_evidence");
 glob PROFILES = ("family", "solo");
 
-def build_fixture(scenario: str, profile_name: str, now: datetime, sample_date: str = "") -> tuple[TripContext, RiskContext, tuple[Replacement, ...]] {
+def build_fixture(scenario: str, profile_name: str, now: datetime, sample_date: str = "", include_candidates: bool = True) -> tuple[TripContext, RiskContext, tuple[Replacement, ...]] {
     if (scenario not in SCENARIOS) {
         raise ValueError("Choose a supported fixture scenario");
     }
@@ -140,65 +140,7 @@ def build_fixture(scenario: str, profile_name: str, now: datetime, sample_date: 
         fresh,
         moment("18:45") if delay else None
     );
-    candidates = [];
-    for (index, title) in enumerate(
-        ("Late vegetarian dinner", "Hotel dining room")
-            if delay
-            else ("Indoor discovery gallery", "Covered botanical hall")
-    ) {
-        if delay {
-            (start, end) = ("19:00", "20:00") if index == 0 else ("19:30", "20:30");
-        } else {
-            (start, end) = ("11:00", "12:00") if index == 0 else ("11:15", "12:30");
-        }
-        proposal = item(
-            target.id, title, target.category, start, end, (2000 + (index * 1000))
-        );
-        proposal = replace(proposal, venue=("fixture:alternative-" + str(index)));
-        if (index == 0) {
-            if (scenario == "missing_evidence") {
-                proposal = replace(
-                    proposal, cost_minor=None, hours=None, eligibility={}
-                );
-            } elif (scenario == "eligibility_conflict") {
-                proposal = replace(
-                    proposal,
-                    eligibility={
-                        ** rules,
-                        "pet:dog": False,
-                        "accessibility:wheelchair": False
-                    },
-                    child_min_age=12
-                );
-            } elif (scenario == "schedule_conflict") {
-                proposal = replace(
-                    proposal, start=moment("09:45"), end=moment("10:30")
-                );
-            } elif (scenario == "stale_evidence") {
-                proposal = replace(
-                    proposal,
-                    evidence=replace(
-                        fresh,
-                        checked_at=(now - timedelta(hours=1)).isoformat(),
-                        expires_at=now.isoformat()
-                    )
-                );
-            }
-        }
-        updated = `tuple(
-            proposal if (`node.id == target.id) else `node for `node in ordered
-        );
-        edges = `tuple(
-            transfer(a, b)
-            for (a, b) in zip(updated, updated[1:])
-            if (target.id in (a.id, b.id))
-        );
-        candidates.append(
-            Replacement(
-                "plan-b" if (index == 0) else "plan-c", target.id, proposal, edges
-            )
-        );
-    }
+    candidates = discover(trip, risk, "Boston", now, scenario)[0] if include_candidates else ();
     return (trip, risk, `tuple(candidates));
 }
 def run_fixture(
@@ -209,7 +151,7 @@ def run_fixture(
     inventory_change: str = "", sample_date: str = ""
 ) -> dict[str, any] {
     now = now or datetime.now(timezone.utc);
-    (trip, risk, candidates) = build_fixture(scenario, profile_name, now, sample_date);
+    (trip, risk, candidates) = build_fixture(scenario, profile_name, now, sample_date, not bool(inventory_change));
     if (not isinstance(budget, str) or (len(budget) > 24)) {
         raise ValueError("Budget must be a USD decimal string");
     }
@@ -230,7 +172,7 @@ def run_fixture(
     }
     trip = replace(trip, budget_minor=amount);
     refreshed: dict[str, any] | None = None;
-    if inventory_change { refreshed = refresh_alternatives(trip, risk, candidates, inventory_change, now); }
+    if inventory_change { refreshed = run_workflow(trip, risk, "Boston", inventory_change, now, scenario); }
     results = refreshed["results"] if refreshed else [
         validate_replacement(trip, risk, candidate, now) for candidate in candidates
     ];

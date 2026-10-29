@@ -288,6 +288,9 @@ test "soft interests never override hard failure" {
 test "incomplete profile and invalid child age" {
     fixture = ValidationFixture();
     fixture.setUp();
+    # A missing adult count must not mask an explicitly invalid child age.
+    fixture.assertCheck(fixture.result(trip=replace(fixture.trip,
+        profile=replace(fixture.trip.profile, adults=None, child_ages=(-1,), complete=False))), 'profile', 'fail');
     fixture.assertCheck(
         fixture.result(
             trip=replace(

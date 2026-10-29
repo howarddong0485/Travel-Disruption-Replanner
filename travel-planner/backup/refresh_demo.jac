@@ -11,6 +11,7 @@ with entry:__main__ {
         result = run_fixture(now=now + timedelta(minutes=index), inventory_change=change, sample_date=day);
         print(json.dumps({"inventory": change, "date": result["trip_date"], "summary": result["summary"],
             "options": [{"id": r["candidate_id"], "status": r["status"],
-                "cost": r["cost"]["projected_total_minor"], "provider": r["refresh_state"]} for r in result["results"]]}));
+                "cost": r["cost"]["projected_total_minor"], "provider": r["refresh_state"],
+                "changes": r["changes"]} for r in result["results"]]}));
     }
 }
