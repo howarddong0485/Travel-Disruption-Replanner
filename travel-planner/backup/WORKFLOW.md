@@ -1,5 +1,9 @@
 # Unified backup workflow
 
+**Current UI:** the saved-trip Backup plans panel now uses the connected
+[planning integration](../planning/README.md). This document records the preserved
+legacy sample/history workflow and its stateless/diagnostic interfaces.
+
 Both the saved-trip **Backup plans** panel and the sample lab now run:
 
 **Search → validate → refresh the same inventory IDs → revalidate → select Plan B/C → save → display.**

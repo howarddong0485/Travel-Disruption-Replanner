@@ -118,3 +118,18 @@ impl app.createDemo -> None {
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
 }
+
+impl app.createIntegratedDemo(scenario: str = "rain") -> None {
+    if busy or loading { return; } busy = True; error = "";
+    try {
+        demo = await create_planning_demo(scenario=scenario); selected = demo["trip_id"]; day = "";
+        trip_form = False; tab = "backups"; resetItem(); await refresh();
+        notice = "Sample ready. Find different plans, compare the changes, then keep or accept one.";
+    } except Exception as exc { error = str(exc); }
+    finally { busy = False; }
+}
+
+impl app.backupApplied -> None {
+    await refresh();
+    notice = "Your selected backup plan is saved. No real bookings or payments were made.";
+}

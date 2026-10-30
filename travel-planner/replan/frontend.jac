@@ -17,6 +17,10 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         matches = [i for i in state["items"] if i["id"] == id];
         return matches[0]["title"] if len(matches) > 0 else "Removed item";
     }
+    def chooseBackup(id: str, value: str) -> None {
+        browser: any = window;
+        updated = browser.Object.assign({}, choices); updated[id] = value; choices = updated;
+    }
     def loadRule(id: str) -> None {
         rule_id = id;
         matches = [i for i in state["items"] if i["id"] == id];
@@ -162,7 +166,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         ]}</div>
         {(<details className="card replan-inventory"><summary>View available mock backups</summary><p className="section-caption">Flexible synthetic options used to replace affected items in revised plans. Use the custom combination form to choose different backups.</p><div className="backup-grid">{[<div className="backup-chip" key={b["id"]}><strong>{b["title"]}</strong><small>{"For " + titleFor(b["item_id"])}</small><span>{amount(b["cost_cents"]) + " · " + str(b["duration_minutes"]) + " min"}</span></div> for b in result["backups"]]}</div></details>) if len(result["backups"]) > 0 else None}
         {(<section className="card"><p className="eyebrow">OPTIONAL · CUSTOMIZE</p><h3>Build your own combination</h3><p className="section-caption">Choose a backup for any affected item. Items whose operating window was missed need a replacement.</p>
-            <form onSubmit={combine}><div className="backup-grid">{[<div key={i["id"]}><label htmlFor={"choice-" + i["id"]}>{i["title"]}</label><select id={"choice-" + i["id"]} value={choices.get(i["id"], "")} disabled={bool(i["protected"])} onChange={lambda (e: ChangeEvent) { choices = {**choices, i["id"]: e.target.value}; }}><option value="">Keep original if feasible</option>{[<option key={b["id"]} value={b["id"]}>{b["title"] + " · " + amount(b["cost_cents"])}</option> for b in result["backups"] if b["item_id"] == i["id"]]}</select></div> for i in result["affected"]]}</div><button type="submit" className="secondary" disabled={busy}>Combine selected backups</button></form>
+            <form onSubmit={combine}><div className="backup-grid">{[<div key={i["id"]}><label htmlFor={"choice-" + i["id"]}>{i["title"]}</label><select id={"choice-" + i["id"]} value={choices.get(i["id"], "")} disabled={bool(i["protected"])} onChange={lambda (e: ChangeEvent) { chooseBackup(i["id"], e.target.value); }}><option value="">Keep original if feasible</option>{[<option key={b["id"]} value={b["id"]}>{b["title"] + " · " + amount(b["cost_cents"])}</option> for b in result["backups"] if b["item_id"] == i["id"]]}</select></div> for i in result["affected"]]}</div><button type="submit" className="secondary" disabled={busy}>Combine selected backups</button></form>
         </section>) if len(result["affected"]) > 0 and len(result["backups"]) > 0 else None}
         {(<p className="section-caption">No feasible revision found. Review the conflicts above or adjust the schedule rules.</p>) if len(result["affected"]) > 0 and len(result["proposals"]) == 0 and len(result["warnings"]) > 0 else None}
     </section>

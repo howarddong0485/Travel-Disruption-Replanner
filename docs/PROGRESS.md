@@ -2,11 +2,65 @@
 
 This report separates delivery on `main` from implementations still under review. Dated verification records identify the code, runtime and scope that were actually checked.
 
+## Connected backup planning — 2026-10-30
+
+Work on `codex/connected-backup-planning`, stacked on the candidate-selection
+branch, now connects Person 1's profile,
+mandatory-filter and budget implementations, Person 2's policy/risk analysis,
+Person 3's alternative generation, Person 4's versioned proposal transaction,
+and a deterministic comparison/acceptance UI in Roam. Source commits and the
+proposed shared contract are recorded in [the integration guide](../travel-planner/planning/README.md).
+Tracked in #34 (integration) and #33 (candidate selection). Publishing these
+branches does not merge upstream PRs or establish team-wide approval of the
+proposed contract. Parent #11 remains open for review and delivery.
+
+- Ten detected/reported risk categories can produce up to five alternatives,
+  including different venues/providers, rescheduling, and connected changes to
+  multiple itinerary nodes. Search is bounded to eight affected nodes and 256
+  combinations. Each complete itinerary is checked with P1 and P3 validators.
+- The shared contract carries the saved trip version, content identity, evidence
+  deadline, validation, changed nodes and deterministic comparison. Acceptance
+  refreshes inventory and revalidates before applying P3's actual candidate in
+  P4's existing transaction. Rejection leaves the itinerary unchanged. Retries,
+  reviewed proposals, trip edits and changed provider facts cannot restore an
+  obsolete selectable proposal.
+- Original/proposed totals include reserve. Retained payments count once;
+  potential cash refunds, credit and confirmed refunds remain separate. Quotes
+  are not presented as cash due now. Missing facts and uncertain cancellation
+  liability remain unresolved. An optional model only selects supplied validated
+  IDs, with deterministic fallback.
+- The normal **Backup plans** page and **Try connected backup plans** entry use
+  the connected flow. The earlier guided demo explicitly retains its legacy
+  inventory. Imported owner modules are preserved at the documented PR heads.
+
+Verification uses the manifest-pinned **Jac 0.37.23**, the working local venv,
+temporary test databases, and isolated browser-demo SQLite files:
+
+- Full service, backup, planning, profile, filter, budget, schema, policy and risk
+  regression: **387 passed**. The previously failing MockLLM test passes after
+  installing the project's declared development capabilities.
+- Static checks: **four application entries passed**. The Roam and standalone
+  backup client builds pass. The CLI demonstrates three weather choices, five
+  arrival-delay choices, and five connected two-node closure alternatives.
+- Development-browser checks cover comparison, rejection and replacement,
+  transactional acceptance, requirements that disable acceptance, and a 390px
+  layout. No real provider, model, booking, payment or cancellation is exercised.
+
+This is an integrated **synthetic Boston/USD MVP**, not production delivery.
+Clean-checkout CI and deployment remain unverified. Two packaging/runtime issues
+were observed: `jac build travel` fails sealed precompilation with a `TripView` /
+`ItemView` JSX type-identity error, although the client build passes; and
+`jac run --no-dev` returns 404 at the UI root in this setup. Use development mode
+for the verified local browser flow, and restart the server after backend module
+edits because HMR may retain imported modules. The dated records below describe
+earlier standalone slices and retain their original verification limits.
+
 ## Backup candidate selection and backfill — 2026-10-29
 
 Local work on `codex/backup-candidate-selection`, based on `5e8604c` from the
 workflow stack, extends Gehao Dong's module-owned search and refresh flow.
-This slice has not been committed, pushed or published as a PR.
+At this October 29 checkpoint the slice had not been committed or pushed.
+Its publication and the subsequent integration are tracked in #33 and #34 above.
 
 - The workflow evaluates four supported candidates per scenario before selecting
   up to two Plan B/C cards. Rejected and failed-provider options can be replaced

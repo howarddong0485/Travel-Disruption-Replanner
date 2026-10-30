@@ -1,6 +1,6 @@
 """Roam's responsive trip workspace."""
 import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip,
-    list_items, save_item, set_item_state, delete_item, replan_demo }
+    list_items, save_item, set_item_state, delete_item, replan_demo, create_planning_demo }
 import from backup.frontend { BackupPanel }
 import from replan.frontend { ReplanPanel }
 import from demo.frontend { GuidedDemo }
@@ -60,6 +60,8 @@ def:pub app -> JsxElement {
     async def removeItem(item: ItemView) -> None;
     async def removeTrip -> None;
     async def createDemo -> None;
+    async def createIntegratedDemo(scenario: str = "rain") -> None;
+    async def backupApplied -> None;
     async can with entry {
         document.title = "Roam — Travel Planner";
         await refresh();
@@ -94,6 +96,7 @@ def:pub app -> JsxElement {
             ]}</div>
             <button type="button" className="new-trip" onClick={lambda { openTrip(); }} disabled={busy or loading}>＋ Plan a new trip</button>
             <button type="button" className="text-button demo-trip" onClick={createDemo} disabled={busy or loading}>Start backup & replan demo ↗</button>
+            <button type="button" className="text-button demo-trip" onClick={lambda { createIntegratedDemo("rain"); }} disabled={busy or loading}>Try connected backup plans ↗</button>
             <div className="sidebar-bottom"><p>Organized travel.</p><small>Your plans, all in one place.</small></div>
         </aside>
         <main className="workspace">
@@ -156,10 +159,12 @@ def:pub app -> JsxElement {
                 ]}</nav>
                 {(<section className="backup-workspace" aria-label="Backup plans">
                     <div className="card workflow-intro"><p className="eyebrow">PREPARE ALTERNATIVES</p><h2>Backup plans</h2>
-                        <p>Generate Plan B / C ideas before plans change. If a disruption has already happened, use Replan to review changes to your itinerary.</p>
+                        <p>Prepare alternatives for detected risks or a change you report. Compare the complete plans and explicitly accept a revision.</p>
+                        <div className="planning-demo-actions"><button type="button" className="secondary" disabled={busy} onClick={lambda { createIntegratedDemo("rain"); }}>Try weather sample</button>
+                            <button type="button" className="secondary" disabled={busy} onClick={lambda { createIntegratedDemo("arrival_delay"); }}>Try arrival-delay sample</button></div>
                         <button type="button" className="text-button" onClick={lambda { chooseTab("replan"); }}>Replan after a disruption →</button>
                     </div>
-                    <BackupPanel key={selected} trip={current} items={items}/>
+                    <BackupPanel key={selected} trip={current} items={items} onApplied={backupApplied}/>
                 </section>) if not loading and tab == "backups" else None}
                 {(<section className="budget-overview card"><div><p className="eyebrow">EVERY LITTLE THING ADDS UP</p><h2>Your trip, in numbers.</h2>
                     <p>Costs are counted once, in {current.currency}. Mark each cost paid as you go.</p></div><div className="budget-numbers">

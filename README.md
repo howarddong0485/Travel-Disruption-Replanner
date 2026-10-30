@@ -4,7 +4,14 @@
 
 Travel Disruption Replanner is a proposed AI travel assistant that helps travelers build a trip within their budget, prepare alternatives before departure, and adjust affected plans when something changes. It considers the whole itinerary: a delayed flight can affect a rental car pickup, hotel check-in, dinner reservation, and the following day's activities.
 
-> **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner, mock Plan B/C previews, and a [disruption-replanning prototype](travel-planner/replan/README.md) with dependency checks, combined backups, optional Jac LLM selection, and version-safe traveler-approved updates. Shared constraint validation, automatic risk detection, and multi-agent integration remain planned. This milestone uses synthetic travel data and simulated disruptions.
+> **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner, mock backup plans, and [disruption replanning](travel-planner/replan/README.md). This review branch adds connected validation, risk analysis, comparison and version-safe traveler-approved updates. The shared contracts and dependency PRs still require review/merge. This milestone uses synthetic travel data and simulated disruptions.
+
+The `codex/connected-backup-planning` proposal (#34) connects P1 profile/filter/budget,
+P2 risk/policy, P3 multi-plan generation and P4 transactional application through
+a typed alternative contract and Roam comparison/review UI. See the
+[connected backup guide](travel-planner/planning/README.md) for supported synthetic
+cases, source PR heads and verification. These changes do not imply those
+upstream PRs have merged or that live-provider integration is complete.
 
 ## Documentation
 

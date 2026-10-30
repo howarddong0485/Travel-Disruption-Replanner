@@ -41,3 +41,11 @@ entry-point = "backup.refresh_app"
 # Keep provider credentials in the server environment. BYLLM_DEFAULT_MODEL overrides this.
 [byllm.model]
 default_model = "gpt-4o-mini"
+
+[placement.pins]
+"schema.*" = "server"
+"policy.*" = "server"
+"risk.*" = "server"
+"profile.*" = "server"
+"filter.*" = "server"
+"budget.*" = "server"
