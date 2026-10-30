@@ -148,7 +148,7 @@ def run_fixture(
     profile_name: str = "family",
     budget: str = "600",
     now: (datetime | None) = None,
-    inventory_change: str = "", sample_date: str = ""
+    inventory_change: str = "", sample_date: str = "", expanded: bool = False
 ) -> dict[str, any] {
     now = now or datetime.now(timezone.utc);
     (trip, risk, candidates) = build_fixture(scenario, profile_name, now, sample_date, not bool(inventory_change));
@@ -172,7 +172,7 @@ def run_fixture(
     }
     trip = replace(trip, budget_minor=amount);
     refreshed: dict[str, any] | None = None;
-    if inventory_change { refreshed = run_workflow(trip, risk, "Boston", inventory_change, now, scenario); }
+    if inventory_change { refreshed = run_workflow(trip, risk, "Boston", inventory_change, now, scenario, expanded=expanded); }
     results = refreshed["results"] if refreshed else [
         validate_replacement(trip, risk, candidate, now) for candidate in candidates
     ];

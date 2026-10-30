@@ -253,10 +253,10 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
         return (" · ".join(reasons) if len(reasons) > 0 else "Latest saved observation") + " · history only";
     }
     def inventoryLabel(value: str) -> str {
-        labels = {"unchanged": "Original inventory", "price_increase": "Plan B price increased",
-            "sold_out": "Plan B sold out", "all_sold_out": "Both sold out",
-            "expired_evidence": "Plan B evidence expired", "provider_failure": "Both providers failed",
-            "partial_failure": "Plan B provider failed"};
+        labels = {"unchanged": "Original inventory", "price_increase": "First inventory option price increased",
+            "sold_out": "First inventory option sold out", "all_sold_out": "All inventory sold out",
+            "expired_evidence": "First inventory option evidence expired", "provider_failure": "All providers failed",
+            "partial_failure": "First inventory provider failed"};
         return labels.get(value, "Inventory observation");
     }
     eligible = [item for item in (history.get("targets", []) if history else []) if item["category"] == ("activity" if scenario == "rain" else "food")];
@@ -306,12 +306,12 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
             {(<div className="validation-refresh-control"><label htmlFor={prefix + "-inventory"}>Inventory on next refresh</label>
                 <select id={prefix + "-inventory"} value={inventory} disabled={pending or booting} onChange={lambda (e: ChangeEvent) { inventory = e.target.value; inputChanged(); }}>
                     <option value="unchanged">Fresh inventory · original sample prices</option>
-                    <option value="price_increase">Plan B price rises by USD 200 for the whole party</option>
-                    <option value="sold_out">Plan B sold out</option>
-                    <option value="all_sold_out">Both alternatives sold out</option>
-                    <option value="expired_evidence">Plan B provider returns expired evidence</option>
-                    <option value="provider_failure">Both providers fail</option>
-                    <option value="partial_failure">Plan B provider fails · Plan C responds</option>
+                    <option value="price_increase">First inventory option price rises by USD 200 for the whole party</option>
+                    <option value="sold_out">First inventory option sold out</option>
+                    <option value="all_sold_out">All alternatives sold out</option>
+                    <option value="expired_evidence">First inventory option returns expired evidence</option>
+                    <option value="provider_failure">All providers fail</option>
+                    <option value="partial_failure">First inventory provider fails · others respond</option>
                 </select>
                 <p className="muted">Each selection is a separate inventory snapshot; price changes do not accumulate. Refresh replaces all previous conclusions.</p>
             </div>) if diagnostics else None}
@@ -319,19 +319,25 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
             {(<p role="status">Availability has expired. Find alternatives again for current options.</p>) if expired else None}
             {(<p className="alert error" role="alert">{failure}</p>) if failure else None}
             {(<div className="validation-results" aria-live="polite">
-                <p role="status">{result["message"] if diagnostics else ("No alternatives are available for this destination and currency." if len(result["results"]) == 0 else "Review the alternatives below. Your itinerary has not changed.")}</p>
+                <p role="status">{result["selection"]["message"] if result.get("selection") else result["message"] if diagnostics else ("No alternatives are available for this destination and currency." if len(result["results"]) == 0 else "Review the alternatives below. Your itinerary has not changed.")}</p>
                 {(<p><strong>{result["profile_summary"]}</strong><br/>{"Item date: " if trip_id else "Sample date: "}{result["trip_date"]} · {result.get("trip_zone", "America/New_York")}</p>) if diagnostics else None}
                 {(<section className="backup-pipeline" aria-label="Backup workflow">
-                    <p>{"Searched " + str(result["pipeline"]["searched_count"]) + " inventory records → Checked " + str(result["pipeline"]["selected_count"]) + " candidates → Refreshed and rechecked → Saved #" + str(revision)}</p>
+                    <p>{"Searched " + str(result["pipeline"]["searched_count"]) + " inventory records → Checked " + str(result["pipeline"].get("evaluated_count", result["pipeline"]["selected_count"])) + " candidates → Refreshed and rechecked → Selected " + str(result["pipeline"]["selected_count"]) + " → Saved #" + str(revision)}</p>
                     <p>{"Inventory IDs: " + (result["pipeline"]["provider_ids"].join(", ") or "None")}</p>
                     <details><summary>Search exclusions and initial checks</summary>
                         <ul>{[<li key={str(i)}>{r["provider_id"] + ": " + r["reason"]}</li> for (i, r) in enumerate(result["pipeline"]["exclusions"])]}</ul>
                         <ul>{[<li key={r["provider_id"]}>{r["provider_id"] + " · Before refresh: " + label(r["status"])}</li> for r in result["pipeline"]["initial_checks"]]}</ul>
                     </details>
+                    {(<details><summary>Candidate selection decisions</summary>
+                        <p>Passed alternatives come first, then options needing confirmation. Search order is preserved within each group; price is not a ranking score.</p>
+                        <ul>{[<li key={d["provider_id"]}>{d["provider_id"] + " · " + d["reason"] + " · " + label(d["status"])}
+                            <ul>{[<li key={str(i)}>{c["message"]}</li> for (i, c) in enumerate(d["checks"])]}</ul>
+                        </li> for d in result["selection"]["decisions"]]}</ul>
+                    </details>) if result.get("selection") else None}
                 </section>) if diagnostics and result and result.get("pipeline") else None}
                 {(<p>{str(result["summary"]["passed_fixture_checks"]) + " passed · " + str(result["summary"]["invalid"]) + " rejected · " + str(result["summary"]["needs_validation"]) + " awaiting evidence"}</p>) if diagnostics else None}
                 <div className="backup-options">{[<article className="backup-option validation-option" key={option["candidate_id"]}>
-                    <p className="eyebrow">{(option["candidate_id"] + " · " + option.get("provider_id", option["candidate_id"])) if diagnostics else ("Plan B" if option["candidate_id"] == "plan-b" else "Plan C")}</p><h3>{option["title"]}</h3>
+                    <p className="eyebrow">{(option.get("display_label", option["candidate_id"]) + " · " + option.get("provider_id", option["candidate_id"])) if diagnostics else option.get("display_label", "Plan B" if option["candidate_id"] == "plan-b" else "Plan C")}</p><h3>{option["title"]}</h3>
                     {(<p className="validation-provider-error">Availability could not be refreshed. Please try again.</p>) if option["refresh_state"] == "provider_error" else None}
                     <p className="validation-status" data-status={option["status"]}>{label(option["status"])}</p>
                     {(<p>Traveler details, timing or pricing still need confirmation before using this option.</p>) if not diagnostics and option["status"] == "needs_validation" else None}
@@ -368,6 +374,10 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
                     <p>{"Recorded: " + record["checked_at"] + " · Evidence deadline: " + record["expires_at"]}</p>
                     <p>{"Item date: " + record["context"]["sample_date"] + " · Profile: " + record["context"]["profile_name"] + " · Budget " + record["context"].get("currency", "USD") + " " + (record["context"]["budget"] or "unknown")}</p>
                     {(<p>{"Searched inventory IDs: " + (record["pipeline"]["provider_ids"].join(", ") or "None")}</p>) if record.get("pipeline") else None}
+                    {(<details><summary>Recorded selection decisions</summary>
+                        <p>{record["selection"]["message"]}</p>
+                        <ul>{[<li key={d["provider_id"]}>{d["provider_id"] + " · " + d["reason"] + " · " + label(d["status"])}</li> for d in record["selection"]["decisions"]]}</ul>
+                    </details>) if record.get("selection") else None}
                     <ul>{[<li key={option["candidate_id"]}>
                         <strong>{option["title"]}</strong><p>{"Outcome when recorded: " + label(option["status"]) + " · Recorded total: " + money(option["cost_minor"])}</p>
                         <p>{"Source: " + (option["source"] or "Provider unavailable; previous evidence discarded")}</p>
