@@ -8,7 +8,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         adults: str = "", children: str = "", pets: str = "", dietary: str = "", wheelchair: bool = False,
         zone: str = "", reserve: str = "0", details: dict[str, any] = {}, routes: dict[str, str] = {},
         confirmed: dict[str, bool] = {}, selectedRisks: list[str] = [], reason: str = "detected", target: str = "", notBefore: str = "",
-        useAI: bool = False, limit: str = "4", sequence: Ref[int] = Ref(0), expiryTimer: Ref[int] = Ref(0), listener: Ref[any] = Ref(None), alive: Ref[bool] = Ref(True), checkQueued: Ref[bool] = Ref(False), versionCallback: Ref[any] = Ref(None);
+        useAI: bool = False, limit: str = "4", sequence: Ref[int] = Ref(0), expiryTimer: Ref[int] = Ref(0), listener: Ref[any] = Ref(None), alive: Ref[bool] = Ref(True), checkQueued: Ref[bool] = Ref(False), versionCallback: Ref[any] = Ref(None), seenCandidates: Ref[any] = Ref([]);
     def split(value: str) -> list[str] { parts: any = value.split(","); return [s.trim() for s in parts if s.trim()]; }
     def joined(values: any) -> str { return values.join(", "); }
     def money(value: any) -> str {
@@ -190,8 +190,14 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         } except Exception { failure = "Could not save these facts. Check the traveler counts, ages, timezone and amounts, then reload if the trip changed."; }
         finally { if alive.current { busy = False; if checkQueued.current { checkVersion(); } } }
     }
-    async def findPlans -> None {
-        if busy or state is None { return; } busy = True; failure = ""; notice = ""; clear();
+    async def findPlans(other: bool = False) -> None {
+        if busy or state is None { return; }
+        excluded: list[str] = [key for key in seenCandidates.current] if other else [];
+        if other and result {
+            for plan in result["plans"] { if plan["candidate_id"] not in excluded { excluded.append(plan["candidate_id"]); } }
+        }
+        seenCandidates.current = excluded;
+        busy = True; failure = ""; notice = ""; clear();
         request = sequence.current;
         try {
             current = state; ids = selectedRisks;
@@ -208,7 +214,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                 if request != sequence.current { return; }
                 state = current; ids = [riskId]; notifyTabs();
             }
-            response = await generate_backup_plans(trip_id=trip_id, expected_version=current["trip_version"], risk_ids=ids, max_plans=int(limit), use_llm=useAI);
+            response = await generate_backup_plans(trip_id=trip_id, expected_version=current["trip_version"], risk_ids=ids, max_plans=int(limit), use_llm=useAI, exclude_candidate_ids=excluded);
             if request != sequence.current { return; }
             result = response;
             if onGenerated and len(response["plans"]) > 0 { onGenerated(); }
@@ -292,7 +298,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                 {risk["summary"] + (" · Needs evidence" if risk["status"] != "flagged" else "")}</label> for risk in state["risks"]]}
                 {(<p>No risks are established yet. Add trip facts or report a change.</p>) if len(state["risks"]) == 0 else None}</div>) if reason == "detected" else None}
             <label className="replan-check"><input type="checkbox" checked={useAI} disabled={busy} onChange={lambda (e: ChangeEvent) { useAI = e.target.checked; clear(); }}/>Use AI to choose among validated plans</label>
-            <button type="button" className="primary" disabled={busy or (reason == "detected" and len(selectedRisks) == 0)} onClick={findPlans}>{"Preparing plans…" if busy else "Find alternative plans"}</button>
+            <button type="button" className="primary" disabled={busy or (reason == "detected" and len(selectedRisks) == 0)} onClick={lambda { findPlans(); }}>{"Preparing plans…" if busy else "Find alternative plans"}</button>
             {(<section className="planning-results" aria-live="polite"><p>{result["message"]}</p>
                 <div className="backup-grid">{[<article className="backup-option" key={plan["id"]}>
                     <h4>{"Alternative " + str(index + 1)}</h4><p>{"Ready for review" if plan["selectable"] else "Needs confirmation"}</p>
@@ -311,7 +317,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                     <button type="button" className="primary" disabled={busy or not plan["selectable"]} onClick={lambda { review(plan["id"], True); }}>Accept this plan</button>
                     <button type="button" className="secondary" disabled={busy} onClick={lambda { review(plan["id"], False); }}>Keep current plan</button>
                 </article> for (index, plan) in enumerate(result["plans"])]}</div>
-                <button type="button" className="secondary" disabled={busy} onClick={findPlans}>Find other plans</button>
+                <button type="button" className="secondary" disabled={busy} onClick={lambda { findPlans(True); }}>Find other plans</button>
             </section>) if result else None}
         </div>) if state else None}
     </section>;

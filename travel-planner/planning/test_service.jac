@@ -171,6 +171,25 @@ test "rejecting and requesting another plan excludes its stable identity while r
     }
 }
 
+test "requesting other plans advances stable candidates without rejecting or changing the trip" {
+    with integrated_client() as client {
+        state = api(client, "create_planning_demo", scenario="arrival_delay"); before = active_rows();
+        first = generate(client, state, max_plans=3); ids = [p["candidate_id"] for p in first["plans"]];
+        assert len(ids) == 3;
+        request_id = str(uuid.uuid4());
+        other = generate(client, state, max_plans=3, exclude_candidate_ids=ids, request_id=request_id);
+        assert other["plans"] and all(p["candidate_id"] not in ids for p in other["plans"]);
+        retry = generate(client, state, max_plans=3, exclude_candidate_ids=ids, request_id=request_id);
+        assert retry["replayed"] and retry["plans"] == other["plans"];
+        assert not client.post("/function/generate_backup_plans", json={"trip_id":state["trip_id"], "expected_version":state["trip_version"], "risk_ids":[r["id"] for r in state["risks"]], "max_plans":3, "exclude_candidate_ids":[], "request_id":request_id}).ok;
+        seen = ids + [p["candidate_id"] for p in other["plans"]];
+        final = generate(client, state, max_plans=3, exclude_candidate_ids=seen);
+        assert not final["plans"] and active_rows() == before;
+        current = api(client, "planning_state", trip_id=state["trip_id"]);
+        assert all(current["review_statuses"][p["id"]] == "proposed" for p in first["plans"] + other["plans"]);
+    }
+}
+
 test "paid originals become one retained expense and remain counted once in subsequent plans" {
     with integrated_client() as client {
         state = api(client, "create_planning_demo"); trip_id = state["trip_id"];

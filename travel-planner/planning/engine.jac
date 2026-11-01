@@ -16,7 +16,7 @@ import from tools.alternatives.catalog { search }
 import from schema.alternative { ALTERNATIVE_CONTRACT_VERSION as PLAN_CONTRACT, alternative_from_dict }
 import from schema.common { to_plain }
 
-glob VALIDATION_VERSION = "roam.planning-validator.v2";
+glob VALIDATION_VERSION = "roam.planning-validator.v3";
 glob SUPPORTED_REASONS = ("weather", "timing", "long_drive", "opening_hours", "booking_terms", "closure", "cancellation", "traveler_change", "budget_change", "inventory_change");
 
 def risk_context(context: dict[str, any], risk: dict[str, any], item_id: str) -> RiskContext {
@@ -181,6 +181,7 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
         } except Exception { warnings.append("Model selection unavailable or invalid; showing deterministic validated plans"); }
     }
     message = "Review the proposed changes before accepting." if plans else "No supported plan fits the available facts and constraints.";
+    if excluded_ids and not plans { message = "No other supported plan fits the available facts and constraints. Your current itinerary is unchanged."; }
     if not plans and context["facts"].get("inventory_change") == "provider_failure" { message = "Availability could not be refreshed. Please try again."; }
     if context["state"]["trip"]["destination"].strip().lower() not in ("boston", "boston, ma", "boston, usa") or context["trip"].currency != "USD" {
         message = "The demo inventory currently supports Boston trips in USD.";

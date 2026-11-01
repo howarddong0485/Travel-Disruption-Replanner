@@ -162,11 +162,18 @@ def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_ve
 }
 
 def:pub generate_backup_plans(trip_id: str, expected_version: any, max_plans: any, risk_ids: list[str],
-    use_llm: bool = False, request_id: str = "") -> dict[str, any] {
+    use_llm: bool = False, request_id: str = "", exclude_candidate_ids: list[str] = []) -> dict[str, any] {
     if type(expected_version) is not int or expected_version < 1 { raise ValueError("Expected trip version must be a positive integer"); }
     if type(max_plans) is not int or not 1 <= max_plans <= 5 { raise ValueError("Choose one to five plans"); }
+    # Jac 0.37.23's HTTP bridge retains an omitted list default as literal text.
+    if exclude_candidate_ids is None or exclude_candidate_ids == "[]" { exclude_candidate_ids = []; }
+    if not isinstance(exclude_candidate_ids, list) or len(exclude_candidate_ids) > 256 or any(not isinstance(key, str) or not re.fullmatch(r"plan-[0-9a-f]{20}", key) for key in exclude_candidate_ids) {
+        raise ValueError("Invalid candidate exclusions");
+    }
     request_id = identifier(request_id or str(uuid.uuid4()));
-    request_hash = json.dumps({"trip_id": trip_id, "version": expected_version, "risks": risk_ids, "limit": max_plans, "llm": use_llm}, sort_keys=True);
+    request_data = {"trip_id": trip_id, "version": expected_version, "risks": risk_ids, "limit": max_plans, "llm": use_llm};
+    if exclude_candidate_ids { request_data["exclude_candidate_ids"] = sorted(set(exclude_candidate_ids)); }
+    request_hash = json.dumps(request_data, sort_keys=True);
     conn = _connect();
     try {
         conn.execute("BEGIN");
@@ -186,7 +193,7 @@ def:pub generate_backup_plans(trip_id: str, expected_version: any, max_plans: an
         }
         if state["version"] != expected_version { raise ValueError("Trip changed; reload before finding plans"); }
         context = build_context(state, read_facts(conn, trip_id), clock());
-        excluded = set();
+        excluded = set(exclude_candidate_ids);
         for row in conn.execute("SELECT payload FROM replan_proposals WHERE trip_id=? AND base_version=? AND status='rejected'", (trip_id, expected_version)) {
             rejected_plan = json.loads(row["payload"]);
             if rejected_plan.get("plan_contract") == "roam.alternative-plan.v1" { excluded.add(rejected_plan["candidate_id"]); }

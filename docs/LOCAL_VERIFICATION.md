@@ -187,3 +187,30 @@ The final complete pinned sequence passed **421 reported tests**, four app check
 both client builds, CLI alternatives **3 / 5 / 5**, the 46-module sealed package,
 and isolated source/package HTTP/CLI checks. Nine added regression cases cover
 the pre-merge review corrections. Earlier 419/420 counts above are historical.
+
+
+### Dated hours and distinct follow-up plans
+
+The next review reproduced two additional failures: same-venue reschedules could
+ignore a supported closed-day record, and Find other plans repeated the displayed
+candidates. Validator v3 now uses the dated supplemental hours, preserves unknowns
+when their evidence is stale/incomplete, and caps the review by that evidence.
+The acceptance regression rejects a formerly selectable closed-day reschedule
+before any write. Request-another accumulates stable candidate exclusions, includes
+them in idempotency checks and leaves prior proposals and active items unchanged.
+The HTTP bridge's literal empty-list default is normalized for old callers.
+
+The full pinned sequence passed **423 reported tests**, four app checks, both
+clients, CLI alternatives **3 / 5 / 5**, complete 46-module sealing and isolated
+source/package HTTP/CLI checks. Eleven added regression cases cover the review
+corrections. Browser verification advanced through **3 → 2 → 0** distinct options,
+showed the exhausted-pool message, retained the itinerary and had no console
+errors. The earlier 421-test record remains historical.
+
+
+During this verification, sealing first stopped because documentation changed
+while preparation was running. The already-passing 423-test/four-check/client
+results were retained. After files were held stable, the same verification
+script's sealing and source/package HTTP/CLI phases were rerun successfully;
+the 46-module package and both runtime checks passed. No backend source changed
+between these phases. Hosted CI runs the final committed tree from the start.

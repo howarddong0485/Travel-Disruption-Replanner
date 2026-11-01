@@ -64,7 +64,7 @@ Public service functions:
 - `save_planning_context(trip_id, payload, expected_version)` validates and saves
   supplemental facts. It increments the authoritative trip version.
 - `generate_backup_plans(trip_id, expected_version, max_plans, risk_ids,
-  use_llm=False, request_id="")` produces and stores proposals. `max_plans` and
+  use_llm=False, request_id="", exclude_candidate_ids=[])` produces and stores proposals. `max_plans` and
   `risk_ids` are explicit HTTP inputs. A canonical UUID request ID permits retries
   without duplicating observations or extending evidence.
 - `review_backup_plan(trip_id, proposal_id, accept)` requires a raw boolean.
@@ -170,3 +170,15 @@ reproduced in either clean non-development environment. Restart the development
 server after backend edits because imported modules may remain in HMR memory.
 Shared-owner approval remains separate; see the
 [review packet](../../docs/CONTRACT_REVIEW.md).
+
+
+Requesting other plans supplies accumulated stable `candidate_id` exclusions.
+Exclusions participate in the retry hash and do not reject the existing proposals
+or modify active items. The bounded pool can be exhausted explicitly. Empty
+exclusions preserve the existing request hash; the server normalizes the literal
+empty-list default supplied by Jac 0.37.23's HTTP bridge.
+
+Validator v3 reconciles dated supplemental opening-hours evidence with the
+scheduled venue: a confirmed closed day has no valid visit window, stale or
+incomplete supporting hours remain unknown, and valid window evidence caps the
+review expiry. Generation and acceptance share these effective windows.

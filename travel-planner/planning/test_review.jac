@@ -1,6 +1,7 @@
 """Pre-merge review regressions with a fixed evidence clock."""
 import json;
 import from copy { deepcopy }
+import from dataclasses { asdict, replace }
 import from datetime { datetime, timezone, timedelta }
 import from unittest.mock { Mock, patch }
 import from planning.fixtures { sample_state }
@@ -9,6 +10,44 @@ import from planning.engine { generate_plans }
 import from planning.application { apply_backup }
 
 glob REVIEW_CLOCK = datetime(2026, 11, 1, 12, tzinfo=timezone.utc);
+
+test "supplemental dated hours govern same-venue reschedules and expire with their proof" {
+    for closed in (True, False) {
+        (state, facts) = sample_state(REVIEW_CLOCK); day = state["trip"]["start_date"];
+        for hours in facts["place_hours"] {
+            if hours["node_id"] == "activity" {
+                hours.update({"closed":closed, "open_local":"13:00", "close_local":"15:00"});
+                facts["evidence_deadlines"][hours["evidence_id"]] = (REVIEW_CLOCK + timedelta(minutes=2)).isoformat();
+            }
+        }
+        context = build_context(state, facts, REVIEW_CLOCK);
+        ids = [r["id"] for r in context["risks"] if r["category"] == "opening_hours" and "activity" in r["node_ids"]];
+        plans = generate_plans(context, REVIEW_CLOCK, ids, max_plans=5)["plans"];
+        assert plans and all(p["selectable"] for p in plans);
+        for plan in plans {
+            for candidate in plan["replacements"] {
+                if candidate["action"] == "reschedule" {
+                    assert not closed;
+                    assert day + "T13:00" <= candidate["item"]["start"]["local"] < candidate["item"]["end"]["local"] <= day + "T15:00";
+                    assert datetime.fromisoformat(plan["expires_at"]) <= REVIEW_CLOCK + timedelta(minutes=2);
+                }
+            }
+        }
+        if closed {
+            original = next(item for item in context["trip"].items if item.id == "activity");
+            unsafe = deepcopy(plans[0]); candidate = unsafe["replacements"][0];
+            candidate["action"] = "reschedule"; candidate["provider_id"] = "reschedule:activity:30";
+            candidate["item"] = asdict(original); unsafe["strategy"] = "reschedule";
+            conn = Mock(); rejected = False;
+            with patch("planning.application.read_facts", return_value=facts) {
+                try { apply_backup(conn, state, unsafe, REVIEW_CLOCK); }
+                except ValueError as exc { rejected = "no longer passes" in str(exc); }
+            }
+            assert rejected and conn.execute.call_count == 0;
+        }
+        if not closed { assert any(p["strategy"] == "reschedule" for p in plans); }
+    }
+}
 
 test "all selected risks on one item are enforced in either selection order" {
     (state, facts) = sample_state(REVIEW_CLOCK); day = state["trip"]["start_date"];

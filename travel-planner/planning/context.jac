@@ -4,6 +4,7 @@ The payload supplements saved records; it cannot replace their identity, prices,
 paid state, dates or fixed/dependency rules. Absent facts stay unknown.
 """
 import json;
+import re;
 import from copy { deepcopy }
 import from datetime { datetime, timedelta }
 import from dataclasses { asdict }
@@ -131,6 +132,28 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
         end = parse_moment(detail["end"]) if detail.get("end") else Moment("", zone);
         evidence = parse_evidence(detail.get("evidence"));
         hours = tuple(Window(parse_moment(w["start"]), parse_moment(w["end"])) for w in detail["hours"]) if detail.get("hours") is not None else None;
+        dated = [h for h in facts.get("place_hours", []) if h["node_id"] == item["id"] and h["date"] == start.local[:10]];
+        if dated {
+            record = dated[0]; source_id = record["evidence_id"];
+            source = next((e for e in facts.get("evidence", []) if e["id"] == source_id), {});
+            proof = evidence if source_id == "item-facts:" + item["id"] else Evidence(source.get("source_ref", ""), source.get("retrieved_at", ""), facts.get("evidence_deadlines", {}).get(source_id, ""));
+            if evidence_problem(proof, now) { hours = None; }
+            elif record.get("closed", False) { hours = (); }
+            else {
+                try {
+                    if not all(re.fullmatch(r"[0-9]{2}:[0-9]{2}", record.get(key, "")) for key in ("open_local", "close_local")) { raise ValueError("Incomplete hours"); }
+                    opening = datetime.fromisoformat(record["date"] + "T" + record["open_local"]);
+                    closing = datetime.fromisoformat(record["date"] + "T" + record["close_local"]);
+                    if closing <= opening { closing += timedelta(days=1); }
+                    hours = (Window(Moment(opening.isoformat(timespec="minutes"), zone), Moment(closing.isoformat(timespec="minutes"), zone)),);
+                } except ValueError { hours = None; }
+            }
+            if proof is not None and not evidence_problem(proof, now) and evidence is not None and not evidence_problem(evidence, now) {
+                evidence = Evidence(evidence.source + ";" + proof.source,
+                    max(datetime.fromisoformat(evidence.checked_at), datetime.fromisoformat(proof.checked_at)).isoformat(),
+                    min(datetime.fromisoformat(evidence.expires_at), datetime.fromisoformat(proof.expires_at)).isoformat());
+            }
+        }
         nodes.append(ScheduledItem(item["id"], item["title"], item["category"], item["location"], start, end,
             trip["currency"], item["cost_cents"] if evidence else None, detail.get("party_size"), detail.get("fees_included"), evidence,
             detail.get("availability", "unknown"), hours, detail.get("eligibility", {}), detail.get("child_min_age"),
