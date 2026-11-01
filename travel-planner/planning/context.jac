@@ -23,6 +23,19 @@ glob CONTEXT_VERSION = "roam.planning-context.v1";
 def install_context_schema(conn: any) -> None {
     conn.execute("CREATE TABLE IF NOT EXISTS planning_contexts (trip_id TEXT PRIMARY KEY REFERENCES trips(id) ON DELETE CASCADE, payload TEXT NOT NULL)");
     conn.execute("CREATE TABLE IF NOT EXISTS planning_runs (id TEXT PRIMARY KEY, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE, request_hash TEXT NOT NULL, payload TEXT NOT NULL)");
+    installed = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='planning_fact_invalidations'").fetchone();
+    conn.execute("CREATE TABLE IF NOT EXISTS planning_fact_invalidations (item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE)");
+    if installed is None {
+        # Earlier contexts have no binding to edits made before this guard existed.
+        conn.execute("INSERT OR IGNORE INTO planning_fact_invalidations SELECT i.id,i.trip_id FROM items i JOIN planning_contexts p ON p.trip_id=i.trip_id");
+    }
+    conn.execute("""CREATE TRIGGER IF NOT EXISTS planning_item_facts_changed
+        AFTER UPDATE OF title,category,date,time,location,reference,cost_cents ON items
+        WHEN OLD.title IS NOT NEW.title OR OLD.category IS NOT NEW.category OR
+             OLD.date IS NOT NEW.date OR OLD.time IS NOT NEW.time OR
+             OLD.location IS NOT NEW.location OR OLD.reference IS NOT NEW.reference OR
+             OLD.cost_cents IS NOT NEW.cost_cents
+        BEGIN INSERT OR REPLACE INTO planning_fact_invalidations(item_id,trip_id) VALUES(NEW.id,NEW.trip_id); END""");
     for operation in ("INSERT", "UPDATE", "DELETE") {
         ref = "OLD" if operation == "DELETE" else "NEW";
         conn.execute("CREATE TRIGGER IF NOT EXISTS planning_context_" + operation.lower() + " AFTER " + operation +
@@ -33,7 +46,21 @@ def install_context_schema(conn: any) -> None {
 
 def read_facts(conn: any, trip_id: str) -> dict[str, any] {
     row = conn.execute("SELECT payload FROM planning_contexts WHERE trip_id=?", (trip_id,)).fetchone();
-    return json.loads(row["payload"]) if row else {};
+    facts = json.loads(row["payload"]) if row else {};
+    changed = {r["item_id"] for r in conn.execute("SELECT item_id FROM planning_fact_invalidations WHERE trip_id=?", (trip_id,))};
+    for key in changed {
+        detail = facts.get("items", {}).get(key);
+        if detail is not None {
+            detail["evidence"] = None;
+            for field in ("policy_id", "kind", "tags") { detail.pop(field, None); }
+        }
+    }
+    for (field, keys) in (("place_hours", ("node_id",)), ("policies", ("booking_node_id",)),
+        ("travel_estimates", ("from_node_id", "to_node_id")), ("transfers", ("from_id", "to_id"))) {
+        if field in facts { facts[field] = [record for record in facts[field] if not any(record[key] in changed for key in keys)]; }
+    }
+    if "manual_risks" in facts { facts["manual_risks"] = [risk for risk in facts["manual_risks"] if not changed.intersection(risk["node_ids"])]; }
+    return facts;
 }
 
 def parse_evidence(data: any) -> Evidence | None {
@@ -123,7 +150,7 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
     commitments = {line["item_id"]: line["committed"] for line in ledger_view["lines"]};
     profile = Profile(traveler.adults, tuple(traveler.child_ages), complete=True,
         interests=tuple(traveler.interests)) if traveler else Profile(None, complete=False);
-    nodes = [];
+    nodes = []; preferred_hours = {};
     for item in state["items"] {
         if item["category"] in ("packing", "expense") { continue; }
         detail = facts.get("items", {}).get(item["id"], {});
@@ -134,24 +161,31 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
         hours = tuple(Window(parse_moment(w["start"]), parse_moment(w["end"])) for w in detail["hours"]) if detail.get("hours") is not None else None;
         dated = [h for h in facts.get("place_hours", []) if h["node_id"] == item["id"] and h["date"] == start.local[:10]];
         if dated {
-            record = dated[0]; source_id = record["evidence_id"];
-            source = next((e for e in facts.get("evidence", []) if e["id"] == source_id), {});
-            proof = evidence if source_id == "item-facts:" + item["id"] else Evidence(source.get("source_ref", ""), source.get("retrieved_at", ""), facts.get("evidence_deadlines", {}).get(source_id, ""));
-            if evidence_problem(proof, now) { hours = None; }
-            elif record.get("closed", False) { hours = (); }
-            else {
+            windows = []; proofs = []; incomplete = False; closed = False;
+            for record in dated {
+                source_id = record["evidence_id"];
+                source = next((e for e in facts.get("evidence", []) if e["id"] == source_id), {});
+                proof = evidence if source_id == "item-facts:" + item["id"] else Evidence(source.get("source_ref", ""), source.get("retrieved_at", ""), facts.get("evidence_deadlines", {}).get(source_id, ""));
+                if evidence_problem(proof, now) { incomplete = True; continue; }
+                proofs.append(proof);
+                if record.get("closed", False) { closed = True; preferred_hours[item["id"]] = record; continue; }
                 try {
                     if not all(re.fullmatch(r"[0-9]{2}:[0-9]{2}", record.get(key, "")) for key in ("open_local", "close_local")) { raise ValueError("Incomplete hours"); }
                     opening = datetime.fromisoformat(record["date"] + "T" + record["open_local"]);
                     closing = datetime.fromisoformat(record["date"] + "T" + record["close_local"]);
                     if closing <= opening { closing += timedelta(days=1); }
-                    hours = (Window(Moment(opening.isoformat(timespec="minutes"), zone), Moment(closing.isoformat(timespec="minutes"), zone)),);
-                } except ValueError { hours = None; }
+                    window = Window(Moment(opening.isoformat(timespec="minutes"), zone), Moment(closing.isoformat(timespec="minutes"), zone));
+                    windows.append(window);
+                    if not closed and instant(window.start) <= instant(start) < instant(end) <= instant(window.end) {
+                        preferred_hours.setdefault(item["id"], record);
+                    }
+                } except ValueError { incomplete = True; }
             }
-            if proof is not None and not evidence_problem(proof, now) and evidence is not None and not evidence_problem(evidence, now) {
-                evidence = Evidence(evidence.source + ";" + proof.source,
-                    max(datetime.fromisoformat(evidence.checked_at), datetime.fromisoformat(proof.checked_at)).isoformat(),
-                    min(datetime.fromisoformat(evidence.expires_at), datetime.fromisoformat(proof.expires_at)).isoformat());
+            hours = () if closed else None if incomplete else tuple(windows);
+            if proofs and evidence is not None and not evidence_problem(evidence, now) {
+                evidence = Evidence(";".join(p.source for p in [evidence] + proofs),
+                    max(datetime.fromisoformat(p.checked_at) for p in [evidence] + proofs).isoformat(),
+                    min(datetime.fromisoformat(p.expires_at) for p in [evidence] + proofs).isoformat());
             }
         }
         nodes.append(ScheduledItem(item["id"], item["title"], item["category"], item["location"], start, end,
@@ -193,6 +227,9 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
     }
     bundle_data = {key: deepcopy(facts.get(key, [])) for key in ("evidence", "policies", "forecasts", "place_hours", "travel_estimates")};
     bundle_data["evidence"] = supporting;
+    # P2's rule evaluates one dated record. Prefer a containing interval while
+    # retaining every separate interval for validation (never fill midday gaps).
+    bundle_data["place_hours"].sort(key=lambda (record: dict[str, any]) -> int { return 0 if record == preferred_hours.get(record["node_id"]) else 1; });
     bundle_data["itinerary"] = {"trip_id": trip["id"], "version": state["version"], "nodes": graph_nodes,
         "edges": [{"source_id": e.from_id, "target_id": e.to_id, "relation": "depends_on", "min_transition_minutes": e.buffer_minutes} for e in dependencies]};
     bundle = bundle_from_dict(bundle_data);

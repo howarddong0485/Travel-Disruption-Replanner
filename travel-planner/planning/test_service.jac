@@ -83,6 +83,43 @@ test "context edits fixed rules and stale versions block old plan acceptance wit
     }
 }
 
+test "ordinary edits invalidate only affected evidence across API and direct transactional writes" {
+    with integrated_client() as client {
+        state = api(client, "create_planning_demo"); trip_id = state["trip_id"];
+        target = next(i for i in api(client, "list_items", trip_id=trip_id) if i["category"] == "food");
+        kwargs = {key:target[key] for key in ("title", "category", "date", "time", "location", "reference", "notes")};
+        kwargs.update({"trip_id":trip_id, "item_id":target["id"], "cost":str(target["cost_cents"] / 100)});
+        api(client, "save_item", **{**kwargs, "notes":"A harmless note"});
+        unchanged = api(client, "planning_state", trip_id=trip_id);
+        assert unchanged["facts"]["items"][target["id"]]["evidence"] is not None;
+        api(client, "save_item", **{**kwargs, "location":"fixture:changed-dinner", "cost":"80.00"});
+        changed = api(client, "planning_state", trip_id=trip_id);
+        assert changed["facts"]["items"][target["id"]]["evidence"] is None;
+        assert all(h["node_id"] != target["id"] for h in changed["facts"]["place_hours"]);
+        assert all(f["evidence"] is not None for (key,f) in changed["facts"]["items"].items() if key != target["id"]);
+        weather = [r["id"] for r in changed["risks"] if r["category"] == "weather"];
+        plans = generate(client, changed, risk_ids=weather)["plans"];
+        assert plans and all(not p["selectable"] for p in plans);
+        facts = changed["facts"]; facts["items"][target["id"]]["evidence"] = state["facts"]["items"][target["id"]]["evidence"];
+        confirmed = api(client, "save_planning_context", trip_id=trip_id, payload=facts, expected_version=changed["trip_version"]);
+        assert confirmed["facts"]["items"][target["id"]]["evidence"] is not None;
+        conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
+        try {
+            conn.execute("UPDATE items SET time='18:10' WHERE id=?", (target["id"],)); conn.rollback();
+        } finally { conn.close(); }
+        assert api(client,"planning_state",trip_id=trip_id)["facts"]["items"][target["id"]]["evidence"] is not None;
+        conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
+        try { conn.execute("UPDATE items SET time='18:15' WHERE id=?", (target["id"],)); conn.commit(); }
+        finally { conn.close(); }
+        assert api(client,"planning_state",trip_id=trip_id)["facts"]["items"][target["id"]]["evidence"] is None;
+        conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
+        try { conn.execute("DROP TABLE planning_fact_invalidations"); conn.commit(); }
+        finally { conn.close(); }
+        migrated = api(client,"planning_state",trip_id=trip_id);
+        assert all(detail["evidence"] is None for detail in migrated["facts"]["items"].values());
+    }
+}
+
 test "editing confirmed facts removes their unsupported hours and saves an unresolved context" {
     import from copy { deepcopy }
     with integrated_client() as client {
@@ -120,6 +157,54 @@ test "request retries preserve stored evidence and cannot publish a changed trip
         api(client, "save_planning_context", trip_id=state["trip_id"], payload=facts, expected_version=state["trip_version"]);
         old = generate(client, state, request_id=request_id);
         assert all(not p["selectable"] and p["stale"] for p in old["plans"]);
+    }
+}
+
+test "upgrading validation rules cannot replay older proposals as selectable" {
+    with integrated_client() as client {
+        state = api(client, "create_planning_demo"); request_id = str(uuid.uuid4());
+        first = generate(client, state, request_id=request_id); before = active_rows();
+        conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
+        try {
+            old = first.copy();
+            for plan in old["plans"] {
+                plan["validator_version"] = "roam.planning-validator.old";
+                conn.execute("UPDATE replan_proposals SET payload=? WHERE id=?", (json.dumps(plan), plan["id"]));
+            }
+            conn.execute("UPDATE planning_runs SET payload=? WHERE id=?", (json.dumps(old), request_id)); conn.commit();
+        } finally { conn.close(); }
+        replayed = generate(client, state, request_id=request_id);
+        assert replayed["replayed"] and all(not p["selectable"] and p["stale"] for p in replayed["plans"]);
+        current = api(client, "planning_state", trip_id=state["trip_id"]);
+        assert current["trip_version"] == state["trip_version"];
+        assert all(current["review_statuses"][p["id"]] == "incompatible" for p in first["plans"]);
+        assert not client.post("/function/review_backup_plan", json={"trip_id":state["trip_id"], "proposal_id":first["plans"][0]["id"], "accept":True}).ok;
+        assert active_rows() == before;
+    }
+}
+
+test "a concurrently completed duplicate cannot restore a rejected proposal" {
+    import from importlib { import_module }
+    import from planning.engine { generate_plans }
+    with integrated_client() as client {
+        state = api(client, "create_planning_demo"); request_id = str(uuid.uuid4()); before = active_rows();
+        service = import_module("server.main"); completed = [];
+        def finish_duplicate(*args: any, **kwargs: any) -> dict[str, any] {
+            result = generate_plans(*args, **kwargs);
+            with patch("server.main.generate_plans", generate_plans) {
+                first = service.generate_backup_plans(state["trip_id"], state["trip_version"], 4, [r["id"] for r in state["risks"]], False, request_id, []);
+            }
+            completed.append(first["plans"][0]["id"]);
+            service.review_backup_plan(state["trip_id"], completed[0], False);
+            return result;
+        }
+        with patch("server.main.generate_plans", side_effect=finish_duplicate) {
+            replayed = service.generate_backup_plans(state["trip_id"], state["trip_version"], 4, [r["id"] for r in state["risks"]], False, request_id, []);
+        }
+        assert completed;
+        assert replayed["replayed"] and replayed["plans"][0]["id"] == completed[0];
+        assert not replayed["plans"][0]["selectable"] and replayed["plans"][0]["review_status"] == "rejected";
+        assert active_rows() == before;
     }
 }
 

@@ -11,6 +11,25 @@ import from planning.application { apply_backup }
 
 glob REVIEW_CLOCK = datetime(2026, 11, 1, 12, tzinfo=timezone.utc);
 
+test "all confirmed opening intervals are preserved and risk analysis recognizes the afternoon interval" {
+    (state, facts) = sample_state(REVIEW_CLOCK); day = state["trip"]["start_date"];
+    for item in state["items"] { if item["id"] == "activity" { item["time"] = "14:00"; } }
+    facts["items"]["activity"]["end"]["local"] = day + "T15:00";
+    facts["place_hours"] = [r for r in facts["place_hours"] if r["node_id"] != "activity"];
+    for (opening, closing) in (("09:00", "12:00"), ("14:00", "18:00")) {
+        facts["place_hours"].append({"node_id":"activity", "date":day, "open_local":opening, "close_local":closing, "evidence_id":"forecast"});
+    }
+    context = build_context(state, facts, REVIEW_CLOCK);
+    assert len(next(i for i in context["trip"].items if i.id == "activity").hours) == 2;
+    assert not any(r["category"] == "opening_hours" and r["status"] == "flagged" and "activity" in r["node_ids"] for r in context["risks"]);
+    for item in state["items"] { if item["id"] == "activity" { item["time"] = "13:00"; } }
+    facts["items"]["activity"]["end"]["local"] = day + "T14:00";
+    gap = build_context(state, facts, REVIEW_CLOCK);
+    selected = [r["id"] for r in gap["risks"] if r["category"] == "opening_hours" and "activity" in r["node_ids"]];
+    plans = generate_plans(gap, REVIEW_CLOCK, selected, max_plans=5)["plans"];
+    assert any(p["strategy"] == "reschedule" and p["selectable"] and p["replacements"][0]["item"]["start"]["local"] >= day + "T14:00" for p in plans);
+}
+
 test "supplemental dated hours govern same-venue reschedules and expire with their proof" {
     for closed in (True, False) {
         (state, facts) = sample_state(REVIEW_CLOCK); day = state["trip"]["start_date"];

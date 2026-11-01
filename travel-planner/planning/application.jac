@@ -87,5 +87,8 @@ def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now
     facts["transfers"] = checked["transfers"];
     changed_ids = {c.replaces_id for c in candidates};
     facts["manual_risks"] = [r for r in facts.get("manual_risks", []) if not changed_ids.intersection(r["node_ids"])];
+    for item_id in changed_ids {
+        conn.execute("DELETE FROM planning_fact_invalidations WHERE trip_id=? AND item_id=?", (context["trip_id"], item_id));
+    }
     conn.execute("UPDATE planning_contexts SET payload=? WHERE trip_id=?", (json.dumps(facts, sort_keys=True), context["trip_id"]));
 }

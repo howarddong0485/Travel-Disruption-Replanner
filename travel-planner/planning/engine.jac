@@ -16,7 +16,7 @@ import from tools.alternatives.catalog { search }
 import from schema.alternative { ALTERNATIVE_CONTRACT_VERSION as PLAN_CONTRACT, alternative_from_dict }
 import from schema.common { to_plain }
 
-glob VALIDATION_VERSION = "roam.planning-validator.v3";
+glob VALIDATION_VERSION = "roam.planning-validator.v4";
 glob SUPPORTED_REASONS = ("weather", "timing", "long_drive", "opening_hours", "booking_terms", "closure", "cancellation", "traveler_change", "budget_change", "inventory_change");
 
 def risk_context(context: dict[str, any], risk: dict[str, any], item_id: str) -> RiskContext {
@@ -105,14 +105,15 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
                     context["facts"].get("inventory_change", "unchanged")));
                 if any(r.trigger in ("timing", "opening_hours", "traveler_change", "budget_change") for r in active_risks) {
                     for minutes in (30, 60) {
-                        beginning = max(instant(earliest), instant(item.start) + timedelta(minutes=minutes));
+                        starts = [max(instant(earliest), instant(item.start) + timedelta(minutes=minutes))];
                         if item.hours and any(r.trigger == "opening_hours" for r in active_risks) {
-                            window = item.hours[0];
-                            beginning = instant(window.start) if minutes == 30 else instant(window.end) - (instant(item.end) - instant(item.start));
+                            starts = [instant(window.start) if minutes == 30 else instant(window.end) - (instant(item.end) - instant(item.start)) for window in item.hours];
                         }
-                        duration = instant(item.end) - instant(item.start);
-                        shifted = replace(item, start=at_time(item.start, beginning), end=at_time(item.end, beginning + duration));
-                        options.append(Replacement("reschedule:" + key + ":" + str(minutes), key, shifted, (), "", "reschedule"));
+                        for (index, beginning) in enumerate(starts) {
+                            duration = instant(item.end) - instant(item.start);
+                            shifted = replace(item, start=at_time(item.start, beginning), end=at_time(item.end, beginning + duration));
+                            options.append(Replacement("reschedule:" + key + ":" + str(minutes) + ":" + str(index), key, shifted, (), "", "reschedule"));
+                        }
                     }
                 }
             } except ValueError { warnings.append("Missing or ambiguous timing prevents searching for " + item.title); }

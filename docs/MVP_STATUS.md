@@ -51,19 +51,22 @@ coordinated with P1.
 The [GitHub-hosted verification run](https://github.com/howarddong0485/Travel-Disruption-Replanner/actions/runs/41315449524)
 passed for the earlier `83fee96` baseline on Ubuntu 24.04/Linux x86_64, Python 3.14 and Jac
 0.37.23: **387 tests**, **four app checks**, **two client builds**, the **46-module
-sealed package**, and source/sealed non-development HTTP/CLI checks. The pre-merge fixes passed the full local sequence with **423 reported tests**,
+sealed package**, and source/sealed non-development HTTP/CLI checks. The pre-merge fixes passed the full local sequence with **427 reported tests**,
 four app checks, both clients, sealed build and source/package smoke checks.
-Eleven added regressions cover the backend findings, foreign-write rejection and ordinary item/category changes;
+Fifteen added regressions cover the backend findings, foreign-write rejection and ordinary item/category changes;
 browser checks cover current-state listeners and unconfirmed edits. Supplemental
 venue hours are refreshed from the accepted provider. Changed item facts lose
 old evidence until explicitly confirmed; derived opening-hours references are
 removed with the cleared evidence so an unresolved edit can still be saved.
 The UI was verified before confirmation, after confirmation and after editing
-previously confirmed facts without reconfirming. Validator `roam.planning-validator.v3` invalidates old
+previously confirmed facts without reconfirming. Validator `roam.planning-validator.v4` invalidates old
 proposals, enforces every selected activation and expires financial review at
 policy boundaries. Dated supplemental hours govern same-venue reschedules;
 closed-day evidence blocks them. Requesting other plans excludes already shown
 candidate identities and reports exhaustion without changing the itinerary.
+All confirmed opening intervals are retained separately, and ordinary item edits
+invalidate affected evidence transactionally. Older contexts require confirmation
+once when the invalidation guard is installed.
 See [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
 for hosted verification of the merge revision. These checks cover implemented paths; they do not
 implement the gaps above or establish completion of the whole MVP.

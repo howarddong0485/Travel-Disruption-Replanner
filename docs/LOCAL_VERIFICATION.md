@@ -214,3 +214,32 @@ results were retained. After files were held stable, the same verification
 script's sealing and source/package HTTP/CLI phases were rerun successfully;
 the 46-module package and both runtime checks passed. No backend source changed
 between these phases. Hosted CI runs the final committed tree from the start.
+
+
+### Ordinary edits and multiple opening intervals
+
+Two further review cases reproduced stale venue/quote evidence after ordinary
+item edits and loss of afternoon opening intervals. Validator v4 preserves all
+supported windows separately and prefers a containing interval for the unchanged
+P2 risk rule. Generation can use any supported interval without filling gaps.
+Transactional invalidation markers cover relevant item changes, direct writes,
+rollback and old-context migration. Unaffected item confirmations and profiles
+remain; notes and paid/done changes do not invalidate physical facts. Explicit
+confirmation or successful refreshed-candidate application clears the markers.
+
+The two regression files passed **45 checks**. The complete final pinned run
+passed **427 reported tests**, four app checks, both clients, CLI alternatives
+**3 / 5 / 5**, complete 46-module sealing and isolated source/package HTTP/CLI
+checks. Fifteen added regression cases cover the pre-merge review corrections.
+The earlier 423-test/browser record remains scoped to that prior revision.
+
+
+The final review also reproduced an older-validator request replay that still
+looked selectable. Early and concurrent duplicate completion now share a replay
+guard for review status, base version, expiry and validator compatibility; the
+current-state endpoint exposes incompatibility for pending P3 proposals. The
+upgrade HTTP regression passes, and a controlled duplicate-completion/rejection
+race passes at the shared service boundary without itinerary changes. These two
+cases bring the final added regression count to fifteen and full-suite count to
+427. The final complete pinned verification uses one stable committed source
+revision; the older interrupted preparation record remains historical.

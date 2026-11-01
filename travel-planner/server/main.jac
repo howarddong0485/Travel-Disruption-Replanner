@@ -17,7 +17,7 @@ import from backup.history { append_snapshot, clock, identifier }
 import from backup.saved_inputs { trip_session, saved_inputs, saved_fingerprint }
 import from backup.workflow { run_workflow }
 import from planning.context { install_context_schema, read_facts, check_payload, build_context, public_context }
-import from planning.engine { generate_plans }
+import from planning.engine { generate_plans, VALIDATION_VERSION }
 import from planning.fixtures { sample_state }
 
 def _backup_source(trip_id: str) -> tuple[dict[str, any], list[dict[str, any]]] {
@@ -139,7 +139,11 @@ def:pub planning_state(trip_id: str) -> dict[str, any] {
     try {
         conn.execute("BEGIN");
         result = public_context(build_context(snapshot(conn, trip_id), read_facts(conn, trip_id), clock()));
-        result["review_statuses"] = {row["id"]: row["status"] for row in conn.execute("SELECT id,status FROM replan_proposals WHERE trip_id=? ORDER BY rowid DESC LIMIT 100", (trip_id,))};
+        result["review_statuses"] = {};
+        for row in conn.execute("SELECT id,status,payload FROM replan_proposals WHERE trip_id=? ORDER BY rowid DESC LIMIT 100", (trip_id,)) {
+            proposal = json.loads(row["payload"]);
+            result["review_statuses"][row["id"]] = "incompatible" if row["status"] == "proposed" and proposal.get("plan_contract") == "roam.alternative-plan.v1" and proposal.get("validator_version") != VALIDATION_VERSION else row["status"];
+        }
         return result;
     } finally { conn.close(); }
 }
@@ -153,12 +157,25 @@ def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_ve
         if state["version"] != expected_version { raise ValueError("Trip changed; reload before saving planning facts"); }
         facts = check_payload(payload, state);
         build_context(state, facts, clock());
+        conn.execute("DELETE FROM planning_fact_invalidations WHERE trip_id=?", (trip_id,));
         conn.execute("INSERT INTO planning_contexts VALUES (?,?) ON CONFLICT(trip_id) DO UPDATE SET payload=excluded.payload",
             (trip_id, json.dumps(facts, sort_keys=True, allow_nan=False)));
         result = public_context(build_context(snapshot(conn, trip_id), facts, clock()));
         conn.commit(); return result;
     } except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
+}
+
+def _replay_planning_run(conn: any, payload: str, version: int, now: any) -> dict[str, any] {
+    recorded = json.loads(payload); recorded["replayed"] = True;
+    for plan in recorded["plans"] {
+        stored = conn.execute("SELECT status FROM replan_proposals WHERE id=?", (plan["id"],)).fetchone();
+        if stored is None or stored["status"] != "proposed" { plan["selectable"] = False; plan["review_status"] = stored["status"] if stored else "removed"; }
+        if plan.get("validator_version") != VALIDATION_VERSION or plan["base_version"] != version or datetime.datetime.fromisoformat(plan["expires_at"]) <= now {
+            plan["selectable"] = False; plan["stale"] = True;
+        }
+    }
+    return recorded;
 }
 
 def:pub generate_backup_plans(trip_id: str, expected_version: any, max_plans: any, risk_ids: list[str],
@@ -181,15 +198,7 @@ def:pub generate_backup_plans(trip_id: str, expected_version: any, max_plans: an
         previous = conn.execute("SELECT * FROM planning_runs WHERE id=?", (request_id,)).fetchone();
         if previous is not None {
             if previous["request_hash"] != request_hash { raise ValueError("Request ID was used with different inputs"); }
-            recorded = json.loads(previous["payload"]); recorded["replayed"] = True;
-            for plan in recorded["plans"] {
-                stored = conn.execute("SELECT status FROM replan_proposals WHERE id=?", (plan["id"],)).fetchone();
-                if stored is None or stored["status"] != "proposed" { plan["selectable"] = False; plan["review_status"] = stored["status"] if stored else "removed"; }
-                if plan["base_version"] != state["version"] or datetime.datetime.fromisoformat(plan["expires_at"]) <= clock() {
-                    plan["selectable"] = False; plan["stale"] = True;
-                }
-            }
-            return recorded;
+            return _replay_planning_run(conn, previous["payload"], state["version"], clock());
         }
         if state["version"] != expected_version { raise ValueError("Trip changed; reload before finding plans"); }
         context = build_context(state, read_facts(conn, trip_id), clock());
@@ -206,7 +215,7 @@ def:pub generate_backup_plans(trip_id: str, expected_version: any, max_plans: an
         previous = conn.execute("SELECT * FROM planning_runs WHERE id=?", (request_id,)).fetchone();
         if previous is not None {
             if previous["request_hash"] != request_hash { raise ValueError("Request ID was used with different inputs"); }
-            return json.loads(previous["payload"]);
+            return _replay_planning_run(conn, previous["payload"], expected_version, clock());
         }
         event_id = "backup:" + request_id;
         conn.execute("INSERT INTO disruption_events(id,trip_id,payload) VALUES (?,?,?)",

@@ -178,7 +178,29 @@ or modify active items. The bounded pool can be exhausted explicitly. Empty
 exclusions preserve the existing request hash; the server normalizes the literal
 empty-list default supplied by Jac 0.37.23's HTTP bridge.
 
-Validator v3 reconciles dated supplemental opening-hours evidence with the
+Validator v4 reconciles dated supplemental opening-hours evidence with the
 scheduled venue: a confirmed closed day has no valid visit window, stale or
 incomplete supporting hours remain unknown, and valid window evidence caps the
 review expiry. Generation and acceptance share these effective windows.
+
+
+Every evidenced opening interval remains separate; a containing interval is
+preferred for P2 risk analysis without filling midday gaps. Same-venue searches
+consider every supported interval. The imported P2 rules remain unchanged.
+
+A SQLite invalidation marker follows edits to an item's title, category, date,
+time, venue, booking reference or price, including direct writes inside P4's
+transaction. Loading facts removes affected policy/hour/route/report references
+and invalidates the old item evidence while preserving other items and the
+traveler profile. Notes and paid/done changes preserve physical fact evidence.
+Explicit fact saving or successful refreshed-candidate application clears the
+relevant markers in the same transaction. Installing the guard on older stores
+requires confirmation of their existing facts once; rollback restores both data
+and evidence state.
+
+
+Both early and concurrently completed request replays re-check review status,
+base version, expiry and validator compatibility. Older validator results remain
+historical and cannot become selectable. Current-state responses label pending
+incompatible P3 proposals so open pages clear them; persistent P4 review decisions
+are preserved.
