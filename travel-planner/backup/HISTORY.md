@@ -1,8 +1,9 @@
 # Saved backup refresh history
 
 Implementation for issues #28 and #29, based on the refresh slice at `06009b1`.
-It extends the standalone synthetic
-lab; it does not integrate shared traveler/risk/ledger contracts or apply a plan.
+It extends the standalone synthetic lab. The [unified workflow](WORKFLOW.md) also
+uses this store for saved-trip observations. It does not integrate shared
+traveler/risk/ledger contracts or apply a plan.
 
 ## Try it
 
@@ -12,11 +13,14 @@ From `travel-planner/`:
 jac run --host 127.0.0.1 --port 8330 backup_refresh
 ```
 
-Expand **Explore validation with a sample trip**, choose the scenario, traveler
+Open the standalone page with `?diagnostics=1`, then choose the scenario, traveler
 requirements, budget, sample date and inventory change, then refresh. Each
 successful save creates an immutable observation. Provider failures also save
 their unresolved outcomes. Open **Refresh history** to inspect recorded outcomes,
 costs, sources and failure reasons.
+New observations also retain [change explanations](CHANGES.md): original/proposed
+totals, cost difference, budget remaining and elapsed-time changes. Historical
+metrics describe the recorded observation; older snapshots are never backfilled.
 
 Reopening the page restores sample controls and history, but **never restores a
 current validation result**. Explicitly refresh before using a current conclusion.
@@ -24,8 +28,11 @@ Historical passes are labeled as recorded outcomes, not current approval.
 Changed inputs, expired evidence and superseded observations have explicit labels.
 The page shows the newest 50 observations and the total; older rows remain stored.
 
-The same component appears in Roam's **Backup plans** tab. Its history is separate
-from the selected saved trip. Neither entry point exposes accept/apply controls.
+The same component appears in Roam's **Backup plans** tab with developer records
+hidden for demos. History is visible only in the standalone diagnostics view;
+it remains stored in both modes. Sample history stays
+separate from saved-trip history; each saved trip has its own session scope.
+Neither entry point exposes accept/apply controls.
 
 ## Storage and request semantics
 
@@ -36,9 +43,10 @@ from the selected saved trip. Neither entry point exposes accept/apply controls.
   Snapshots include original trip/risk/candidate inputs, observed candidate facts
   and transfers, full validation results, sources and original validity deadlines.
 - Only the session ID is stored in browser localStorage, under
-  `roam.backup.sample-session.v1`. Results are loaded from SQLite. Blocking browser
+  `roam.backup.sample-session.v1` or `roam.backup.trip-session.v1:<trip_id>`.
+  Results are loaded from SQLite. Blocking browser
   storage prevents automatic session recovery; the UI reports that limitation.
-- Sessions separate sample histories, not users or authorization. This retains
+- Sessions separate sample and saved-trip histories, not users or authorization. This retains
   the existing local prototype's public endpoint model.
 - Writes use a SQLite transaction and an expected revision. Concurrent new
   requests cannot overwrite one another; a stale writer gets a conflict and
@@ -66,12 +74,16 @@ from the selected saved trip. Neither entry point exposes accept/apply controls.
   takes canonical UUID session/request IDs, a nonnegative integer expected revision
   and the selected sample context. A sample date is required for stable retries.
 - `backup/validation_frontend.jac`: controls, current checks and historical views.
+- `server.main.load_trip_backup_history` / `save_trip_backup_refresh`: saved-trip
+  workflow with target validation and content-fingerprint checks. See [WORKFLOW.md](WORKFLOW.md).
 
 Existing `preview_backup_validation` and `refresh_backup_validation` remain
-stateless for compatibility. Live inventory, shared handoff, financial comparison
+stateless for compatibility. Live inventory, shared handoff, authoritative financial comparison
 and accepting/applying alternatives remain outside this slice.
 
-## Verification
+## Original history-slice verification
+
+For current combined checks, see [workflow verification](WORKFLOW.md#verification--2026-10-28).
 
 ```sh
 jac test backup/test_history.jac server/test_history.jac

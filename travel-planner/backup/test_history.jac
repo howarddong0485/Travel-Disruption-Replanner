@@ -63,6 +63,25 @@ test "retry is idempotent and never extends the original evidence deadline" {
     }
 }
 
+test "older history without change metrics remains readable and is never backfilled" {
+    with isolated_history() {
+        session_id = str(uuid.uuid4()); request_id = str(uuid.uuid4());
+        saved(session_id, request_id=request_id);
+        conn = connect_history();
+        try {
+            snapshot = json.loads(conn.execute("SELECT payload FROM backup_runs").fetchone()[0]);
+            for option in snapshot["report"]["results"] { option.pop("changes"); }
+            old_payload = json.dumps(snapshot, sort_keys=True);
+            conn.execute("UPDATE backup_runs SET payload=?", (old_payload,)); conn.commit();
+            restored = read_history(session_id, HISTORY_CLOCK);
+            assert restored["entries"][0]["recorded_options"][0]["changes"] is None;
+            replay = saved(session_id, request_id=request_id);
+            assert "changes" not in replay["report"]["results"][0];
+            assert conn.execute("SELECT payload FROM backup_runs").fetchone()[0] == old_payload;
+        } finally { conn.close(); }
+    }
+}
+
 test "reusing a request ID with different inputs is rejected" {
     with isolated_history() {
         session_id = str(uuid.uuid4()); request_id = str(uuid.uuid4()); saved(session_id, request_id=request_id);

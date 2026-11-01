@@ -96,11 +96,11 @@ From `travel-planner/`, run the deterministic, storage-free demo:
 jac run backup/demo.jac
 ```
 
-In the web app, create a Boston/USD trip and add a dated, unfinished activity and dining item. In **Backup plans**, choose **Rain affects an outdoor activity** or **Delayed arrival affects dinner**, select the original item, and prepare Plan B/C. The panel shows up to two drafts with activation conditions, synthetic prices, mock sources, checked/expiry times and validation notes. Switching trips, scenarios or items clears the previous result. When the earliest evidence expires, the panel removes the drafts and prompts a refresh.
+In the web app, create a Boston/USD trip and add a dated, unfinished activity and dining item. In **Backup plans**, choose **Rain affects an outdoor activity** or **Delayed arrival affects dinner**, select the original item, and choose **Find backup plans**. Search, initial validation, refresh, revalidation and saved history now share one candidate identity and one panel. Switching trips, scenarios or items clears the previous result. Expired evidence also clears current results.
 
-Unsupported locations/currencies show an empty result or exclusion reasons. Unavailable/unknown inventory, missing sources, expired timestamps and invalid evidence are excluded. Preview success and failure preserve saved trip/items and costs. Drafts remain `needs_validation`; full-trip constraints, automatic risks, live inventory, comparison, acceptance, booking and trip changes are separate work.
+Unsupported locations/currencies show an empty result or exclusion reasons. Saved trips retain their actual facts; missing traveler requirements, timezone, quotes and route evidence keep candidates unresolved. Current and historical results include supported cost/time explanations. Backup operations preserve saved trip/items and costs. Shared contracts, automatic risks, live inventory, acceptance, booking and applying changes remain separate work. See the [unified workflow guide](backup/WORKFLOW.md).
 
-The draft contract is in `backup/models.jac`, the search/refresh adapter in `tools/alternatives/mock.jac`, and the public endpoint is `preview_backups(trip_id, item_id, trigger)`. These are local mock contracts, not the final shared AlternativePlan schema.
+The original `backup/models.jac` draft contract and `preview_backups(trip_id, item_id, trigger)` endpoint remain available for compatibility. The panel uses `load_trip_backup_history` and `save_trip_backup_refresh`; search and refresh use `tools/alternatives/mock.jac`. These are local mock contracts, not the final shared AlternativePlan schema.
 
 ### Standalone full-itinerary validation demo
 
@@ -111,7 +111,7 @@ jac run backup/validation_demo.jac -- --scenario rain --budget 450
 jac test backup/test_validation.jac
 ```
 
-The rain example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. In Roam, open **Backup plans**, expand **Explore validation with a sample trip** and choose **Refresh and recheck Plan B / C**. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the dated progress record](../docs/PROGRESS.md#backup-refresh-delivery--2026-10-28).
+The rain example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. The standalone `backup_refresh` page offers **Synthetic sample trip** and **Find backup plans**. Roam's **Backup plans** tab uses the selected saved itinerary. Both default to a presentation view without developer check records. Add `?diagnostics=1` to the standalone URL to inspect search traces, checks and history. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the current workflow guide](backup/WORKFLOW.md).
 
 To run the changing-inventory sequence and its isolated web demo:
 
@@ -120,6 +120,11 @@ jac run backup/refresh_demo.jac
 jac test backup/test_refresh.jac server/test_refresh.jac
 jac run --host 127.0.0.1 --port 8320 backup_refresh
 ```
+
+Fresh results include **What changes?** explanations for original/proposed totals,
+cost differences, budget remaining and elapsed-time changes. History preserves
+the recorded values. See [backup change explanations](backup/CHANGES.md) for
+examples, calculation semantics and verification.
 
 ### Browser regression check
 
@@ -175,6 +180,7 @@ jac test server/test_validation.jac
 jac test backup/test_refresh.jac server/test_refresh.jac
 jac build travel --as client
 jac test backup/test_history.jac server/test_history.jac
+jac test backup/test_changes.jac
 ```
 
 Tests use temporary SQLite databases. They do not read or modify your saved trips.

@@ -77,9 +77,12 @@ def run_state(row: sqlite3.Row, latest: int, now: datetime,
         "context": snapshot["context"], "checked_at": result_data["checked_at"],
         "expires_at": result_data["expires_at"], "reasons": reasons,
         "recorded_summary": result_data["summary"],
+        "pipeline": result_data.get("pipeline"),
         "recorded_options": [{"candidate_id": r["candidate_id"], "title": r["title"],
+            "provider_id": r.get("provider_id", r["candidate_id"]),
             "status": r["status"], "cost_minor": r["cost"]["projected_total_minor"],
             "source": r["source"], "refresh_state": r["refresh_state"],
+            "changes": r.get("changes"),
             "checks": [c for c in r["checks"] if c["status"] != "pass"]} for r in result_data["results"]],
         "snapshot": snapshot};
 }

@@ -33,6 +33,7 @@ test "history HTTP lifecycle persists separately and never mutates the saved tri
             duplicate = client.post("/function/save_backup_refresh", json=payload);
             assert duplicate.ok and duplicate.data["result"]["replayed"];
             assert duplicate.data["result"]["report"] == first.data["result"]["report"];
+            assert first.data["result"]["report"]["results"][0]["changes"]["cost"]["delta_minor"] == 3000;
             payload["request_id"] = str(uuid.uuid4());
             conflict = client.post("/function/save_backup_refresh", json=payload);
             assert conflict.ok and conflict.data["result"]["outcome"] == "conflict";
@@ -47,6 +48,8 @@ test "history HTTP lifecycle persists separately and never mutates the saved tri
             assert restored["revision"] == 2 and len(restored["entries"]) == 2;
             assert "report" not in restored;
             assert restored["entries"][0]["recorded_options"][0]["cost_minor"] is None;
+            assert restored["entries"][0]["recorded_options"][0]["changes"]["cost"]["delta_minor"] is None;
+            assert restored["entries"][1]["recorded_options"][0]["changes"]["cost"]["delta_minor"] == 3000;
             assert client.post("/function/load_backup_history", json={"session_id": str(uuid.uuid4())}).data["result"]["entries"] == [];
             for changes in [{"budget": "NaN"}, {"expected_revision": True}, {"expected_revision": 1.0}, {"expected_revision": "1"}, {"expected_revision": None}, {"request_id": "bad"}, {"sample_date": ""}] {
                 invalid = dict(payload); invalid.update(changes);

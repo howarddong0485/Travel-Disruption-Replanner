@@ -12,7 +12,73 @@ import from replan.engine { install_schema, snapshot, save_rules, save_dependenc
 import from replan.agent { select_combinations }
 import from backup.validation_fixtures { run_fixture }
 import from backup.history { read_history, save_refresh }
+import from backup.history { append_snapshot, clock, identifier }
+import from backup.saved_inputs { trip_session, saved_inputs, saved_fingerprint }
+import from backup.workflow { run_workflow }
 
+def _backup_source(trip_id: str) -> tuple[dict[str, any], list[dict[str, any]]] {
+    conn = _connect();
+    try {
+        conn.execute("BEGIN");
+        trip = dict(_require_trip(conn, trip_id));
+        items = [dict(row) for row in conn.execute("SELECT * FROM items WHERE trip_id=? ORDER BY id", (trip_id,))];
+        return (trip, items);
+    } finally { conn.close(); }
+}
+
+def _trip_history(session_id: str, trip: dict[str, any], items: list[dict[str, any]], now: datetime.datetime) -> dict[str, any] {
+    data = read_history(trip_session(session_id, trip["id"]), now);
+    fingerprint = saved_fingerprint(trip, items);
+    for record in data["entries"] {
+        if record["context"].get("base_snapshot") != fingerprint { record["reasons"].append("trip_changed"); }
+    }
+    data["base_snapshot"] = fingerprint;
+    data["targets"] = [{"id": item["id"], "title": item["title"], "date": item["date"], "category": item["category"]}
+        for item in items if item["date"] and not item["done"] and item["category"] in ("activity", "food")];
+    data["trip_title"] = trip["title"];
+    return data;
+}
+
+def:pub load_trip_backup_history(session_id: str, trip_id: str) -> dict[str, any] {
+    (trip, items) = _backup_source(trip_id);
+    return _trip_history(session_id, trip, items, clock());
+}
+
+def:pub save_trip_backup_refresh(session_id: str, request_id: str, expected_revision: any,
+    trip_id: str, item_id: str, expected_base_snapshot: str, trigger: str = "rain",
+    inventory_change: str = "unchanged") -> dict[str, any] {
+    if type(expected_revision) is not int or expected_revision < 0 { raise ValueError("Expected revision must be a nonnegative integer"); }
+    identifier(session_id); identifier(request_id);
+    now = clock(); (trip, items) = _backup_source(trip_id);
+    fingerprint = saved_fingerprint(trip, items);
+    if expected_base_snapshot != fingerprint {
+        current = _trip_history(session_id, trip, items, now);
+        return {"outcome": "trip_changed", "replayed": False, "revision": current["revision"], "report": None, "history": current};
+    }
+    (context_trip, risk) = saved_inputs(trip, items, item_id, trigger);
+    result_data = run_workflow(context_trip, risk, trip["destination"], inventory_change, now, sample=False);
+    target = next(item for item in items if item["id"] == item_id);
+    context = {"source": "saved_trip", "trip_id": trip_id, "item_id": item_id, "base_snapshot": fingerprint, "currency": trip["currency"],
+        "scenario": trigger, "profile_name": "unknown", "budget": format(Decimal(trip["budget_cents"]) / 100, "f"),
+        "inventory_change": inventory_change, "sample_date": target["date"]};
+    result_data.update({"scope": "saved_trip_mock", "trip_date": target["date"], "trip_zone": "Not recorded",
+        "base_snapshot": fingerprint, "profile_summary": "Saved trip: " + trip["title"] + ". Traveler requirements are not supplied.",
+        "message": "Searched and checked synthetic alternatives against this saved itinerary. Missing trip facts remain unresolved. No trip was changed."
+            if result_data["results"] else result_data["message"]});
+    # A trip edit during search cannot publish a current result from an old snapshot.
+    (latest_trip, latest_items) = _backup_source(trip_id);
+    if saved_fingerprint(latest_trip, latest_items) != fingerprint {
+        current = _trip_history(session_id, latest_trip, latest_items, clock());
+        return {"outcome": "trip_changed", "replayed": False, "revision": current["revision"], "report": None, "history": current};
+    }
+    response = append_snapshot(trip_session(session_id, trip_id), request_id, expected_revision, context, result_data, now);
+    (latest_trip, latest_items) = _backup_source(trip_id);
+    response["history"] = _trip_history(session_id, latest_trip, latest_items, clock());
+    if response["revision"] != response["history"]["revision"] or response["history"]["base_snapshot"] != fingerprint {
+        response["report"] = None;
+    }
+    return response;
+}
 def:pub load_backup_history(session_id: str) -> dict[str, any] {
     return read_history(session_id);
 }
