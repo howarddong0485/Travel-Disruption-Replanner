@@ -363,3 +363,21 @@ source/package HTTP/CLI checks. There are eight added regression cases across
 checks are included in the reported total. The earlier 419-test run records
 `a92e3da` before this follow-up. See [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
 for hosted verification of the final delivery revision.
+
+
+### Saving edits after confirmation
+
+The final review additionally reproduced an HTTP save failure when edited item
+facts lost their evidence but retained opening-hours records citing that evidence.
+Context loading and payload validation now remove only those derived records;
+independent evidence remains, and unknown/foreign references still fail validation.
+The added HTTP regression covers confirm/save, edit/save without confirmation,
+disabled plans, explicit reconfirmation restoring valid plans, and invalid evidence
+rejection. Browser verification saved a previously confirmed dinner edit, showed
+three Needs confirmation alternatives with all acceptance buttons disabled, and
+reported no console errors.
+
+The final complete pinned sequence passed **421 reported tests**, four app checks,
+both client builds, CLI alternatives **3 / 5 / 5**, the 46-module sealed package,
+and isolated source/package HTTP/CLI checks. Nine added regression cases cover
+the pre-merge review corrections. Earlier 419/420 counts above are historical.

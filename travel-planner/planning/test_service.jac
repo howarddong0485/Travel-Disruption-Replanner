@@ -83,6 +83,32 @@ test "context edits fixed rules and stale versions block old plan acceptance wit
     }
 }
 
+test "editing confirmed facts removes their unsupported hours and saves an unresolved context" {
+    import from copy { deepcopy }
+    with integrated_client() as client {
+        state = api(client, "create_planning_demo");
+        dinner = next(item["id"] for item in state["items"] if item["category"] == "food");
+        facts = deepcopy(state["facts"]); proof = deepcopy(facts["items"][dinner]["evidence"]);
+        for hours in facts["place_hours"] {
+            if hours["node_id"] == dinner { hours["evidence_id"] = "item-facts:" + dinner; }
+        }
+        confirmed = api(client, "save_planning_context", trip_id=state["trip_id"], payload=facts, expected_version=state["trip_version"]);
+        edited = deepcopy(confirmed["facts"]); edited["items"][dinner]["evidence"] = None;
+        edited["items"][dinner]["eligibility"]["vegetarian"] = True;
+        saved = api(client, "save_planning_context", trip_id=state["trip_id"], payload=edited, expected_version=confirmed["trip_version"]);
+        assert saved["facts"]["items"][dinner]["evidence"] is None;
+        assert not any(h["evidence_id"] == "item-facts:" + dinner for h in saved["facts"]["place_hours"]);
+        weather = [r["id"] for r in saved["risks"] if r["category"] == "weather"];
+        plans = generate(client, saved, risk_ids=weather)["plans"];
+        assert plans and all(not p["selectable"] for p in plans);
+        restored = deepcopy(confirmed["facts"]); restored["items"][dinner]["evidence"] = proof;
+        current = api(client, "save_planning_context", trip_id=state["trip_id"], payload=restored, expected_version=saved["trip_version"]);
+        assert all(p["selectable"] for p in generate(client, current, risk_ids=weather)["plans"]);
+        invalid = deepcopy(current["facts"]); invalid["place_hours"][0]["evidence_id"] = "unknown-proof";
+        assert not client.post("/function/save_planning_context", json={"trip_id":state["trip_id"], "payload":invalid, "expected_version":current["trip_version"]}).ok;
+    }
+}
+
 test "request retries preserve stored evidence and cannot publish a changed trip" {
     with integrated_client() as client {
         state = api(client, "create_planning_demo"); request_id = str(uuid.uuid4());

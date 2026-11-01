@@ -51,13 +51,15 @@ coordinated with P1.
 The [GitHub-hosted verification run](https://github.com/howarddong0485/Travel-Disruption-Replanner/actions/runs/41315449524)
 passed for the earlier `83fee96` baseline on Ubuntu 24.04/Linux x86_64, Python 3.14 and Jac
 0.37.23: **387 tests**, **four app checks**, **two client builds**, the **46-module
-sealed package**, and source/sealed non-development HTTP/CLI checks. The pre-merge fixes passed the full local sequence with **420 reported tests**,
+sealed package**, and source/sealed non-development HTTP/CLI checks. The pre-merge fixes passed the full local sequence with **421 reported tests**,
 four app checks, both clients, sealed build and source/package smoke checks.
-Eight added regressions cover the backend findings, foreign-write rejection and ordinary item/category changes;
+Nine added regressions cover the backend findings, foreign-write rejection and ordinary item/category changes;
 browser checks cover current-state listeners and unconfirmed edits. Supplemental
 venue hours are refreshed from the accepted provider. Changed item facts lose
-old evidence until explicitly confirmed; the UI was verified both before and
-after confirmation. Validator `roam.planning-validator.v2` invalidates old
+old evidence until explicitly confirmed; derived opening-hours references are
+removed with the cleared evidence so an unresolved edit can still be saved.
+The UI was verified before confirmation, after confirmation and after editing
+previously confirmed facts without reconfirming. Validator `roam.planning-validator.v2` invalidates old
 proposals, enforces every selected activation and expires financial review at
 policy boundaries. See [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
 for hosted verification of the merge revision. These checks cover implemented paths; they do not

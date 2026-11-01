@@ -49,6 +49,16 @@ def parse_moment(data: any) -> Moment {
     return Moment(**data);
 }
 
+def reconcile_item_hours(facts: dict[str, any]) -> None {
+    # Clearing an item's proof also invalidates hours derived from that proof.
+    # Keep independently evidenced hours and let invalid foreign IDs fail validation.
+    if "place_hours" in facts {
+        facts["place_hours"] = [record for record in facts["place_hours"] if
+            record.get("evidence_id") != "item-facts:" + record["node_id"] or
+            facts.get("items", {}).get(record["node_id"], {}).get("evidence") is not None];
+    }
+}
+
 def check_payload(data: dict[str, any], state: dict[str, any]) -> dict[str, any] {
     data = deepcopy(data);
     allowed = {"contract_version", "profile", "zone", "reserve_minor", "items", "transfers", "evidence", "evidence_deadlines",
@@ -91,6 +101,7 @@ def check_payload(data: dict[str, any], state: dict[str, any]) -> dict[str, any]
     for risk in data.get("manual_risks", []) {
         if not risk.get("node_ids") or set(risk["node_ids"]) - active_ids { raise ValueError("Foreign manual risk nodes"); }
     }
+    reconcile_item_hours(data);
     if len(json.dumps(data, allow_nan=False)) > 500000 { raise ValueError("Planning context is too large"); }
     return data;
 }
@@ -104,6 +115,7 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
         if field in facts { facts[field] = [record for record in facts[field] if all(record[key] in active_ids for key in keys)]; }
     }
     facts["manual_risks"] = [risk for risk in facts.get("manual_risks", []) if risk.get("node_ids") and set(risk["node_ids"]).issubset(active_ids)];
+    reconcile_item_hours(facts);
     trip = state["trip"]; source_profile = facts.get("profile");
     traveler = profile_from_data(source_profile) if source_profile else None;
     ledger_view = to_plain(build_ledger(trip, state["items"], facts.get("reserve_minor", 0)));
