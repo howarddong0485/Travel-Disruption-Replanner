@@ -9,13 +9,13 @@ def:pub ValidationLab -> JsxElement {
         history: dict[str, any] | None = None, revision: int = 0, notice: str = "",
         sessionId: Ref[str] = Ref(""), retryId: Ref[str] = Ref(""),
         historyClock: float = 0, historyTimer: Ref[int] = Ref(0), syncListener: Ref[any] = Ref(None),
-        syncQueued: Ref[bool] = Ref(False);
+        syncQueued: Ref[bool] = Ref(False), reconcileCallback: Ref[any] = Ref(None);
 
     can with entry {
         initialize();
         browser: any = window;
         syncListener.current = lambda (event: any) {
-            if event.type == "focus" or event.key == "roam.backup.refresh-notice.v1" { reconcile(); }
+            if event.type == "focus" or event.key == "roam.backup.refresh-notice.v1" { reconcileCallback.current(); }
         };
         browser.addEventListener("storage", syncListener.current);
         browser.addEventListener("focus", syncListener.current);
@@ -55,7 +55,6 @@ def:pub ValidationLab -> JsxElement {
         } finally {
             if request == requestRef.current {
                 booting = False;
-                if syncQueued.current { reconcile(); }
             }
         }
     }
@@ -103,6 +102,10 @@ def:pub ValidationLab -> JsxElement {
             }
         }
     }
+    reconcileCallback.current = reconcile;
+    can with [booting, pending, history, revision] entry {
+        if not booting and not pending and syncQueued.current { reconcileCallback.current(); }
+    }
     async def run -> None {
         browser: any = window;
         if pending or booting or history is None { return; }
@@ -136,7 +139,6 @@ def:pub ValidationLab -> JsxElement {
         finally {
             if request == requestRef.current {
                 pending = False;
-                if syncQueued.current { reconcile(); }
             }
         }
     }
