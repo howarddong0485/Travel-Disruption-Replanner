@@ -82,11 +82,28 @@ def check_payload(data: dict[str, any], state: dict[str, any]) -> dict[str, any]
         parse_evidence(route.get("evidence"));
         if route.get("minutes") is not None and (type(route["minutes"]) is not int or route["minutes"] < 0) { raise ValueError("Invalid transfer minutes"); }
     }
+    active_ids = {item["id"] for item in state["items"] if item["category"] not in ("packing", "expense")};
+    for (field, keys) in (("place_hours", ("node_id",)), ("policies", ("booking_node_id",)), ("travel_estimates", ("from_node_id", "to_node_id"))) {
+        for record in data.get(field, []) {
+            if any(record[key] not in active_ids for key in keys) { raise ValueError("Foreign supplemental item reference"); }
+        }
+    }
+    for risk in data.get("manual_risks", []) {
+        if not risk.get("node_ids") or set(risk["node_ids"]) - active_ids { raise ValueError("Foreign manual risk nodes"); }
+    }
     if len(json.dumps(data, allow_nan=False)) > 500000 { raise ValueError("Planning context is too large"); }
     return data;
 }
 
 def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -> dict[str, any] {
+    facts = deepcopy(facts);
+    active_ids = {item["id"] for item in state["items"] if item["category"] not in ("packing", "expense")};
+    facts["items"] = {key: value for (key, value) in facts.get("items", {}).items() if key in active_ids};
+    for (field, keys) in (("place_hours", ("node_id",)), ("policies", ("booking_node_id",)),
+        ("travel_estimates", ("from_node_id", "to_node_id")), ("transfers", ("from_id", "to_id"))) {
+        if field in facts { facts[field] = [record for record in facts[field] if all(record[key] in active_ids for key in keys)]; }
+    }
+    facts["manual_risks"] = [risk for risk in facts.get("manual_risks", []) if risk.get("node_ids") and set(risk["node_ids"]).issubset(active_ids)];
     trip = state["trip"]; source_profile = facts.get("profile");
     traveler = profile_from_data(source_profile) if source_profile else None;
     ledger_view = to_plain(build_ledger(trip, state["items"], facts.get("reserve_minor", 0)));

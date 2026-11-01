@@ -8,7 +8,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         adults: str = "", children: str = "", pets: str = "", dietary: str = "", wheelchair: bool = False,
         zone: str = "", reserve: str = "0", details: dict[str, any] = {}, routes: dict[str, str] = {},
         confirmed: dict[str, bool] = {}, selectedRisks: list[str] = [], reason: str = "detected", target: str = "", notBefore: str = "",
-        useAI: bool = False, limit: str = "4", sequence: Ref[int] = Ref(0), expiryTimer: Ref[int] = Ref(0), listener: Ref[any] = Ref(None), alive: Ref[bool] = Ref(True), checkQueued: Ref[bool] = Ref(False);
+        useAI: bool = False, limit: str = "4", sequence: Ref[int] = Ref(0), expiryTimer: Ref[int] = Ref(0), listener: Ref[any] = Ref(None), alive: Ref[bool] = Ref(True), checkQueued: Ref[bool] = Ref(False), versionCallback: Ref[any] = Ref(None);
     def split(value: str) -> list[str] { parts: any = value.split(","); return [s.trim() for s in parts if s.trim()]; }
     def joined(values: any) -> str { return values.join(", "); }
     def money(value: any) -> str {
@@ -74,7 +74,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
     can with entry {
         alive.current = True;
         reload();
-        listener.current = lambda { checkVersion(); };
+        listener.current = lambda { versionCallback.current(); };
         window.addEventListener("focus", listener.current);
         window.addEventListener("storage", listener.current);
     }
@@ -101,6 +101,10 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                 clear(); notice = "These options were reviewed or have expired. Find fresh plans before choosing.";
             }
         } except Exception { clear(); failure = "Could not verify the latest trip. Reload before choosing a plan."; }
+    }
+    versionCallback.current = checkVersion;
+    can with [busy, loading, state, result] entry {
+        if not busy and not loading and checkQueued.current { versionCallback.current(); }
     }
     def notifyTabs -> None {
         try { browser.localStorage.setItem("roam.planning.changed", trip_id + ":" + str(Date.now())); }

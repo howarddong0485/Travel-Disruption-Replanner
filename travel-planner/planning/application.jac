@@ -6,7 +6,7 @@ import from datetime { datetime }
 import from uuid { uuid4 }
 import from planning.context { build_context, read_facts }
 import from planning.serialization { replacement_from_data, risk_from_data }
-import from planning.engine { risk_context, VALIDATION_VERSION }
+import from planning.engine { risk_context, activation_targets, VALIDATION_VERSION }
 import from planning.validation { validate_plan }
 import from tools.alternatives.catalog { observe }
 import from backup.validation { instant }
@@ -21,6 +21,12 @@ def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now
     if context["base_snapshot"] != proposal["base_snapshot"] { raise ValueError("Planning inputs changed; find fresh plans"); }
     originals = {item.id: item for item in context["trip"].items};
     current_risks = {risk["id"]: risk for risk in context["risks"]};
+    selected = [];
+    for key in proposal["risk_ids"] {
+        if key not in current_risks { raise ValueError("Activation risk changed; find fresh plans"); }
+        selected.append(current_risks[key]);
+    }
+    (targets, _) = activation_targets(context, selected);
     candidates = []; activations = [];
     for data in proposal["replacements"] {
         previous = replacement_from_data(data);
@@ -36,9 +42,8 @@ def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now
                 raise ValueError("Inventory details changed; review a fresh plan before accepting");
             }
         }
-        old_risk = next(r for r in proposal["risks"] if r["item_id"] == previous.replaces_id);
-        if old_risk["id"] not in current_risks { raise ValueError("Activation risk changed; find fresh plans"); }
-        activations.append(risk_context(context, current_risks[old_risk["id"]], previous.replaces_id));
+        if previous.replaces_id not in targets { raise ValueError("Activation target changed; find fresh plans"); }
+        activations.extend(risk_context(context, risk, previous.replaces_id) for risk in targets[previous.replaces_id]);
         candidates.append(updated);
     }
     checked = validate_plan(context["trip"], tuple(activations), tuple(candidates), now);
@@ -59,12 +64,16 @@ def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now
         duration = int((instant(item.end) - instant(item.start)).total_seconds() / 60);
         conn.execute("INSERT INTO replan_rules VALUES (?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET duration_minutes=excluded.duration_minutes, latest_start=excluded.latest_start",
             (item.id, duration, before["latest_start"], int(before["fixed"])));
+        prior_facts = deepcopy(facts["items"].get(item.id, {}));
         facts["items"][item.id] = {"zone": item.start.zone, "start_fold": item.start.fold, "end": asdict(item.end),
             "evidence": asdict(item.evidence) if item.evidence else None, "availability": item.availability,
             "hours": [asdict(window) for window in item.hours] if item.hours is not None else None,
             "eligibility": item.eligibility, "party_size": item.party_size, "fees_included": item.fees_included,
             "child_min_age": item.child_min_age, "child_max_age": item.child_max_age, "blocks_time": item.blocks_time,
             "tags": ["indoor"] if item.eligibility.get("indoor") is True else []};
+        if candidate.action == "reschedule" {
+            facts["items"][item.id] = {**prior_facts, "zone": item.start.zone, "start_fold": item.start.fold, "end": asdict(item.end)};
+        }
     }
     facts["transfers"] = checked["transfers"];
     changed_ids = {c.replaces_id for c in candidates};

@@ -10,13 +10,13 @@ import from backup.validation { instant, evidence_problem }
 import from backup.validation_models { RiskContext, Evidence, Moment, Replacement, ScheduledItem }
 import from planning.context { parse_evidence, parse_moment }
 import from planning.validation { validate_plan }
-import from planning.comparison { compare_plan }
+import from planning.comparison { compare_plan, comparison_expiry }
 import from planning.agent { select_backup_plans }
 import from tools.alternatives.catalog { search }
 import from schema.alternative { ALTERNATIVE_CONTRACT_VERSION as PLAN_CONTRACT, alternative_from_dict }
 import from schema.common { to_plain }
 
-glob VALIDATION_VERSION = "roam.planning-validator.v1";
+glob VALIDATION_VERSION = "roam.planning-validator.v2";
 glob SUPPORTED_REASONS = ("weather", "timing", "long_drive", "opening_hours", "booking_terms", "closure", "cancellation", "traveler_change", "budget_change", "inventory_change");
 
 def risk_context(context: dict[str, any], risk: dict[str, any], item_id: str) -> RiskContext {
@@ -35,10 +35,38 @@ def risk_context(context: dict[str, any], risk: dict[str, any], item_id: str) ->
     }
     before = parse_moment(risk["not_before"]) if risk.get("not_before") else None;
     status = risk["status"];
-    if risk["category"] == "timing" and risk.get("source") == "traveler_report" and before is None {
+    if not risk.get("_derived") and risk["category"] == "timing" and risk.get("source") == "traveler_report" and before is None {
         status = "unresolved";
     }
-    return RiskContext(risk["id"], context["trip_id"], item_id, risk["category"], status, proof, before);
+    return RiskContext(risk["id"], context["trip_id"], item_id, "timing" if risk.get("_derived") else risk["category"], status, proof, before);
+}
+
+def activation_targets(context: dict[str, any], selected: list[dict[str, any]]) -> tuple[dict[str, list[dict[str, any]]], set[str]] {
+    originals = {item.id: item for item in context["trip"].items};
+    targets: dict[str, list[dict[str, any]]] = {}; primary: set[str] = set();
+    for risk in selected {
+        roots = risk["node_ids"][-1:] if risk["category"] == "timing" else risk["node_ids"];
+        roots = [key for key in roots if key in originals];
+        for key in roots { targets.setdefault(key, []).append(risk); primary.add(key); }
+    }
+    for risk in selected {
+        if risk["category"] not in ("timing", "long_drive", "closure", "cancellation", "opening_hours") { continue; }
+        roots = risk["node_ids"][-1:] if risk["category"] == "timing" else risk["node_ids"];
+        pending = [key for key in roots if key in originals]; visited = set(pending);
+        while pending {
+            parent = pending.pop(0);
+            for edge in context["trip"].dependencies {
+                child = edge.to_id;
+                if edge.from_id != parent or child in visited or child not in originals or originals[child].fixed or originals[child].completed { continue; }
+                visited.add(child); pending.append(child);
+                existing = targets.setdefault(child, []);
+                if not any(record["id"] == risk["id"] for record in existing) {
+                    existing.append({**risk, "_derived": True, "summary": "Connected arrangement after " + originals[parent].title});
+                }
+            }
+        }
+    }
+    return (targets, primary);
 }
 
 def at_time(moment: Moment, at: datetime) -> Moment {
@@ -54,38 +82,19 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
     if risk_ids is not None and (len(set(risk_ids)) != len(risk_ids) or set(risk_ids) - set(available)) { raise ValueError("Choose current risk IDs for this trip"); }
     selected = [risk for risk in selected if risk["category"] in SUPPORTED_REASONS];
     originals = {item.id: item for item in context["trip"].items};
-    targets: dict[str, any] = {};
-    for risk in selected {
-        ids = risk["node_ids"][-1:] if risk["category"] == "timing" else risk["node_ids"];
-        for key in ids {
-            if key in originals and (key not in targets or targets[key]["status"] != "flagged") { targets[key] = risk; }
-        }
-    }
-    primary_ids = set(targets);
-    # Connected flexible items may stay in place, move, or be replaced. Fixed
-    # boundaries remain in the whole itinerary and are never relaxed.
-    pending_ids = list(targets);
-    while pending_ids {
-        parent = pending_ids.pop(0);
-        if targets[parent]["category"] not in ("timing", "long_drive", "closure", "cancellation", "opening_hours") { continue; }
-        for dependency in context["trip"].dependencies {
-            child = dependency.to_id;
-            if dependency.from_id == parent and child not in targets and child in originals and not originals[child].fixed and not originals[child].completed {
-                targets[child] = {**targets[parent], "category": "timing", "summary": "Connected arrangement after " + originals[parent].title};
-                pending_ids.append(child);
-            }
-        }
-    }
+    (targets, primary_ids) = activation_targets(context, selected);
     warnings = [];
     groups = []; ordered_ids = list(targets);
     if len(ordered_ids) > 8 { raise ValueError("Split requests into at most eight affected nodes"); }
     for key in ordered_ids {
-        item = originals[key]; active_risk = risk_context(context, targets[key], key);
+        item = originals[key]; active_risks = [risk_context(context, risk, key) for risk in targets[key]];
         options: list[any] = [None] if key not in primary_ids else [];
         if not item.fixed and not item.completed {
             try {
                 earliest = item.start;
-                if active_risk.not_before is not None and instant(active_risk.not_before) > instant(earliest) { earliest = active_risk.not_before; }
+                for active_risk in active_risks {
+                    if active_risk.not_before is not None and instant(active_risk.not_before) > instant(earliest) { earliest = active_risk.not_before; }
+                }
                 for dependency in context["trip"].dependencies {
                     if dependency.to_id == key {
                         boundary = instant(originals[dependency.from_id].end) + timedelta(minutes=dependency.buffer_minutes);
@@ -94,10 +103,10 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
                 }
                 options.extend(search(context["trip"], item, earliest, context["state"]["trip"]["destination"], now,
                     context["facts"].get("inventory_change", "unchanged")));
-                if active_risk.trigger in ("timing", "opening_hours", "traveler_change", "budget_change") {
+                if any(r.trigger in ("timing", "opening_hours", "traveler_change", "budget_change") for r in active_risks) {
                     for minutes in (30, 60) {
                         beginning = max(instant(earliest), instant(item.start) + timedelta(minutes=minutes));
-                        if item.hours and active_risk.trigger == "opening_hours" {
+                        if item.hours and any(r.trigger == "opening_hours" for r in active_risks) {
                             window = item.hours[0];
                             beginning = instant(window.start) if minutes == 30 else instant(window.end) - (instant(item.end) - instant(item.start));
                         }
@@ -132,8 +141,9 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
             }
             candidates = tuple(adjusted);
         }
-        activations = tuple(risk_context(context, targets[c.replaces_id], c.replaces_id) for c in candidates);
+        activations = tuple(risk_context(context, risk, c.replaces_id) for c in candidates for risk in targets[c.replaces_id]);
         checked = validate_plan(context["trip"], activations, candidates, now);
+        checked["expires_at"] = min(datetime.fromisoformat(checked["expires_at"]), comparison_expiry(context, candidates, now)).isoformat();
         identity: list[dict[str, any]] = [{"item": asdict(c.item), "action": c.action, "provider_id": c.provider_id} for c in candidates];
         # Observation timestamps are excluded from plan identity.
         for item_data in identity { item_data["item"].pop("evidence", None); }
@@ -143,7 +153,7 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
         key = sha256(signature.encode()).hexdigest()[:20];
         plan: dict[str, any] = {"plan_contract": PLAN_CONTRACT, "validator_version": VALIDATION_VERSION, "id": "plan-" + key, "trip_id": context["trip_id"],
             "base_version": context["trip_version"], "base_snapshot": context["base_snapshot"],
-            "risk_ids": [r.id for r in activations], "activation_conditions": [targets[c.replaces_id]["summary"] for c in candidates],
+            "risk_ids": list(dict.fromkeys(r.id for r in activations)), "activation_conditions": [risk["summary"] for c in candidates for risk in targets[c.replaces_id]],
             "strategy": "reschedule" if all(c.action == "reschedule" for c in candidates) else "replace_connected_items" if len(candidates) > 1 else "replace_item",
             "replacements": [asdict(c) for c in candidates], "risks": [asdict(r) for r in activations],
             "validation": checked, "checked_at": now.isoformat(), "expires_at": checked["expires_at"],

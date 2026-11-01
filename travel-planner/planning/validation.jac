@@ -9,12 +9,13 @@ def validate_plan(trip: TripContext, risks: tuple[RiskContext, ...], replacement
     originals = {item.id: item for item in trip.items};
     ids = [candidate.replaces_id for candidate in replacements];
     if not ids or len(set(ids)) != len(ids) or set(ids) - set(originals) { raise ValueError("Plan must replace distinct existing nodes"); }
-    if len(risks) != len(replacements) { raise ValueError("Every changed node needs its activation context"); }
+    if {risk.item_id for risk in risks} != set(ids) { raise ValueError("Every changed node needs its activation context"); }
     changed = {candidate.replaces_id: candidate.item for candidate in replacements};
     nodes = tuple(changed.get(item.id, item) for item in trip.items);
     try { travel = routes(trip, nodes, now); } except ValueError { travel = trip.transfers; }
     reports = [];
-    for (candidate, risk) in zip(replacements, risks) {
+    for risk in risks {
+        candidate = next(c for c in replacements if c.replaces_id == risk.item_id);
         others = {other.replaces_id: other.item for other in replacements if other.replaces_id != candidate.replaces_id};
         retained_others = [originals[other.replaces_id].paid_minor for other in replacements
             if other.replaces_id != candidate.replaces_id and other.action == "replace"];

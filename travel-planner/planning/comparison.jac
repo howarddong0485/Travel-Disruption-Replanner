@@ -2,7 +2,8 @@
 import from datetime { datetime }
 import from backup.validation { instant, evidence_problem }
 import from backup.validation_models { Replacement, Evidence }
-import from policy.cancellation { evaluate_cancellation }
+import from policy.cancellation { evaluate_cancellation, tier_deadline }
+import from schema.common { local_to_instant }
 import from schema.common { to_plain }
 import from backup.changes { quote_problem }
 
@@ -56,4 +57,29 @@ def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...],
         "refund_loss_minor": retained - eligible if eligible is not None else None,
         "time_changes": times, "changed_item_count": len(replacements), "unknowns": unknowns + ["Payment timing is not supplied; new purchase quotes are not an amount due now"],
         "notice": "Synthetic quotes only. Eligible refunds have not been received and are not deducted from total cost or cash needs."};
+}
+
+
+def comparison_expiry(context: dict[str, any], replacements: tuple[Replacement, ...], now: datetime) -> datetime {
+    deadlines = [datetime.fromisoformat(source.evidence.expires_at) for source in context["trip"].items
+        if source.evidence is not None and not evidence_problem(source.evidence, now)];
+    for candidate in replacements {
+        if candidate.action != "replace" { continue; }
+        booking = context["bundle"].itinerary.find_node(candidate.replaces_id);
+        policy = context["bundle"].policy(booking.policy_id) if booking and booking.policy_id else None;
+        if policy is None { continue; }
+        cancel = evaluate_cancellation(policy, booking, now);
+        for source in context["bundle"].evidence {
+            if source.id not in cancel.evidence_ids { continue; }
+            proof = Evidence(source.source_ref, source.retrieved_at, context["facts"].get("evidence_deadlines", {}).get(source.id, ""));
+            if not evidence_problem(proof, now) { deadlines.append(datetime.fromisoformat(proof.expires_at)); }
+        }
+        start = local_to_instant(booking.start_local, booking.tz);
+        if start is not None and start > now { deadlines.append(start); }
+        for tier in policy.tiers {
+            deadline = tier_deadline(tier, policy, start);
+            if deadline is not None and deadline > now { deadlines.append(deadline); }
+        }
+    }
+    return min(deadlines) if deadlines else now;
 }

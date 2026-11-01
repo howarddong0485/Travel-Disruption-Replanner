@@ -188,3 +188,16 @@ test "editing the itinerary while inventory is searched prevents proposal public
         } finally { conn.close(); }
     }
 }
+
+test "deleting a connected demo item leaves planning load generation and facts repair usable" {
+    with integrated_client() as client {
+        state = api(client, "create_planning_demo"); trip_id = state["trip_id"];
+        removed = next(i for i in state["items"] if i["category"] == "activity");
+        api(client, "delete_item", trip_id=trip_id, item_id=removed["id"]);
+        fresh = api(client, "planning_state", trip_id=trip_id);
+        assert removed["id"] not in fresh["facts"]["items"];
+        assert all(record["node_id"] != removed["id"] for record in fresh["facts"]["place_hours"]);
+        generate(client, fresh);
+        api(client, "save_planning_context", trip_id=trip_id, payload=fresh["facts"], expected_version=fresh["trip_version"]);
+    }
+}
