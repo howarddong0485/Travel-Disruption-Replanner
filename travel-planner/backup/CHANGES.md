@@ -1,8 +1,16 @@
 # Backup change explanations
 
-Fresh synthetic Plan B/C results now explain what changes from the original
-sample itinerary. The same component appears in Roam's Backup plans panel and
-the standalone `backup_refresh` app. The calculations are module-owned, with no
+**Current scope:** this guide describes a preserved standalone/legacy backup
+slice. The normal saved-trip panel uses [connected planning](../planning/README.md).
+The dated verification below records the original slice; current Jac 0.37.23,
+387-test, full-client/sealed and successful hosted-CI evidence is in
+[LOCAL_VERIFICATION.md](../../docs/LOCAL_VERIFICATION.md). See
+[MVP_STATUS.md](../../docs/MVP_STATUS.md) for remaining feature work.
+
+
+Legacy synthetic Plan B/C results explain changes from the original sample
+itinerary in the sample lab and standalone `backup_refresh` app. The current
+saved-trip panel uses the connected comparison component. The calculations are module-owned, with no
 shared-agent dependency, recommendation score, acceptance or booking behavior.
 The [unified workflow](WORKFLOW.md) also uses these explanations for saved-trip
 inputs; missing original facts leave the affected metrics unknown.

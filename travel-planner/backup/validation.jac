@@ -8,6 +8,11 @@ import from dataclasses { asdict }
 import from datetime { date, datetime, timedelta, timezone }
 import from hashlib { sha256 }
 import json;
+import from planning.profile_io { profile_from_data }
+import from filter.models { PlaceFacts }
+import from filter.evaluate { evaluate_place }
+import from budget.ledger { build_ledger }
+import from schema.common { to_plain }
 import from zoneinfo { ZoneInfo, ZoneInfoNotFoundError }
 import from backup.validation_models {
     Evidence,
@@ -85,6 +90,7 @@ def validate_replacement(
     (trip, risk, replacement) = deepcopy((trip, risk, replacement));
     fingerprint = sha256(json.dumps(asdict(trip), sort_keys=True).encode()).hexdigest();
     checks = [];
+    ledger = None;
     def record(code: any, status: any, message: any, *ids: any) -> any {
         checks.append(
             {"code": code, "status": status, "message": message, "item_ids": `list(ids)}
@@ -132,6 +138,7 @@ def validate_replacement(
                 "reserve_minor": trip.reserve_minor,
                 "budget_minor": trip.budget_minor
             },
+            "ledger": ledger,
             "proposed_items": [asdict(item) for item in nodes],
             "notice": "Synthetic fixture validation only. No shared-agent integration or booking. "
             "Paid original costs are retained; no refund is assumed."
@@ -188,9 +195,10 @@ def validate_replacement(
             old.id
         );
     }
-    if (risk.trigger not in ("rain", "arrival_delay")) {
+    if (risk.trigger not in ("rain", "arrival_delay", "weather", "timing", "long_drive", "opening_hours",
+        "booking_terms", "closure", "cancellation", "traveler_change", "budget_change", "inventory_change")) {
         record("risk_trigger", "unknown", "Unsupported activation condition", old.id);
-    } elif (old.category != ("activity" if risk.trigger == "rain" else "food")) {
+    } elif (risk.trigger in ("rain", "arrival_delay") and old.category != ("activity" if risk.trigger == "rain" else "food")) {
         record(
             "risk_trigger",
             "fail",
@@ -206,7 +214,10 @@ def validate_replacement(
             old.id
         );
     }
-    if (replacement.item.paid_minor != 0) {
+    if replacement.action not in ("replace", "reschedule") {
+        record("replacement_action", "fail", "Unsupported planning action", old.id);
+    }
+    if (replacement.action == "replace" and replacement.item.paid_minor != 0) {
         record(
             "replacement_payment",
             "fail",
@@ -216,6 +227,7 @@ def validate_replacement(
     }
     nodes = [replacement.item if (item.id == old.id) else item for item in nodes];
     profile = trip.profile;
+    traveler = profile_from_data(trip.traveler_profile) if trip.traveler_profile is not None else None;
     party_size = (profile.adults if `type(profile.adults) is int else 0) + len(profile.child_ages);
     missing_adults = profile.adults is None and not profile.complete;
     if (
@@ -298,6 +310,10 @@ def validate_replacement(
                 record("schedule", "fail", "Event end must follow start", item.id);
             } else {
                 times[item.id] = (begin, end);
+                if item.id in trip.latest_starts {
+                    latest = resolve(trip.latest_starts[item.id], "latest_start", item.id);
+                    if latest is not None and begin > latest { record("latest_start", "fail", "Traveler's latest-start boundary is exceeded", item.id); }
+                }
                 if ((lower is not None) and ((begin < lower) or (end > upper))) {
                     record(
                         "trip_bounds",
@@ -356,16 +372,31 @@ def validate_replacement(
                 }
             }
         }
+        if traveler is not None {
+            source = item.evidence;
+            place = PlaceFacts(id=item.id, category=item.category, eligibility=item.eligibility,
+                child_min_age=item.child_min_age, child_max_age=item.child_max_age,
+                source_ref=source.source if source else "", checked_at=source.checked_at if source else "",
+                expires_at=source.expires_at if source else "");
+            filtered = evaluate_place(traveler, place, now);
+            for check in filtered.checks {
+                if check.status != "not_applicable" {
+                    record("child_age" if check.evidence_key == "child:admission_ages" else "eligibility",
+                        check.status, check.evidence_key + ": " + check.reason, item.id);
+                }
+            }
+        }
         needs = [("dietary:" + code) for code in profile.dietary]
             if (item.category == "food")
             else [];
-        if profile.pet {
+        if traveler is not None { needs = []; }
+        if profile.pet and traveler is None {
             needs.append(("pet:" + profile.pet));
         }
-        if profile.wheelchair {
+        if profile.wheelchair and traveler is None {
             needs.append("accessibility:wheelchair");
         }
-        if ((item.id == old.id) and (risk.trigger == "rain")) {
+        if ((item.id == old.id) and (risk.trigger in ("rain", "weather"))) {
             needs.append("indoor");
         }
         for need in needs {
@@ -380,7 +411,7 @@ def validate_replacement(
                 item.id
             );
         }
-        if profile.child_ages {
+        if profile.child_ages and traveler is None {
             (lo, hi) = (item.child_min_age, item.child_max_age);
             if ((lo is None) or (hi is None) or not fresh) {
                 record(
@@ -451,7 +482,7 @@ def validate_replacement(
             known_costs = False;
         }
     }
-    if (risk.trigger == "arrival_delay") {
+    if (risk.trigger == "arrival_delay" or risk.not_before is not None) {
         if (risk.not_before is None) {
             record(
                 "arrival_delay",
@@ -472,6 +503,16 @@ def validate_replacement(
                     old.id
                 );
             }
+        }
+    }
+    if risk.trigger == "long_drive" {
+        original_start = resolve(old.start, "original_duration", old.id);
+        original_end = resolve(old.end, "original_duration", old.id);
+        if original_start is None or original_end is None or original_end <= original_start {
+            record("long_drive", "unknown", "Original travel duration is not established", old.id);
+        } elif old.id in times {
+            shorter = times[old.id][1] - times[old.id][0] < original_end - original_start;
+            record("long_drive", "pass" if shorter else "fail", "Alternative must reduce the long travel duration", old.id);
         }
     }
     scheduled = sorted(
@@ -610,7 +651,11 @@ def validate_replacement(
             if (key not in ready)
         };
     }
-    retained = old.paid_minor;
+    retained = old.paid_minor if replacement.action == "replace" else 0;
+    if replacement.action == "replace" and old.committed and (old.cost_minor is None or old.paid_minor is None or old.paid_minor < old.cost_minor) {
+        record("unpaid_commitment", "unknown", "Cancellation liability for an unpaid confirmed booking needs authoritative terms", old.id);
+        known_costs = False;
+    }
     if (retained is None) {
         record("original_payment", "unknown", "Original payment amount is unknown");
         known_costs = False;
@@ -633,9 +678,30 @@ def validate_replacement(
         record("reserve", "fail", "Reserve must be nonnegative integer minor units");
         known_costs = False;
     }
-    total = (sum(item.cost_minor for item in nodes) + retained + trip.reserve_minor)
-        if known_costs
-        else None;
+    if not _minor(trip.extra_cost_minor) {
+        record("other_costs", "fail", "Other trip costs must be nonnegative integer minor units");
+        known_costs = False;
+    }
+    total = None;
+    if known_costs {
+        lines = [{"id": item.id, "trip_id": trip.id, "title": item.title, "category": item.category,
+            "cost_cents": item.cost_minor, "paid": bool(item.paid_minor), "done": item.completed} for item in nodes];
+        extra_id = "retained:" + old.id;
+        while any(line["id"] == extra_id for line in lines) { extra_id = "_" + extra_id; }
+        lines.append({"id": extra_id, "trip_id": trip.id, "title": "Retained original payment",
+            "category": "expense", "cost_cents": retained, "paid": True, "done": False});
+        extra_id = "other:" + extra_id;
+        while any(line["id"] == extra_id for line in lines) { extra_id = "_" + extra_id; }
+        if trip.extra_items and sum(item["cost_cents"] for item in trip.extra_items) == trip.extra_cost_minor {
+            lines.extend(dict(item) for item in trip.extra_items);
+        } else {
+            lines.append({"id": extra_id, "trip_id": trip.id, "title": "Other trip costs",
+                "category": "expense", "cost_cents": trip.extra_cost_minor, "paid": False, "done": False});
+        }
+        ledger_budget = trip.budget_minor if _minor(trip.budget_minor) else 0;
+        ledger = to_plain(build_ledger({"id": trip.id, "currency": trip.currency, "budget_cents": ledger_budget}, lines, trip.reserve_minor));
+        total = ledger["planned_cents"] + ledger["contingency_cents"];
+    }
     if (trip.budget_minor is None) {
         record("budget", "unknown", "Trip budget is not supplied");
     } elif not _minor(trip.budget_minor) {

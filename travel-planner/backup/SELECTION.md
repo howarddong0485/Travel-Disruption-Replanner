@@ -1,5 +1,13 @@
 # Selecting and backfilling backup alternatives
 
+**Current scope:** this guide describes a preserved standalone/legacy backup
+slice. The normal saved-trip panel uses [connected planning](../planning/README.md).
+The dated verification below records the original slice; current Jac 0.37.23,
+387-test, full-client/sealed and successful hosted-CI evidence is in
+[LOCAL_VERIFICATION.md](../../docs/LOCAL_VERIFICATION.md). See
+[MVP_STATUS.md](../../docs/MVP_STATUS.md) for remaining feature work.
+
+
 Gehao Dong's backup workflow evaluates the complete supported synthetic pool
 before choosing Plan B/C. If an original option becomes over budget, unavailable
 or otherwise invalid, another evaluated option can fill its place. Generation

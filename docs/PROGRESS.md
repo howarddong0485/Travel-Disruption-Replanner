@@ -1,12 +1,128 @@
 # Project progress
 
+## Current status — 2026-11-01
+
+Use [MVP_STATUS.md](MVP_STATUS.md) for the P1–P5 implementation gaps,
+contribution attribution and remaining delivery gates. The connected code baseline
+`83fee96` passed [GitHub CI](https://github.com/howarddong0485/Travel-Disruption-Replanner/actions/runs/41315449524):
+387 tests, four app checks, two client builds, the sealed package and both
+source/package HTTP/CLI checks. The howarddong stack is delivered; source-PR coordination, cross-owner contract confirmation and the remaining role features stay open.
+
+The dated sections below are historical verification records. Their old runtime,
+build failures and incomplete integration describe those earlier revisions; use
+the status page and [verification guide](LOCAL_VERIFICATION.md) for current results.
+
+
 This report separates delivery on `main` from implementations still under review. Dated verification records identify the code, runtime and scope that were actually checked.
+
+## Person 3 publication verification — 2026-11-01
+
+The current mock-MVP Person 3 implementation and local engineering checks are
+complete on the #36 review branch. The full `scripts/setup.sh` and
+`scripts/verify.sh` sequence passed again in the current checkout using Jac
+0.37.23: **387 tests**, **four application checks**, **two client builds**, the
+3/5/5 planning scenarios, a complete sealed package, and both source/package
+HTTP and CLI checks. Acceptance stores the reviewed candidate; rejection keeps
+active items unchanged. The sealed runtime ran outside the checkout with source
+compilation forbidden.
+
+This repeat run is separate from the clean source-only installation recorded on
+October 30. Shared-owner contract approval, source/stack review and merge remain
+delivery gates. The GitHub workflow is included in this follow-up; its actual
+hosted result must be recorded separately. No live integration is claimed.
+
+## Local clean setup, sealed package and runtime verification — 2026-10-30
+
+The local follow-up to #36 resolves the engineering blockers using the pinned
+Jac **0.37.23**, without changing the shared feature contracts or imported owners'
+modules. These follow-up changes are part of review PR #36 and remain unmerged.
+
+- `scripts/setup.sh` verifies the official binary checksum, creates an independent
+  Python 3.14 venv, and installs declared development/client dependencies.
+- `scripts/build_jab.jac` corrects the upstream sealer's precompiler working
+  directory. We traced the same-named class errors to original-checkout versus
+  staged-copy paths. All type checks and JIR/manifest validation remain enabled;
+  no installed runtime files are edited. Raw `jac build travel` still requires
+  this project compatibility entry point on 0.37.23.
+- A read-only root `application_info` export ensures the sealed entry has server
+  bytecode. The CLI now explicitly supplies creation IDs, fixing bridge defaults
+  that were still missing under 0.37.23. Existing server defaults are unchanged.
+- A fresh source export, with no `.jac` or copied dependencies, completed the
+  actual setup and verification scripts on macOS arm64/Python 3.14.7:
+  **387 tests**, **four app checks**, **two client builds**, three planning CLI
+  scenarios, and a sealed **46-module manifest** all passed.
+- Source and packaged non-development servers passed root/asset, comparison,
+  rejection/no mutation, exact acceptance/version and CLI new/add/show checks.
+  The package ran outside the checkout with source compilation forbidden. The
+  earlier homepage 404 was not reproduced in either clean environment.
+- Packaged-browser verification rendered the connected options and accepted the
+  gallery alternative, saving the expected USD 375 total without console errors.
+- `.github/workflows/jac.yml` runs the same scripts on Ubuntu 24.04 with pinned
+  action commits and retained logs. A successful actual GitHub-hosted run must
+  be recorded separately from these local checks.
+
+See [reproduction and packaged run commands](LOCAL_VERIFICATION.md) and the
+[shared contract review packet](CONTRACT_REVIEW.md). Owner approval, source/stack
+PR merges and the remote CI record remain delivery gates. This is still a
+synthetic mock MVP, not a public multi-user deployment or live-provider result.
+
+## Connected backup planning — 2026-10-30
+
+Work on `codex/connected-backup-planning`, stacked on the candidate-selection
+branch, now connects Person 1's profile,
+mandatory-filter and budget implementations, Person 2's policy/risk analysis,
+Person 3's alternative generation, Person 4's versioned proposal transaction,
+and a deterministic comparison/acceptance UI in Roam. Source commits and the
+proposed shared contract are recorded in [the integration guide](../travel-planner/planning/README.md).
+Tracked in #34 (integration) and #33 (candidate selection). Publishing these
+branches does not merge upstream PRs or establish team-wide approval of the
+proposed contract. Parent #11 remains open for review and delivery.
+
+- Ten detected/reported risk categories can produce up to five alternatives,
+  including different venues/providers, rescheduling, and connected changes to
+  multiple itinerary nodes. Search is bounded to eight affected nodes and 256
+  combinations. Each complete itinerary is checked with P1 and P3 validators.
+- The shared contract carries the saved trip version, content identity, evidence
+  deadline, validation, changed nodes and deterministic comparison. Acceptance
+  refreshes inventory and revalidates before applying P3's actual candidate in
+  P4's existing transaction. Rejection leaves the itinerary unchanged. Retries,
+  reviewed proposals, trip edits and changed provider facts cannot restore an
+  obsolete selectable proposal.
+- Original/proposed totals include reserve. Retained payments count once;
+  potential cash refunds, credit and confirmed refunds remain separate. Quotes
+  are not presented as cash due now. Missing facts and uncertain cancellation
+  liability remain unresolved. An optional model only selects supplied validated
+  IDs, with deterministic fallback.
+- The normal **Backup plans** page and **Try connected backup plans** entry use
+  the connected flow. The earlier guided demo explicitly retains its legacy
+  inventory. Imported owner modules are preserved at the documented PR heads.
+
+Verification uses the manifest-pinned **Jac 0.37.23**, the working local venv,
+temporary test databases, and isolated browser-demo SQLite files:
+
+- Full service, backup, planning, profile, filter, budget, schema, policy and risk
+  regression: **387 passed**. The previously failing MockLLM test passes after
+  installing the project's declared development capabilities.
+- Static checks: **four application entries passed**. The Roam and standalone
+  backup client builds pass. The CLI demonstrates three weather choices, five
+  arrival-delay choices, and five connected two-node closure alternatives.
+- Development-browser checks cover comparison, rejection and replacement,
+  transactional acceptance, requirements that disable acceptance, and a 390px
+  layout. No real provider, model, booking, payment or cancellation is exercised.
+
+This implementation record preceded the clean setup/packaging follow-up above.
+That follow-up adds a verified project build command and clean non-development
+source/package checks; GitHub-hosted CI and public deployment remain unverified.
+Restart after backend edits in development mode because HMR may retain imported
+modules. The dated records below describe earlier standalone slices and retain
+their original verification limits.
 
 ## Backup candidate selection and backfill — 2026-10-29
 
 Local work on `codex/backup-candidate-selection`, based on `5e8604c` from the
 workflow stack, extends Gehao Dong's module-owned search and refresh flow.
-This slice has not been committed, pushed or published as a PR.
+At this October 29 checkpoint the slice had not been committed or pushed.
+Its publication and the subsequent integration are tracked in #33 and #34 above.
 
 - The workflow evaluates four supported candidates per scenario before selecting
   up to two Plan B/C cards. Rejected and failed-provider options can be replaced
@@ -134,8 +250,7 @@ Issue #11 remains open for shared RiskFlag/profile/authoritative-validator/ledge
 - Documented agent responsibilities, deterministic orchestration, shared data contracts, validation, and replanning in [ARCHITECTURE.md](ARCHITECTURE.md).
 - Defined MVP boundaries, acceptance criteria, supplemental features, and future work in [ROADMAP.md](ROADMAP.md).
 - Documented candidate data providers, evidence limitations, and the mock-to-live integration strategy in [DATA_SOURCES.md](DATA_SOURCES.md).
-- Assigned five feature-owner roles above a shared basic-planner foundation, with interface coordination and review expectations in [CONTRIBUTING.md](../CONTRIBUTING.md). Person numbers remain placeholders.
-- Established the proposed sponsorship policy: clearly labeled mock ads, separate sponsored placements, and zero sponsorship weight in organic recommendations.
+- Assigned five feature-owner roles above a shared basic-planner foundation, with interface coordination and review expectations in [CONTRIBUTING.md](../CONTRIBUTING.md). Later owner confirmations are recorded in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Implemented local planner: Roam
 
@@ -157,13 +272,13 @@ Gehao Dong's backup module adds Boston/USD Plan B/C drafts for rain-affected act
 
 The original delivery includes an independent two-scenario demo, eight unit tests and one isolated service integration test. See the [backup preview demo](../travel-planner/README.md#backup-preview-demo) for supported scenarios and limitations. It does not implement automatic risk ingestion, full-trip constraint validation, changing inventory, comparison or acceptance.
 
-## Current limits and next milestone
+## Historical foundation limits — 2026-10-06
 
 Roam stores manually entered plans and booking details. It does not generate AI itineraries, search live inventory, make reservations, monitor disruptions, analyze cancellation policies, generate fully validated backups. It is a local personal prototype with public service endpoints, not a deployed multi-user service. Costs use one currency per trip with no exchange-rate conversion; times are destination-local with no automatic timezone conversion.
 
 The next integration milestone is the documented fixture-based flow: profile and hard filters → plan → validate → risks → backups → simulated disruption → dependency-aware repair → compare → traveler review and explicit acceptance. Shared contracts, remaining named owners, and deployment choices still need agreement. Optional Jac LLM selection is available in the standalone replanning prototype.
 
-## Latest verification boundary
+## Historical verification boundary — 2026-10-13
 
 The PR #19 merge-conflict fix was verified on October 13, 2026 with Jac 0.37.23, including the business theme and the latest backup-preview fixes from `main`. All three app checks, the client build, and 21 tests passed (11 planner/replanning, nine backup unit tests, one backup service test). The earlier backup-only delivery used Jac 0.37.21; issue #8 still tracks clean-checkout setup and CI coverage. Browser checks were not rerun for this merge fix; the backup audit below records its separate browser verification.
 
@@ -207,3 +322,137 @@ The server tests use temporary databases and do not modify saved trips. These co
 Roam now includes a synthetic disruption simulator, dependency traversal, per-item backup combinations, optional typed Jac LLM selection, and atomic version-safe acceptance. The separate Boston demo covers arrival-delay cascades and fixed-item conflicts. See the [replanning guide](../travel-planner/replan/README.md) for setup, endpoints, tests and limits. Shared profile/eligibility validation, policy evidence and cross-agent review integration remain tracked in [issue #18](https://github.com/howarddong0485/Travel-Disruption-Replanner/issues/18).
 
 The web workspace uses a navy, slate and white business palette, with a flat trip overview and shared theme colors across backup and replanning panels.
+
+## Pre-merge review corrections — 2026-11-01
+
+Code commit `a92e3da` fixes all five reproduced backend review findings: retain
+all activations per changed item; reconcile deleted/excluded supplemental item
+references while rejecting new foreign writes; preserve booking metadata on
+reschedule; use identical derived activation semantics for generation/acceptance;
+and bound reviewed finances by cancellation deadlines and policy evidence.
+Validator v2 rejects older stored proposals.
+
+The history and connected panels dispatch mount listeners through the current
+callback and drain queued checks after loading/refresh. The history correction
+was also delivered in #31 as `fe4d4df`. Browser checks in two tabs per panel
+verified that another tab's update clears the old results; neither panel logged
+a console error.
+
+The full pinned local verification passed: **419 reported tests**, four app
+checks, both client builds, 3/5/5 planning scenarios, the 46-module sealed package
+and both source/package HTTP/CLI checks. The seven new regression cases were
+added in `planning/test_review.jac` and `planning/test_service.jac`. The reported
+total includes imported companion checks. See the [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
+for hosted verification of the final delivery revision.
+
+## Final review corrections — 2026-11-01
+
+`f8dcf35` filters dependency endpoints when items leave the scheduled-node set,
+invalidates evidence when item facts are edited without confirmation, and
+replaces the original venue's supplemental hours with the newly observed
+provider hours. The category-change and provider-hours regressions detect the
+old failures. A browser reproduction changed a retained item's admission age:
+before the fix, saving without confirmation still yielded selectable plans;
+after the fix all three were unresolved with disabled acceptance, and explicit
+confirmation restored three selectable plans without console errors.
+
+The complete pinned local sequence passed again with **420 reported tests**,
+four app checks, two client builds, the 46-module sealed package and both
+source/package HTTP/CLI checks. There are eight added regression cases across
+`planning/test_review.jac` and `planning/test_service.jac`; imported companion
+checks are included in the reported total. The earlier 419-test run records
+`a92e3da` before this follow-up. See [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
+for hosted verification of the final delivery revision.
+
+
+### Saving edits after confirmation
+
+The final review additionally reproduced an HTTP save failure when edited item
+facts lost their evidence but retained opening-hours records citing that evidence.
+Context loading and payload validation now remove only those derived records;
+independent evidence remains, and unknown/foreign references still fail validation.
+The added HTTP regression covers confirm/save, edit/save without confirmation,
+disabled plans, explicit reconfirmation restoring valid plans, and invalid evidence
+rejection. Browser verification saved a previously confirmed dinner edit, showed
+three Needs confirmation alternatives with all acceptance buttons disabled, and
+reported no console errors.
+
+The final complete pinned sequence passed **421 reported tests**, four app checks,
+both client builds, CLI alternatives **3 / 5 / 5**, the 46-module sealed package,
+and isolated source/package HTTP/CLI checks. Nine added regression cases cover
+the pre-merge review corrections. Earlier 419/420 counts above are historical.
+
+
+### Dated hours and distinct follow-up plans
+
+The next review reproduced two additional failures: same-venue reschedules could
+ignore a supported closed-day record, and Find other plans repeated the displayed
+candidates. Validator v3 now uses the dated supplemental hours, preserves unknowns
+when their evidence is stale/incomplete, and caps the review by that evidence.
+The acceptance regression rejects a formerly selectable closed-day reschedule
+before any write. Request-another accumulates stable candidate exclusions, includes
+them in idempotency checks and leaves prior proposals and active items unchanged.
+The HTTP bridge's literal empty-list default is normalized for old callers.
+
+The full pinned sequence passed **423 reported tests**, four app checks, both
+clients, CLI alternatives **3 / 5 / 5**, complete 46-module sealing and isolated
+source/package HTTP/CLI checks. Eleven added regression cases cover the review
+corrections. Browser verification advanced through **3 → 2 → 0** distinct options,
+showed the exhausted-pool message, retained the itinerary and had no console
+errors. The earlier 421-test record remains historical.
+
+
+During this verification, sealing first stopped because documentation changed
+while preparation was running. The already-passing 423-test/four-check/client
+results were retained. After files were held stable, the same verification
+script's sealing and source/package HTTP/CLI phases were rerun successfully;
+the 46-module package and both runtime checks passed. No backend source changed
+between these phases. Hosted CI runs the final committed tree from the start.
+
+
+### Ordinary edits and multiple opening intervals
+
+Two further review cases reproduced stale venue/quote evidence after ordinary
+item edits and loss of afternoon opening intervals. Validator v4 preserves all
+supported windows separately and prefers a containing interval for the unchanged
+P2 risk rule. Generation can use any supported interval without filling gaps.
+Transactional invalidation markers cover relevant item changes, direct writes,
+rollback and old-context migration. Unaffected item confirmations and profiles
+remain; notes and paid/done changes do not invalidate physical facts. Explicit
+confirmation or successful refreshed-candidate application clears the markers.
+
+The two regression files passed **45 checks**. The complete final pinned run
+passed **427 reported tests**, four app checks, both clients, CLI alternatives
+**3 / 5 / 5**, complete 46-module sealing and isolated source/package HTTP/CLI
+checks. Fifteen added regression cases cover the pre-merge review corrections.
+The earlier 423-test/browser record remains scoped to that prior revision.
+
+
+The final review also reproduced an older-validator request replay that still
+looked selectable. Early and concurrent duplicate completion now share a replay
+guard for review status, base version, expiry and validator compatibility; the
+current-state endpoint exposes incompatibility for pending P3 proposals. The
+upgrade HTTP regression passes, and a controlled duplicate-completion/rejection
+race passes at the shared service boundary without itinerary changes. These two
+cases bring the final added regression count to fifteen and full-suite count to
+427. The final complete pinned verification uses one stable committed source
+revision; the older interrupted preparation record remains historical.
+
+
+## Remaining review findings — 2026-11-01
+
+The delivered stack remains partial. The final review identifies two outstanding
+functional defects, tracked in the open role issues:
+
+- P3 (#11/#34): reconcile `facts.travel_estimates` with the transfer constraints
+  used in generation and acceptance. A same-venue reschedule must satisfy the
+  evidenced connection estimate that triggered its risk.
+- P2 (#10): reject negated refund statements in the rule extractor; for example,
+  a statement that a full refund is unavailable must not become a 100% cash
+  entitlement. This defect is in the unchanged P2 source import.
+
+The 427 passing checks establish tested paths, not completion of these cases.
+P3 is not fully complete. The two review threads remain unresolved, and the
+parent issues retain their incomplete acceptance criteria alongside cross-owner
+contract confirmation. This documentation correction changes no application
+code; the complete application verification is at `9594e0e`.

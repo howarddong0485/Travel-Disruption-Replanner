@@ -1,6 +1,6 @@
 """Guided backup generation and traveler-approved replanning on a saved demo trip."""
 import from server.main { TripView, ItemView }
-import from backup.frontend { BackupPanel }
+import from backup.frontend { LegacyBackupPanel as BackupPanel }
 import from replan.frontend { ReplanPanel }
 
 def:pub GuidedDemo(trip: TripView, items: list[ItemView], onRefresh: any, onViewItinerary: any) -> JsxElement {

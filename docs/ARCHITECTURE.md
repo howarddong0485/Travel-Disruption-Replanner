@@ -1,6 +1,6 @@
 # Architecture and LLM Inputs
 
-This document is a proposed implementation contract. The repository includes a basic planner and a [mock backup preview](../travel-planner/README.md#backup-preview-demo), but does not yet implement the complete architecture below. Start with a modular application and shared typed data contracts; an agent does not need its own service or deployment.
+This document describes the target architecture. The [current mock implementation](MVP_STATUS.md) includes manual Roam trips, policy/risk modules, connected backups and version-safe review. Initial generation, full policy UI, unified legacy repairs and complete comparison remain pending. Shared contracts are implemented proposals awaiting owner approval. Components share one modular Jac application; an agent does not need its own service or deployment.
 
 ## Product feature boundaries
 
@@ -12,7 +12,7 @@ Disruption handling and dependency traversal form one replanning feature. The MV
 
 ## Component responsibilities
 
-| Component | Implementation | Inputs → outputs |
+| Component | Target approach | Inputs → outputs |
 | --- | --- | --- |
 | Orchestrator | Deterministic code; graph traversal “walkers” | Trip state and events → ordered component calls, validated state transitions, trace records |
 | ProfileAgent | LLM | Traveler text and existing approved preferences → structured `TravelerProfile` and clarification requests |
@@ -24,11 +24,13 @@ Disruption handling and dependency traversal form one replanning feature. The MV
 | ComparatorAgent | Code plus LLM explanation | Valid candidates and verified metrics → comparison rows and an explained recommendation |
 | ConstraintValidator | Deterministic code | Proposed plan, profile, ledger, evidence → pass or structured validation errors |
 
+Current execution uses deterministic rules/search and optional bounded model selection. Text-to-profile parsing, initial PlannerAgent generation, narrow model-based risk classification and model-generated comparison explanations are not implemented. Structured profile intake already works; the table above describes design scope.
+
 The LLM may estimate subjective experience fit, but it must label that estimate and tie it to stated interests. It must not calculate authoritative totals, invent inventory, infer refund entitlements without evidence, or override hard constraints.
 
 ## Shared data contracts
 
-Define these contracts in `schema/` before implementing agents. The field lists below establish scope; they are not finalized schemas.
+P1 provides profile/ledger models; P2 provides itinerary/evidence/policy/risk schemas; P3 adds the alternative/validation/comparison handoff. See [source provenance](../travel-planner/planning/README.md#source-provenance). The broader field lists below include future work and are not a claim that every field is implemented or team-approved.
 
 | Contract | Minimum information |
 | --- | --- |
@@ -104,6 +106,8 @@ Treat provider text, reviews, and uploaded policy text as untrusted data, not in
 
 ## Initial planning lifecycle
 
+This is the target lifecycle for the pending #5 generator; predefined demo loaders do not implement it.
+
 1. Parse the profile and resolve missing information that affects feasibility.
 2. Fetch mock or live candidates through normalized tool adapters.
 3. Build a candidate itinerary using only supported inventory references.
@@ -116,6 +120,8 @@ Treat provider text, reviews, and uploaded policy text as untrusted data, not in
 After retry exhaustion, return an explicit infeasible or incomplete result with reasons and possible constraint changes. Do not quietly increase the budget or relax requirements.
 
 ## Disruption-triggered, dependency-aware replanning
+
+The existing legacy repair path implements dependency traversal and atomic review; connected P3 alternatives use refreshed evidence and shared checks. Unifying those generation paths and automatically regenerating backups after acceptance remain open in #18. The sequence below is the completion target.
 
 1. Deduplicate the disruption by event ID and load the current trip version.
 2. Locate directly affected nodes and traverse dependency edges to find potentially affected bookings.
@@ -146,13 +152,13 @@ Compare money in separate columns to avoid double counting:
 - **Projected total trip cost:** prior payments plus future/new payments minus confirmed cash refunds, with pending refunds shown as a separate scenario. Credits reduce a purchase only when applicable and applied.
 - **Budget headroom:** total budget minus projected total cost, with contingency and cash-flow needs also displayed.
 
-Refund loss is explanatory; do not add it again if original payments are already included in projected total cost. Unapproved insurance claims do not fund the trip. Use deterministic calculations for travel time and cost. Normalize any ranking metrics and disclose weights; the weights are a team decision, with user priorities allowed to influence soft preferences. Sponsorship is excluded from organic ranking.
+Refund loss is explanatory; do not add it again if original payments are already included in projected total cost. Unapproved insurance claims do not fund the trip. Use deterministic calculations for travel time and cost. Normalize any ranking metrics and disclose weights; the weights are a team decision, with user priorities allowed to influence soft preferences.
 
 ## Policy, insurance, and claim boundaries
 
 Supplier cancellation terms, supplier disruption remedies, and insurance coverage are separate records. Use booking-specific terms and evidence rather than a generic company policy when determining an estimate. Ambiguous or conflicting terms require review.
 
-Insurance preferences belong in intake; actual coverage requires a separate policy record with insured items, coverage dates, exclusions, limits, deductibles, and evidence. Proposed future claim states are `draft`, `awaiting_user_review`, `submitted`, `pending`, `approved`, `denied`, and `paid`. Store event evidence, receipts, deadlines, and submission references. Never equate submitted or approved with paid.
+In the future insurance extension, preferences belong in intake; actual coverage requires a separate policy record with insured items, coverage dates, exclusions, limits, deductibles, and evidence. Proposed future claim states are `draft`, `awaiting_user_review`, `submitted`, `pending`, `approved`, `denied`, and `paid`. Store event evidence, receipts, deadlines, and submission references. Never equate submitted or approved with paid.
 
 ## Reliability and privacy
 

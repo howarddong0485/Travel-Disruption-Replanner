@@ -1,6 +1,18 @@
 # Unified backup workflow
 
-Both the saved-trip **Backup plans** panel and the sample lab now run:
+**Current scope:** this guide describes a preserved standalone/legacy backup
+slice. The normal saved-trip panel uses [connected planning](../planning/README.md).
+The dated verification below records the original slice; current Jac 0.37.23,
+387-test, full-client/sealed and successful hosted-CI evidence is in
+[LOCAL_VERIFICATION.md](../../docs/LOCAL_VERIFICATION.md). See
+[MVP_STATUS.md](../../docs/MVP_STATUS.md) for remaining feature work.
+
+
+**Current UI:** the saved-trip Backup plans panel now uses the connected
+[planning integration](../planning/README.md). This document records the preserved
+legacy sample/history workflow and its stateless/diagnostic interfaces.
+
+The preserved legacy saved-trip workflow endpoints and sample lab run:
 
 **Search → validate → refresh the same inventory IDs → revalidate → select Plan B/C → save → display.**
 
@@ -102,8 +114,8 @@ Conflicts reload history; retries cannot extend old evidence or duplicate a save
 request. Generation and refresh never modify the original trip/items.
 
 The legacy `preview_backups` API and storage-free `backup/demo.jac` remain for
-compatibility. They still return the older draft contract. The Roam backup panel
-now uses the saved-trip workflow endpoints above.
+compatibility. They still return the older draft contract. These saved-trip workflow endpoints remain available; the current Roam panel
+uses the separate connected planning endpoints.
 The stateless validation/refresh endpoints and `run_fixture` default retain the
 two-candidate fixture behavior. Persisted sample and saved-trip workflows use the
 expanded pool; `run_fixture(..., expanded=True)` opts into it explicitly.

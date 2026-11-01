@@ -1,5 +1,13 @@
 # Saved backup refresh history
 
+**Current scope:** this guide describes a preserved standalone/legacy backup
+slice. The normal saved-trip panel uses [connected planning](../planning/README.md).
+The dated verification below records the original slice; current Jac 0.37.23,
+387-test, full-client/sealed and successful hosted-CI evidence is in
+[LOCAL_VERIFICATION.md](../../docs/LOCAL_VERIFICATION.md). See
+[MVP_STATUS.md](../../docs/MVP_STATUS.md) for remaining feature work.
+
+
 Implementation for issues #28 and #29, based on the refresh slice at `06009b1`.
 It extends the standalone synthetic lab. The [unified workflow](WORKFLOW.md) also
 uses this store for saved-trip observations. It does not integrate shared

@@ -175,3 +175,25 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .backup-changes small { color: var(--muted); }
 .backup-changes dd { white-space: normal; text-align: right; }
 @media (max-width: 540px) { .backup-changes dd { text-align: left; } }
+.integrated-planning { min-width: 0; overflow-wrap: anywhere; }
+.integrated-planning > h3 { margin-top: 0; }
+.integrated-planning p { line-height: 1.6; }
+.integrated-planning fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.planning-facts, .planning-item-facts { border: 1px solid var(--line); border-radius: 6px; padding: 14px; margin: 16px 0; }
+.planning-facts > summary, .planning-item-facts > summary { cursor: pointer; font-weight: 600; }
+.planning-facts[open] > summary, .planning-item-facts[open] > summary { margin-bottom: 16px; }
+.integrated-planning .validation-controls > label { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.planning-risk-list { display: grid; gap: 10px; margin: 18px 0; }
+.planning-risk-list label { align-items: flex-start; line-height: 1.5; }
+.planning-results { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
+.planning-results .backup-option { min-width: 0; }
+.planning-results .backup-option > button { margin: 8px 8px 0 0; }
+.planning-results .backup-grid { margin: 18px 0; }
+.planning-demo-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.integrated-planning .secondary, .planning-demo-actions .secondary { border: 1px solid var(--line); border-radius: 5px; padding: 10px 14px; background: var(--surface-muted); color: var(--accent); font: inherit; }
+.integrated-planning .secondary:hover, .planning-demo-actions .secondary:hover { border-color: var(--accent); }
+@media (max-width: 540px) {
+    .integrated-planning { padding: 18px 14px; }
+    .planning-facts, .planning-item-facts { padding: 12px; }
+    .integrated-planning input, .integrated-planning select { max-width: 100%; min-width: 0; }
+}
