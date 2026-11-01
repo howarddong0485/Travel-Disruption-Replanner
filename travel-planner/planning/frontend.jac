@@ -111,7 +111,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         except Exception {}
     }
     def setFact(id: str, field: str, value: any) -> None {
-        updated = browser.Object.assign({}, details[id] or {}); updated[field] = value;
+        updated = browser.Object.assign({}, details[id] or {}); updated[field] = value; updated["evidence"] = None;
         changedDetails = browser.Object.assign({}, details); changedDetails[id] = updated; details = changedDetails;
         changedConfirmations = browser.Object.assign({}, confirmed); changedConfirmations[id] = False; confirmed = changedConfirmations; clear();
     }

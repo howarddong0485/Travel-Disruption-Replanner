@@ -126,7 +126,7 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
             bool(item["fixed"]), bool(item["done"] and item["category"] in ("food", "activity")), detail.get("blocks_time", True), commitments.get(item["id"], False)));
     }
     transfers = tuple(Transfer(r["from_id"], r["to_id"], r["from_venue"], r["to_venue"], r.get("minutes"), parse_evidence(r.get("evidence"))) for r in facts.get("transfers", []));
-    dependencies = tuple(Dependency(e["prerequisite_id"], e["dependent_id"], e["buffer_minutes"]) for e in state["dependencies"]);
+    dependencies = tuple(Dependency(e["prerequisite_id"], e["dependent_id"], e["buffer_minutes"]) for e in state["dependencies"] if e["prerequisite_id"] in active_ids and e["dependent_id"] in active_ids);
     context = TripContext(trip["id"], trip["currency"], facts.get("zone", ""), trip["start_date"], trip["end_date"],
         trip["budget_cents"] or None, facts.get("reserve_minor", 0), profile, tuple(nodes), transfers, dependencies,
         traveler_profile=source_profile, extra_cost_minor=sum(i["cost_cents"] for i in state["items"] if i["category"] == "expense"),

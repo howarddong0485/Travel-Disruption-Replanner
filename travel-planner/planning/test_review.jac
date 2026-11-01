@@ -27,9 +27,10 @@ test "all selected risks on one item are enforced in either selection order" {
 test "removed or excluded scheduled nodes do not leave supplemental references" {
     for excluded in ("deleted", "packing") {
         (state, facts) = sample_state(REVIEW_CLOCK); original = deepcopy(facts);
+        state["dependencies"].append({"prerequisite_id": "activity", "dependent_id": "dinner", "buffer_minutes": 20});
         if excluded == "deleted" { state["items"] = [i for i in state["items"] if i["id"] != "activity"]; }
         else { next(i for i in state["items"] if i["id"] == "activity")["category"] = "packing"; }
-        state["dependencies"] = [e for e in state["dependencies"] if "activity" not in (e["prerequisite_id"], e["dependent_id"])];
+        if excluded == "deleted" { state["dependencies"] = [e for e in state["dependencies"] if "activity" not in (e["prerequisite_id"], e["dependent_id"])]; }
         context = build_context(state, facts, REVIEW_CLOCK);
         assert "activity" not in context["facts"]["items"];
         assert all(h["node_id"] != "activity" for h in context["facts"]["place_hours"]);
@@ -100,4 +101,28 @@ test "new foreign supplemental facts are rejected instead of silently reconciled
         try { check_payload({**facts, **extra}, state); } except ValueError { rejected = True; }
         assert rejected;
     }
+}
+
+
+test "a replacement's provider hours replace the old venue's closed-day observations" {
+    (state, facts) = sample_state(REVIEW_CLOCK);
+    for hours in facts["place_hours"] {
+        if hours["node_id"] == "activity" { hours["closed"] = True; hours["open_local"] = ""; hours["close_local"] = ""; }
+    }
+    facts["manual_risks"].append({"id": "closure", "category": "closure", "node_ids": ["activity"], "summary": "Original venue closed", "evidence": facts["items"]["activity"]["evidence"]});
+    context = build_context(state, facts, REVIEW_CLOCK);
+    plan = next(p for p in generate_plans(context, REVIEW_CLOCK, ["closure"])["plans"] if p["selectable"]);
+    conn = Mock();
+    with patch("planning.application.read_facts", return_value=facts) { apply_backup(conn, state, plan, REVIEW_CLOCK); }
+    saved = json.loads(conn.execute.call_args_list[-1].args[1][0]);
+    records = [h for h in saved["place_hours"] if h["node_id"] == "activity"];
+    assert records and all(not h.get("closed", False) and h["evidence_id"] == "item-facts:activity" for h in records);
+    after = deepcopy(state); proposed = plan["replacements"][0]["item"];
+    for item in after["items"] {
+        if item["id"] == "activity" {
+            item.update({"title": proposed["title"], "location": proposed["venue"], "date": proposed["start"]["local"][:10], "time": proposed["start"]["local"][11:16], "cost_cents": proposed["cost_minor"]});
+        }
+    }
+    restored = build_context(after, saved, REVIEW_CLOCK);
+    assert not any(r["category"] == "opening_hours" and r["status"] == "flagged" and "activity" in r["node_ids"] for r in restored["risks"]);
 }

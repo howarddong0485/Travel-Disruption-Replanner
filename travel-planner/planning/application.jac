@@ -74,6 +74,15 @@ def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now
         if candidate.action == "reschedule" {
             facts["items"][item.id] = {**prior_facts, "zone": item.start.zone, "start_fold": item.start.fold, "end": asdict(item.end)};
         }
+        else {
+            facts["place_hours"] = [record for record in facts.get("place_hours", []) if record["node_id"] != item.id];
+            for window in item.hours or () {
+                if window.start.zone == item.start.zone and window.end.zone == item.start.zone and window.start.local[:10] == window.end.local[:10] {
+                    facts["place_hours"].append({"node_id": item.id, "date": window.start.local[:10],
+                        "open_local": window.start.local[11:], "close_local": window.end.local[11:], "evidence_id": "item-facts:" + item.id});
+                }
+            }
+        }
     }
     facts["transfers"] = checked["transfers"];
     changed_ids = {c.replaces_id for c in candidates};
