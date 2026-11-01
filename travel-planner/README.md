@@ -4,6 +4,8 @@ Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanne
 
 Application code, backend helpers, demos, and tests are written in `.jac` files. Jac imports Python standard-library modules for SQLite, dataclasses, date/time handling, and CLI argument parsing; no project-owned Python source files are required.
 
+For implementation gaps by role and contribution attribution, see [MVP_STATUS.md](../docs/MVP_STATUS.md). Initial itinerary generation is still pending; demo trips are predefined samples.
+
 ## Features
 
 - **Trips:** Create and edit a trip name, destination, departure/return dates, currency, budget, and notes. Switch between saved trips; upcoming, current, and past status follows the local calendar.
@@ -15,7 +17,7 @@ Application code, backend helpers, demos, and tests are written in `.jac` files.
 - **Backup validation:** Check complete proposed itineraries for traveler requirements, costs, scheduling, opening hours, routes, dependencies and fixed items. Missing facts remain unresolved and cannot be accepted. Passing has explicit synthetic scope. [Integration](planning/README.md) and [legacy validator](backup/VALIDATION.md).
 - **Backup refresh:** Reconfirm inventory before acceptance; changed prices, sold-out or expired evidence and provider failures block old conclusions. The standalone sample lab retains its explicit fault-injection scenarios. Search and refresh do not change active itinerary items. [Refresh demo](backup/VALIDATION.md#refreshing-synthetic-inventory).
 - **Saved refresh history:** Store versioned sample and saved-trip observations separately from trips, inspect historical outcomes in diagnostics and restore controls after reopening. Current checks always require an explicit refresh. [Storage and UI guide](backup/HISTORY.md).
-- **Candidate backfill:** Refresh and validate the full synthetic pool before selecting up to two alternatives. Rejected or unavailable options can be replaced by other eligible candidates; a single option or no solution is explained explicitly. Normal demo pages hide diagnostic records. [Selection policy and examples](backup/SELECTION.md).
+- **Legacy candidate backfill:** The preserved sample/history workflow refreshes the full synthetic pool before selecting up to two alternatives; the connected flow above supports up to five. Rejected or unavailable options can be replaced by eligible candidates, and one/no-option outcomes are explained. Normal demo pages hide diagnostics. [Selection policy and examples](backup/SELECTION.md).
 - **Replanning:** Simulate delayed/interrupted items, combine synthetic backup inventory, edit dependencies and schedule rules, optionally use a Jac LLM to select combinations, and accept/reject version-safe revisions. Try the separate demo trip from the sidebar; see [the replanning guide](replan/README.md).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
 - **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and five planning tabs. The web interface adapts to phones and tablets.
@@ -55,23 +57,20 @@ They pin Jac 0.37.23, create an independent Python 3.14 environment, build a
 sealed package, and verify non-development HTTP/CLI behavior. The guide also
 records the version-specific build compatibility command and packaged-run setup.
 
-From this folder:
+From the repository root on the connected review branch:
 
 ```sh
-jac --version
-jac install
-jac run --dev travel
+bash scripts/setup.sh
+cd travel-planner
+../.tools/jac-0.37.23 run --dev travel
 ```
+
+For the CLI and focused examples below, `jac` means this checksum-verified
+0.37.23 executable; invoke `../.tools/jac-0.37.23` if your shell resolves another version.
 
 Open the **App** URL printed by Jac. Create a trip, then add details using the itinerary, bookings, packing, and budget tabs. Use **Edit trip** for notes or a budget. Refresh to see changes made through the CLI or another browser.
 
-If Jac is missing from your shell:
-
-```sh
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-A fresh clone does not include `.jac/venv`. Use a working Jac installation to provision dependencies; do not rely on another developer's sibling project. The manifest pins Jac 0.37.23; see the [verification boundary](../docs/PROGRESS.md#latest-verification-boundary) for dated validation results.
+A fresh clone needs an independent Python 3.14 environment; `setup.sh` creates it and installs the declared dependencies. See the [current verification guide](../docs/LOCAL_VERIFICATION.md).
 
 ## CLI
 

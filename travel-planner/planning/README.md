@@ -154,10 +154,9 @@ jac build backup_refresh --as client
 jac run planning/demo.jac
 ```
 
-See `docs/PROGRESS.md` for final current verification. Tests use temporary
+See the [progress record](../../docs/PROGRESS.md) and [current gaps](../../docs/MVP_STATUS.md). Tests use temporary
 databases. Browser verification uses isolated temporary travel/history files.
-No GitHub-hosted CI result, live provider/model call, real booking, payment or
-cancellation is established by those checks.
+The separate [hosted CI run](https://github.com/howarddong0485/Travel-Disruption-Replanner/actions/runs/41315449524) passed at `83fee96`. No live provider/model call or external booking/payment/cancellation is established by these checks.
 
 The current local regression has **387 passing tests** under Jac 0.37.23. All four
 application checks and both client builds pass. The new

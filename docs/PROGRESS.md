@@ -1,5 +1,18 @@
 # Project progress
 
+## Current status — 2026-11-01
+
+Use [MVP_STATUS.md](MVP_STATUS.md) for the P1–P5 implementation gaps,
+contribution attribution and remaining delivery gates. The connected code baseline
+`83fee96` passed [GitHub CI](https://github.com/howarddong0485/Travel-Disruption-Replanner/actions/runs/41315449524):
+387 tests, four app checks, two client builds, the sealed package and both
+source/package HTTP/CLI checks. Source/stack review and merges remain pending.
+
+The dated sections below are historical verification records. Their old runtime,
+build failures and incomplete integration describe those earlier revisions; use
+the status page and [verification guide](LOCAL_VERIFICATION.md) for current results.
+
+
 This report separates delivery on `main` from implementations still under review. Dated verification records identify the code, runtime and scope that were actually checked.
 
 ## Person 3 publication verification — 2026-11-01
@@ -237,8 +250,7 @@ Issue #11 remains open for shared RiskFlag/profile/authoritative-validator/ledge
 - Documented agent responsibilities, deterministic orchestration, shared data contracts, validation, and replanning in [ARCHITECTURE.md](ARCHITECTURE.md).
 - Defined MVP boundaries, acceptance criteria, supplemental features, and future work in [ROADMAP.md](ROADMAP.md).
 - Documented candidate data providers, evidence limitations, and the mock-to-live integration strategy in [DATA_SOURCES.md](DATA_SOURCES.md).
-- Assigned five feature-owner roles above a shared basic-planner foundation, with interface coordination and review expectations in [CONTRIBUTING.md](../CONTRIBUTING.md). Person numbers remain placeholders.
-- Established the proposed sponsorship policy: clearly labeled mock ads, separate sponsored placements, and zero sponsorship weight in organic recommendations.
+- Assigned five feature-owner roles above a shared basic-planner foundation, with interface coordination and review expectations in [CONTRIBUTING.md](../CONTRIBUTING.md). Later owner confirmations are recorded in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Implemented local planner: Roam
 
@@ -260,13 +272,13 @@ Gehao Dong's backup module adds Boston/USD Plan B/C drafts for rain-affected act
 
 The original delivery includes an independent two-scenario demo, eight unit tests and one isolated service integration test. See the [backup preview demo](../travel-planner/README.md#backup-preview-demo) for supported scenarios and limitations. It does not implement automatic risk ingestion, full-trip constraint validation, changing inventory, comparison or acceptance.
 
-## Current limits and next milestone
+## Historical foundation limits — 2026-10-06
 
 Roam stores manually entered plans and booking details. It does not generate AI itineraries, search live inventory, make reservations, monitor disruptions, analyze cancellation policies, generate fully validated backups. It is a local personal prototype with public service endpoints, not a deployed multi-user service. Costs use one currency per trip with no exchange-rate conversion; times are destination-local with no automatic timezone conversion.
 
 The next integration milestone is the documented fixture-based flow: profile and hard filters → plan → validate → risks → backups → simulated disruption → dependency-aware repair → compare → traveler review and explicit acceptance. Shared contracts, remaining named owners, and deployment choices still need agreement. Optional Jac LLM selection is available in the standalone replanning prototype.
 
-## Latest verification boundary
+## Historical verification boundary — 2026-10-13
 
 The PR #19 merge-conflict fix was verified on October 13, 2026 with Jac 0.37.23, including the business theme and the latest backup-preview fixes from `main`. All three app checks, the client build, and 21 tests passed (11 planner/replanning, nine backup unit tests, one backup service test). The earlier backup-only delivery used Jac 0.37.21; issue #8 still tracks clean-checkout setup and CI coverage. Browser checks were not rerun for this merge fix; the backup audit below records its separate browser verification.
 

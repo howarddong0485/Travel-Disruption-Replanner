@@ -103,9 +103,8 @@ On macOS arm64 with Python 3.14.7 and Jac 0.37.23, a new source export with no
 
 The GitHub workflow in `.github/workflows/jac.yml` uses the same scripts on
 Ubuntu 24.04, pins its actions by commit, and preserves logs on failure. It is
-provided with the review branch; this local record is **not** a successful
-GitHub-hosted CI run or a Linux verification claim. A real run URL must be
-recorded separately before treating the remote CI gate as passed.
+provided with the review branch. This October 30 local record is separate
+from the successful November 1 hosted run recorded below.
 Live providers/models, external bookings/payments/cancellations, public
 multi-user deployment and team contract approval are outside these checks.
 
@@ -117,3 +116,15 @@ the 46-module sealed package, and both source/package HTTP and CLI smoke checks.
 This repeat run used the existing checkout; the independent clean-install
 evidence is the October 30 source-only run above. Browser results above retain
 their original date and were not rerun as part of this command-line verification.
+
+## GitHub-hosted verification — 2026-11-01
+
+[Run #2](https://github.com/howarddong0485/Travel-Disruption-Replanner/actions/runs/41315449524)
+passed on Ubuntu 24.04/Linux x86_64 with Python 3.14 and Jac 0.37.23 at code
+baseline `83fee9617bf152c86f153ddfbc387f18b09223b4`. It confirms 387 tests,
+four app checks, two client builds, 46 sealed manifest modules and both source
+and sealed HTTP/CLI smoke checks. Verification logs were uploaded as
+`jac-verification` with seven-day retention. This supersedes the earlier pending
+hosted-CI gate, while retaining the original dates/scopes of local/browser checks.
+
+See [MVP_STATUS.md](MVP_STATUS.md) for remaining feature work and review gates.

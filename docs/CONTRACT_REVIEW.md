@@ -50,14 +50,14 @@ files. Review them as dependencies, then review the adapters and new alternative
 schema separately. This proposal does not replace or silently approve those
 owners' upstream PRs.
 
-## Decisions still requiring people or remote evidence
+## Decisions still requiring people
 
 - Agree on the proposed profile/alternative/context/validation versions and
   financial semantics; source ownership remains independently demonstrable.
 - Decide source-PR/stack merge order, retarget dependent PRs and resolve any
   overlapping changes with their owners.
-- Obtain a successful GitHub-hosted CI run after publishing the local workflow.
+The [hosted CI run](https://github.com/howarddong0485/Travel-Disruption-Replanner/actions/runs/41315449524) passed at `83fee96`. Repeat required checks on the final merge revision; owner approval remains open.
 
-The local engineering gates and their precise verification scope are recorded in
+Remaining code gaps are listed in [MVP_STATUS.md](MVP_STATUS.md). The engineering checks and their precise verification scope are recorded in
 [LOCAL_VERIFICATION.md](LOCAL_VERIFICATION.md). Mock MVP verification does not
 establish production deployment or the later live-integration milestone.

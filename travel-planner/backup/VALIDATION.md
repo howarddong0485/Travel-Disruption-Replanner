@@ -1,5 +1,13 @@
 # Standalone backup validation
 
+**Current scope:** this guide describes a preserved standalone/legacy backup
+slice. The normal saved-trip panel uses [connected planning](../planning/README.md).
+The dated verification below records the original slice; current Jac 0.37.23,
+387-test, full-client/sealed and successful hosted-CI evidence is in
+[LOCAL_VERIFICATION.md](../../docs/LOCAL_VERIFICATION.md). See
+[MVP_STATUS.md](../../docs/MVP_STATUS.md) for remaining feature work.
+
+
 This module validates synthetic Plan B / C proposals against an entire sample
 itinerary. It is independent of teammates' schemas and services. The fixture
 sample panel lives inside Roam, and never reads or writes saved trips. The

@@ -1,5 +1,12 @@
 # Disruption and dependency-aware replanning
 
+**Scope:** this guide describes the preserved legacy disruption-repair path.
+Connected backups use [planning](../planning/README.md), including shared P1/P2
+checks and P3 candidate application. Unifying the legacy generator and
+regenerating backups after acceptance remain open; see [MVP_STATUS.md](../../docs/MVP_STATUS.md).
+Use the [pinned setup](../../docs/LOCAL_VERIFICATION.md). Run examples from
+`travel-planner/`, using `../.tools/jac-0.37.23` for `jac` below.
+
 This is a working mock-data prototype inside Roam. Select a scheduled item, mark it delayed or interrupted, inspect several combinations of backups, optionally build a custom combination, then explicitly accept a revised plan. Nothing makes or cancels a real reservation.
 
 ## Try it
@@ -7,8 +14,7 @@ This is a working mock-data prototype inside Roam. Select a scheduled item, mark
 From `travel-planner/`:
 
 ```sh
-jac install
-jac run --dev travel
+../.tools/jac-0.37.23 run --dev travel
 ```
 
 Click **Start backup & replan demo** in the sidebar. This creates a separate Boston trip and opens **Guided demo**. Generate dinner backups in step 1, then continue to step 2. In **Replan**, delay **Flight arrival** by **180 minutes**, then click **Generate replan options**. Rental-car pickup and dinner miss their windows, hotel check-in moves, and the fixed next-day museum remains unchanged. Compare alternatives or use **Build your own combination** to mix individual backups. Rejecting leaves the itinerary unchanged; accepting applies the stored proposal.
