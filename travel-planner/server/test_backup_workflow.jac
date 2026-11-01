@@ -62,13 +62,14 @@ test "saved trip searches checks refreshes and persists the same inventory witho
             r = response["report"];
             assert r["scope"] == "saved_trip_mock" and r["summary"]["passed_fixture_checks"] == 0;
             assert r["summary"]["needs_validation"] == 2;
-            assert r["pipeline"]["provider_ids"] == ids;
+            assert r["pipeline"]["selected_provider_ids"] == ids;
+            assert len(r["evaluated_options"]) == 4;
             assert [x["provider_id"] for x in r["results"]] == ids;
             assert r["input_snapshot"]["trip"]["profile"]["adults"] is None;
             assert all(x["cost"]["projected_total_minor"] is None for x in r["results"]);
             assert all(x["observed_candidate"]["item"]["start"]["local"].startswith(item["date"]) for x in r["results"]);
             assert all(edge["minutes"] is None for x in r["input_snapshot"]["candidates"] for edge in x["transfers"]);
-            assert response["history"]["entries"][0]["pipeline"]["provider_ids"] == ids;
+            assert response["history"]["entries"][0]["pipeline"]["selected_provider_ids"] == ids;
             assert dump_travel() == before;
         }
         restored = call(client, "load_trip_backup_history", {"session_id": session, "trip_id": trip["id"]});
@@ -148,7 +149,9 @@ test "empty inventory and provider failure are saved as explicit nonpassing obse
         (trip, activity, _) = setup_trip(client); before = dump_travel();
         payload = request_for(client, session, trip, activity); payload["inventory_change"] = "provider_failure";
         failed = call(client, "save_trip_backup_refresh", payload);
-        assert all(r["refresh_state"] == "provider_error" and r["source"] == "" for r in failed["report"]["results"]);
+        assert failed["report"]["results"] == [];
+        assert len(failed["report"]["evaluated_options"]) == 4;
+        assert all(r["refresh_state"] == "provider_error" and r["source"] == "" for r in failed["report"]["evaluated_options"]);
         assert dump_travel() == before;
     }
 }

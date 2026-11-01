@@ -41,7 +41,7 @@ test "history survives new connections with complete input and observation snaps
         try {
             row = conn.execute("SELECT * FROM backup_runs").fetchone();
             snapshot = json.loads(row["payload"]);
-            assert row["schema_version"] == 1 and row["validator_version"] == "backup-fixture-v1";
+            assert row["schema_version"] == 1 and row["validator_version"] == "backup-selection-v2";
             assert snapshot["report"]["input_snapshot"]["trip"]["budget_minor"] == 60000;
             assert snapshot["report"]["input_snapshot"]["risk"]["evidence"]["source"];
             assert snapshot["report"]["results"][0]["observed_candidate"]["transfers"];
@@ -109,8 +109,9 @@ test "older retries cannot supersede a newer provider failure" {
         assert retry["report"] is None and retry["history"]["revision"] == 2;
         assert "superseded" in retry["history"]["entries"][1]["reasons"];
         latest = retry["history"]["entries"][0];
-        assert latest["recorded_summary"]["needs_validation"] == 2;
-        assert all(option["cost_minor"] is None for option in latest["recorded_options"]);
+        assert latest["recorded_options"] == [] and latest["selection"]["outcome"] == "provider_unavailable";
+        assert latest["recorded_evaluated_summary"]["needs_validation"] == 4;
+        assert all(option["cost_minor"] is None for option in latest["recorded_evaluations"]);
     }
 }
 
@@ -141,9 +142,10 @@ test "provider failure and recovery are separate immutable revisions" {
     with isolated_history() {
         session_id = str(uuid.uuid4()); a = saved(session_id, change="partial_failure");
         b = saved(session_id, 1, now=HISTORY_CLOCK + timedelta(minutes=1));
-        assert a["report"]["summary"]["needs_validation"] == 1;
+        assert a["report"]["evaluated_summary"]["needs_validation"] == 1;
+        assert a["report"]["summary"]["passed_fixture_checks"] == 2;
         assert b["report"]["summary"]["passed_fixture_checks"] == 2;
-        assert b["history"]["entries"][1]["recorded_options"][0]["cost_minor"] is None;
+        assert b["history"]["entries"][1]["recorded_evaluations"][0]["cost_minor"] is None;
         b["report"]["results"][0]["title"] = "changed by client";
         assert read_history(session_id, HISTORY_CLOCK)["entries"][0]["recorded_options"][0]["title"] != "changed by client";
     }
@@ -192,7 +194,8 @@ test "sessions isolate histories even when request IDs match" {
         a = str(uuid.uuid4()); b = str(uuid.uuid4()); request_id = str(uuid.uuid4());
         saved(a, request_id=request_id); saved(b, request_id=request_id, change="all_sold_out");
         assert read_history(a, HISTORY_CLOCK)["entries"][0]["recorded_summary"]["passed_fixture_checks"] == 2;
-        assert read_history(b, HISTORY_CLOCK)["entries"][0]["recorded_summary"]["invalid"] == 2;
+        assert read_history(b, HISTORY_CLOCK)["entries"][0]["recorded_evaluated_summary"]["invalid"] == 4;
+        assert read_history(b, HISTORY_CLOCK)["entries"][0]["recorded_options"] == [];
         assert read_history(str(uuid.uuid4()), HISTORY_CLOCK)["entries"] == [];
     }
 }
@@ -238,5 +241,42 @@ test "history refuses to use the saved travel database" {
         caught = False;
         try { read_history(str(uuid.uuid4()), HISTORY_CLOCK); } except ValueError { caught = True; }
         assert caught and not os.path.exists(os.environ["TRAVEL_DB_PATH"]);
+    }
+}
+
+test "fallback selection and rejected evaluations survive storage without rewriting earlier choices" {
+    with isolated_history() {
+        session = str(uuid.uuid4()); request_id = str(uuid.uuid4());
+        first = saved(session, request_id=request_id, change="price_increase");
+        assert first["report"]["selection"]["selected_provider_ids"] == ["science-hall", "covered-market"];
+        assert first["report"]["evaluated_options"][0]["cost"]["projected_total_minor"] == 64000;
+        recovered = saved(session, 1);
+        previous = recovered["history"]["entries"][1];
+        assert previous["selection"] == first["report"]["selection"];
+        assert previous["recorded_evaluations"][0]["status"] == "invalid";
+        assert [o["provider_id"] for o in previous["recorded_options"]] == ["science-hall", "covered-market"];
+        assert [o["display_label"] for o in previous["recorded_options"]] == ["Plan B", "Plan C"];
+        assert recovered["report"]["selection"]["selected_provider_ids"] == ["indoor-gallery", "science-hall"];
+        retry = saved(session, request_id=request_id, change="price_increase");
+        assert retry["report"] is None and retry["history"]["revision"] == 2;
+    }
+}
+
+test "pre selection snapshots remain readable but cannot restore current conclusions" {
+    with isolated_history() {
+        session = str(uuid.uuid4()); request_id = str(uuid.uuid4()); saved(session, request_id=request_id);
+        conn = connect_history();
+        try {
+            row = conn.execute("SELECT payload FROM backup_runs WHERE session_id=?", (session,)).fetchone();
+            snapshot = json.loads(row["payload"]);
+            for key in ["selection", "evaluated_options", "evaluated_summary"] { snapshot["report"].pop(key); }
+            conn.execute("UPDATE backup_runs SET validator_version='backup-fixture-v1', payload=? WHERE session_id=?", (json.dumps(snapshot), session));
+            conn.commit();
+        } finally { conn.close(); }
+        restored = read_history(session, HISTORY_CLOCK);
+        assert restored["entries"][0]["selection"] is None;
+        assert len(restored["entries"][0]["recorded_options"]) == 2;
+        assert "version_changed" in restored["entries"][0]["reasons"];
+        assert saved(session, request_id=request_id)["report"] is None;
     }
 }

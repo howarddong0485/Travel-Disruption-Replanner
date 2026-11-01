@@ -2,7 +2,7 @@
 
 Both the saved-trip **Backup plans** panel and the sample lab now run:
 
-**Search → validate → refresh the same inventory IDs → revalidate → save → display.**
+**Search → validate → refresh the same inventory IDs → revalidate → select Plan B/C → save → display.**
 
 This is P3's module-owned workflow. Inventory and provider observations remain
 synthetic. Shared traveler/risk/validation contracts, live providers, acceptance
@@ -48,22 +48,30 @@ inventory. Backend validation and snapshot persistence run in both views.
 
 ## Implementation and evidence boundaries
 
-- `workflow.jac` searches the existing mock adapter, screens availability, currency,
-  sources and expiry, rejects duplicate IDs, materializes up to two supported
-  candidates and records the initial validation before refreshing.
+- `workflow.jac` searches the expanded mock pool, screens availability, currency,
+  sources and expiry, rejects duplicate IDs, and materializes all supported
+  candidates before initial validation and refresh. The current catalog has four
+  supported candidates per scenario. `evaluated_count` counts these candidates;
+  `selected_count` counts the final display options, which may be zero, one or two.
 - `tools/alternatives/details.jac` supplies detailed synthetic facts keyed by the
   search inventory ID. The legacy search price is an unqualified estimate; it is
   not reused as a whole-party quote. Detailed fixture quotes explicitly cover the
   known party. Unknown party size leaves the amount unknown.
 - `refresh.jac` refreshes those same IDs and revalidates. A missing ID or provider
-  failure discards prior evidence; another candidate is never silently substituted.
+  failure discards prior evidence. Each observation keeps its original identity.
+- `selection.jac` selects up to two refreshed, passing alternatives, then fills
+  remaining slots with received but unresolved alternatives labeled **Needs
+  confirmation**. Invalid options and failed providers cannot fill a slot.
+  Other evaluated candidates can replace rejected options; the full decision
+  record is persisted and exposed only in diagnostics. Plan B/C are display labels,
+  separate from stable provider IDs. See [selection policy and examples](SELECTION.md).
 - `saved_inputs.jac` maps the actual target date and saved records without adding
   a fictional traveler profile, timezone, end time, quote or route evidence.
   A manually selected trigger remains unconfirmed risk. Those missing facts keep
   saved-trip candidates unresolved; numeric comparisons remain unknown when their
   supporting facts are absent. Packing items are excluded from itinerary checks.
 - `history.jac` stores immutable inputs, observations, final checks, initial check
-  trace, provider IDs and calculated explanations. Old records without the new
+  trace, all evaluated candidates, selection decisions, provider IDs and calculated explanations. Old records without the new
   optional fields still load. History is not recalculated using later prices.
 - `validation_frontend.jac` renders both modes. `frontend.jac` adapts Roam's saved
   trip props; `refresh_app.jac` also exposes both inputs for isolated verification.
@@ -96,8 +104,13 @@ request. Generation and refresh never modify the original trip/items.
 The legacy `preview_backups` API and storage-free `backup/demo.jac` remain for
 compatibility. They still return the older draft contract. The Roam backup panel
 now uses the saved-trip workflow endpoints above.
+The stateless validation/refresh endpoints and `run_fixture` default retain the
+two-candidate fixture behavior. Persisted sample and saved-trip workflows use the
+expanded pool; `run_fixture(..., expanded=True)` opts into it explicitly.
 
 ## Verification — 2026-10-28
+
+For the later candidate-selection slice, see [current verification](SELECTION.md#verification--2026-10-29).
 
 Local runtime: Jac 0.37.21. Manifest-pinned 0.37.23 and clean-install CI are not
 verified in this environment.

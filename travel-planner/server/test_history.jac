@@ -40,15 +40,17 @@ test "history HTTP lifecycle persists separately and never mutates the saved tri
             assert conflict.data["result"]["report"] is None;
             payload["expected_revision"] = 1; payload["inventory_change"] = "provider_failure";
             failed_provider = client.post("/function/save_backup_refresh", json=payload);
-            assert failed_provider.ok and failed_provider.data["result"]["report"]["summary"]["needs_validation"] == 2;
+            assert failed_provider.ok and failed_provider.data["result"]["report"]["results"] == [];
+            assert failed_provider.data["result"]["report"]["evaluated_summary"]["needs_validation"] == 4;
             assert history_travel_snapshot() == before;
             client.close();
             client = JacTestClient.from_file(path, base_path=os.path.join(directory, "restart-store"));
             restored = client.post("/function/load_backup_history", json={"session_id": session_id}).data["result"];
             assert restored["revision"] == 2 and len(restored["entries"]) == 2;
             assert "report" not in restored;
-            assert restored["entries"][0]["recorded_options"][0]["cost_minor"] is None;
-            assert restored["entries"][0]["recorded_options"][0]["changes"]["cost"]["delta_minor"] is None;
+            assert restored["entries"][0]["recorded_options"] == [];
+            assert restored["entries"][0]["recorded_evaluations"][0]["cost_minor"] is None;
+            assert restored["entries"][0]["recorded_evaluations"][0]["changes"]["cost"]["delta_minor"] is None;
             assert restored["entries"][1]["recorded_options"][0]["changes"]["cost"]["delta_minor"] == 3000;
             assert client.post("/function/load_backup_history", json={"session_id": str(uuid.uuid4())}).data["result"]["entries"] == [];
             for changes in [{"budget": "NaN"}, {"expected_revision": True}, {"expected_revision": 1.0}, {"expected_revision": "1"}, {"expected_revision": None}, {"request_id": "bad"}, {"sample_date": ""}] {
@@ -56,6 +58,12 @@ test "history HTTP lifecycle persists separately and never mutates the saved tri
                 assert not client.post("/function/save_backup_refresh", json=invalid).ok, str(changes);
             }
             assert client.post("/function/load_backup_history", json={"session_id": session_id}).data["result"]["revision"] == 2;
+            payload.update({"request_id": str(uuid.uuid4()), "expected_revision": 2, "inventory_change": "price_increase"});
+            filled = client.post("/function/save_backup_refresh", json=payload);
+            assert filled.ok;
+            assert [o["provider_id"] for o in filled.data["result"]["report"]["results"]] == ["science-hall", "covered-market"];
+            assert len(filled.data["result"]["report"]["evaluated_options"]) == 4;
+            assert filled.data["result"]["history"]["entries"][0]["selection"]["selected_provider_ids"] == ["science-hall", "covered-market"];
             assert history_travel_snapshot() == before;
         } finally {
             client.close();

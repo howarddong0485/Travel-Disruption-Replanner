@@ -38,10 +38,10 @@ test "searched IDs survive initial checks refresh snapshots and recorded history
             saved = save_refresh(session, str(uuid.uuid4()), revision, scenario=scenario,
                 sample_date="2026-11-17", now=WORKFLOW_CLOCK);
             r = saved["report"];
-            assert r["pipeline"]["provider_ids"] == expected;
-            assert [i["provider_id"] for i in r["pipeline"]["initial_checks"]] == expected;
+            assert r["pipeline"]["selected_provider_ids"] == expected;
+            assert [i["provider_id"] for i in r["pipeline"]["initial_checks"]] == r["pipeline"]["provider_ids"];
             assert [i["provider_id"] for i in r["results"]] == expected;
-            assert [i["provider_id"] for i in r["input_snapshot"]["candidates"]] == expected;
+            assert [i["provider_id"] for i in r["input_snapshot"]["candidates"]] == r["pipeline"]["provider_ids"];
             assert all(i["source"].endswith(i["provider_id"]) for i in r["results"]);
             latest = read_history(session, WORKFLOW_CLOCK)["entries"][0];
             assert latest["pipeline"] == r["pipeline"];
@@ -64,7 +64,7 @@ test "unsupported locations and currencies produce honest empty workflow results
     r = run_workflow(trip, risk, "Kyoto", "unchanged", WORKFLOW_CLOCK);
     assert r["results"] == [] and r["pipeline"]["searched_count"] == 0;
     r = run_workflow(replace(trip, currency="EUR"), risk, "Boston", "unchanged", WORKFLOW_CLOCK);
-    assert r["results"] == [] and len(r["pipeline"]["exclusions"]) == 4;
+    assert r["results"] == [] and len(r["pipeline"]["exclusions"]) == 6;
 }
 
 test "duplicate search IDs and unsupported details never create invented candidates" {
@@ -86,9 +86,9 @@ test "disappearing provider IDs invalidate evidence without substituting another
     (trip, risk, _) = build_fixture("rain", "family", WORKFLOW_CLOCK);
     with patch("backup.refresh.refresh_inventory", return_value=None) {
         r = run_workflow(trip, risk, "Boston", "unchanged", WORKFLOW_CLOCK);
-        assert r["summary"]["needs_validation"] == 2;
-        assert [i["provider_id"] for i in r["results"]] == ["indoor-gallery", "science-hall"];
-        assert all(i["source"] == "" and i["cost"]["projected_total_minor"] is None for i in r["results"]);
+        assert r["evaluated_summary"]["needs_validation"] == 4 and r["results"] == [];
+        assert [i["provider_id"] for i in r["evaluated_options"]][:2] == ["indoor-gallery", "science-hall"];
+        assert all(i["source"] == "" and i["cost"]["projected_total_minor"] is None for i in r["evaluated_options"]);
     }
 }
 

@@ -21,9 +21,14 @@ With the family profile and USD 600 budget:
 | Scenario | Plan B | Plan C |
 | --- | --- | --- |
 | Rain, original inventory | USD 440 total; USD 30 more; same time | USD 470 total; USD 60 more; starts 15 minutes later, lasts 15 minutes longer |
-| Rain, Plan B price increase | USD 640 total; USD 230 more; USD -40 budget remaining; rejected | USD 470 total; USD 60 more |
+| Rain, first inventory option price increase | Covered botanical hall: USD 470 total; USD 60 more | Covered market visit: USD 425 total; USD 15 more |
 | Delayed arrival, original inventory | USD 395 total; USD 15 less; starts 60 minutes later | USD 425 total; USD 15 more; starts 90 minutes later |
-| Both providers fail | Proposed total, difference and timing change unknown | Proposed total, difference and timing change unknown |
+| All providers fail | No current option; retry message | No current option |
+
+The expanded workflow selects alternatives after full validation. The rejected
+USD 640 gallery and its original metrics remain in the diagnostic decision record
+and immutable snapshot. Stateless legacy fixture endpoints retain the original
+two-candidate output. See [SELECTION.md](SELECTION.md).
 
 ## Meaning and boundaries
 
@@ -41,7 +46,9 @@ With the family profile and USD 600 budget:
   and explicit DST folds use elapsed minutes; ambiguous/nonexistent times and
   nonpositive durations remain unknown.
 - A cheaper or shorter proposal can still be rejected. Metrics do not change
-  validation status or candidate ordering. Sample reports retain `standalone_fixture`;
+  validation status or rank candidates. Selection groups passing options ahead of
+  unresolved options and preserves provider search order within each group.
+  Sample reports retain `standalone_fixture`;
   saved-trip reports use `saved_trip_mock` and do not claim shared validation.
 
 ## Freshness and history

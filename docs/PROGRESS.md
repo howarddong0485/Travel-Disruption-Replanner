@@ -2,6 +2,29 @@
 
 This report separates delivery on `main` from implementations still under review. Dated verification records identify the code, runtime and scope that were actually checked.
 
+## Backup candidate selection and backfill — 2026-10-29
+
+Local work on `codex/backup-candidate-selection`, based on `5e8604c` from the
+workflow stack, extends Gehao Dong's module-owned search and refresh flow.
+This slice has not been committed, pushed or published as a PR.
+
+- The workflow evaluates four supported candidates per scenario before selecting
+  up to two Plan B/C cards. Rejected and failed-provider options can be replaced
+  by other fully evaluated candidates; hard requirements are never relaxed.
+- Passing options precede received but unresolved options. Selection preserves
+  search order within each group; it does not optimize or rank by price.
+- One/no-option outcomes have explicit messages. All evaluated candidates and
+  selection decisions are saved; normal demo pages continue to hide diagnostics.
+- Older history remains readable. Validator-version checks prevent old-policy
+  retries from restoring current results. Saved trips are unchanged.
+
+Jac 0.37.21: **117 passed, 1 existing replanning MockLLM failure**, with all 12 new
+tests passing. Four app checks, the standalone client build and eight CLI
+observations pass. Browser verification covers backfill, no solution, saved-trip
+unknowns, diagnostic history, default presentation and a 390px layout. The full
+Roam build, pinned Jac 0.37.23 and shared team integration are not established by
+these checks. See [SELECTION.md](../travel-planner/backup/SELECTION.md).
+
 ## Unified backup workflow and demo presentation — 2026-10-29
 
 Gehao Dong's `codex/backup-workflow` branch extends the unmerged storage/history

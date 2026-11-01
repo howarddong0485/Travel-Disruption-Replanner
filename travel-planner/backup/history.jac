@@ -9,7 +9,7 @@ import from hashlib { sha256 }
 import from backup.validation_fixtures { run_fixture }
 
 glob SCHEMA_VERSION = 1;
-glob VALIDATOR_VERSION = "backup-fixture-v1";
+glob VALIDATOR_VERSION = "backup-selection-v2";
 
 def clock(now: datetime | None = None) -> datetime {
     now = now or datetime.now(timezone.utc);
@@ -56,6 +56,15 @@ def default_context(now: datetime) -> dict[str, any] {
         "sample_date": (now.astimezone(timezone.utc).date() + timedelta(days=7)).isoformat()};
 }
 
+def option_summary(option: dict[str, any]) -> dict[str, any] {
+    return {"candidate_id": option["candidate_id"], "title": option["title"],
+        "provider_id": option.get("provider_id", option["candidate_id"]), "display_label": option.get("display_label"),
+        "status": option["status"], "cost_minor": option["cost"]["projected_total_minor"],
+        "source": option["source"], "refresh_state": option["refresh_state"],
+        "changes": option.get("changes"),
+        "checks": [c for c in option["checks"] if c["status"] != "pass"]};
+}
+
 def run_state(row: sqlite3.Row, latest: int, now: datetime,
     expected_context: dict[str, any] | None = None) -> dict[str, any] {
     snapshot = json.loads(row["payload"]);
@@ -77,13 +86,11 @@ def run_state(row: sqlite3.Row, latest: int, now: datetime,
         "context": snapshot["context"], "checked_at": result_data["checked_at"],
         "expires_at": result_data["expires_at"], "reasons": reasons,
         "recorded_summary": result_data["summary"],
+        "recorded_evaluated_summary": result_data.get("evaluated_summary", result_data["summary"]),
         "pipeline": result_data.get("pipeline"),
-        "recorded_options": [{"candidate_id": r["candidate_id"], "title": r["title"],
-            "provider_id": r.get("provider_id", r["candidate_id"]),
-            "status": r["status"], "cost_minor": r["cost"]["projected_total_minor"],
-            "source": r["source"], "refresh_state": r["refresh_state"],
-            "changes": r.get("changes"),
-            "checks": [c for c in r["checks"] if c["status"] != "pass"]} for r in result_data["results"]],
+        "selection": result_data.get("selection"),
+        "recorded_options": [option_summary(r) for r in result_data["results"]],
+        "recorded_evaluations": [option_summary(r) for r in result_data.get("evaluated_options", result_data["results"])],
         "snapshot": snapshot};
 }
 
@@ -141,7 +148,7 @@ def save_refresh(session_id: str, request_id: str, expected_revision: int,
     now: datetime | None = None) -> dict[str, any] {
     now = clock(now); identifier(session_id); identifier(request_id);
     if not sample_date or not inventory_change { raise ValueError("Select a sample date and inventory snapshot"); }
-    result_data = run_fixture(scenario, profile_name, budget, now, inventory_change, sample_date);
+    result_data = run_fixture(scenario, profile_name, budget, now, inventory_change, sample_date, expanded=True);
     context = {"scenario": scenario, "profile_name": profile_name,
         "budget": format(Decimal(budget.strip()).normalize(), "f") if budget.strip() else "",
         "inventory_change": inventory_change, "sample_date": sample_date};

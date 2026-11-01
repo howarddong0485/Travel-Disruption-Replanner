@@ -57,6 +57,13 @@ Neither entry point exposes accept/apply controls.
 - Old retries never restore a superseded, expired or incompatible result.
   Historical reads recalculate reasons using the server clock and return only
   recorded summaries, not a current validation result.
+- Candidate selection uses validator version `backup-selection-v2`. Snapshots
+  retain every evaluated candidate, its checks and changes, the selection
+  decisions, and the selected provider IDs. Historical summaries distinguish
+  evaluated options from displayed options. Older snapshots without selection
+  fields remain readable; retries under the old validator version return
+  `version_changed` and cannot restore a current result. The SQLite schema is
+  unchanged. See [SELECTION.md](SELECTION.md).
 - Different tabs invalidate visible results through storage notifications;
   focusing a tab also rechecks the latest history. Notifications arriving during
   a request are checked after it finishes. Request identities and cleanup guards

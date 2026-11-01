@@ -10,7 +10,11 @@ glob DETAILS = {
     "indoor-gallery": ("plan-b", "Indoor discovery gallery", "11:00", "12:00", 2000),
     "science-hall": ("plan-c", "Covered botanical hall", "11:15", "12:30", 3000),
     "late-bistro": ("plan-b", "Late vegetarian dinner", "19:00", "20:00", 2000),
-    "evening-cafe": ("plan-c", "Hotel dining room", "19:30", "20:30", 3000)
+    "evening-cafe": ("plan-c", "Hotel dining room", "19:30", "20:30", 3000),
+    "quiet-library": ("reserve-activity-a", "Quiet library visit", "11:00", "12:00", 500),
+    "covered-market": ("reserve-activity-b", "Covered market visit", "11:00", "12:00", 1500),
+    "rooftop-grill": ("reserve-food-a", "Rooftop grill dinner", "19:00", "20:00", 1200),
+    "late-noodle-house": ("reserve-food-b", "Late noodle dinner", "19:10", "20:10", 1800)
 };
 
 def materialize(found: BackupCandidate, trip: TripContext, risk: RiskContext,
@@ -26,6 +30,8 @@ def materialize(found: BackupCandidate, trip: TripContext, risk: RiskContext,
     party = profile.adults + len(profile.child_ages) if profile.adults is not None and type(profile.adults) is int and
         profile.adults > 0 and all(type(age) is int and 0 <= age <= 17 for age in profile.child_ages) else None;
     rules = {"dietary:vegetarian": True, "pet:dog": True, "accessibility:wheelchair": True, "indoor": True};
+    if found.id == "quiet-library" { rules.update({"pet:dog": False, "accessibility:wheelchair": False}); }
+    if found.id == "rooftop-grill" { rules.update({"dietary:vegetarian": False, "accessibility:wheelchair": False}); }
     proposal = ScheduledItem(target.id, title, found.category, "fixture:" + found.id,
         moment(start), moment(end), found.currency, unit * party if party is not None else None,
         party, True, evidence, found.availability,
