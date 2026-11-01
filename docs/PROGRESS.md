@@ -2,6 +2,57 @@
 
 This report separates delivery on `main` from implementations still under review. Dated verification records identify the code, runtime and scope that were actually checked.
 
+## Person 3 publication verification — 2026-11-01
+
+The current mock-MVP Person 3 implementation and local engineering checks are
+complete on the #36 review branch. The full `scripts/setup.sh` and
+`scripts/verify.sh` sequence passed again in the current checkout using Jac
+0.37.23: **387 tests**, **four application checks**, **two client builds**, the
+3/5/5 planning scenarios, a complete sealed package, and both source/package
+HTTP and CLI checks. Acceptance stores the reviewed candidate; rejection keeps
+active items unchanged. The sealed runtime ran outside the checkout with source
+compilation forbidden.
+
+This repeat run is separate from the clean source-only installation recorded on
+October 30. Shared-owner contract approval, source/stack review and merge remain
+delivery gates. The GitHub workflow is included in this follow-up; its actual
+hosted result must be recorded separately. No live integration is claimed.
+
+## Local clean setup, sealed package and runtime verification — 2026-10-30
+
+The local follow-up to #36 resolves the engineering blockers using the pinned
+Jac **0.37.23**, without changing the shared feature contracts or imported owners'
+modules. These follow-up changes are part of review PR #36 and remain unmerged.
+
+- `scripts/setup.sh` verifies the official binary checksum, creates an independent
+  Python 3.14 venv, and installs declared development/client dependencies.
+- `scripts/build_jab.jac` corrects the upstream sealer's precompiler working
+  directory. We traced the same-named class errors to original-checkout versus
+  staged-copy paths. All type checks and JIR/manifest validation remain enabled;
+  no installed runtime files are edited. Raw `jac build travel` still requires
+  this project compatibility entry point on 0.37.23.
+- A read-only root `application_info` export ensures the sealed entry has server
+  bytecode. The CLI now explicitly supplies creation IDs, fixing bridge defaults
+  that were still missing under 0.37.23. Existing server defaults are unchanged.
+- A fresh source export, with no `.jac` or copied dependencies, completed the
+  actual setup and verification scripts on macOS arm64/Python 3.14.7:
+  **387 tests**, **four app checks**, **two client builds**, three planning CLI
+  scenarios, and a sealed **46-module manifest** all passed.
+- Source and packaged non-development servers passed root/asset, comparison,
+  rejection/no mutation, exact acceptance/version and CLI new/add/show checks.
+  The package ran outside the checkout with source compilation forbidden. The
+  earlier homepage 404 was not reproduced in either clean environment.
+- Packaged-browser verification rendered the connected options and accepted the
+  gallery alternative, saving the expected USD 375 total without console errors.
+- `.github/workflows/jac.yml` runs the same scripts on Ubuntu 24.04 with pinned
+  action commits and retained logs. A successful actual GitHub-hosted run must
+  be recorded separately from these local checks.
+
+See [reproduction and packaged run commands](LOCAL_VERIFICATION.md) and the
+[shared contract review packet](CONTRACT_REVIEW.md). Owner approval, source/stack
+PR merges and the remote CI record remain delivery gates. This is still a
+synthetic mock MVP, not a public multi-user deployment or live-provider result.
+
 ## Connected backup planning — 2026-10-30
 
 Work on `codex/connected-backup-planning`, stacked on the candidate-selection
@@ -46,14 +97,12 @@ temporary test databases, and isolated browser-demo SQLite files:
   transactional acceptance, requirements that disable acceptance, and a 390px
   layout. No real provider, model, booking, payment or cancellation is exercised.
 
-This is an integrated **synthetic Boston/USD MVP**, not production delivery.
-Clean-checkout CI and deployment remain unverified. Two packaging/runtime issues
-were observed: `jac build travel` fails sealed precompilation with a `TripView` /
-`ItemView` JSX type-identity error, although the client build passes; and
-`jac run --no-dev` returns 404 at the UI root in this setup. Use development mode
-for the verified local browser flow, and restart the server after backend module
-edits because HMR may retain imported modules. The dated records below describe
-earlier standalone slices and retain their original verification limits.
+This implementation record preceded the clean setup/packaging follow-up above.
+That follow-up adds a verified project build command and clean non-development
+source/package checks; GitHub-hosted CI and public deployment remain unverified.
+Restart after backend edits in development mode because HMR may retain imported
+modules. The dated records below describe earlier standalone slices and retain
+their original verification limits.
 
 ## Backup candidate selection and backfill — 2026-10-29
 

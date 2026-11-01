@@ -9,10 +9,12 @@ Publishing this proposal does not merge the source PRs or approve their contract
 
 ## Try it
 
-Use the manifest-pinned **Jac 0.37.23**. Run `jac install --dev` to install the
-declared runtime capabilities, including the LLM dependencies needed by MockLLM.
-An existing venv may require repair as described in the upstream runtime docs;
-the working local Python venv was reused in this verification.
+Use the manifest-pinned **Jac 0.37.23**. For a new checkout, run
+`bash scripts/setup.sh` from the repository root, then use
+`../.tools/jac-0.37.23` in place of `jac` in the commands below from
+`travel-planner/`. Setup creates an independent Python 3.14 environment and
+installs the declared development capabilities, including MockLLM dependencies.
+See the [complete verification guide](../../docs/LOCAL_VERIFICATION.md).
 
 ```sh
 jac run planning/demo.jac
@@ -154,12 +156,18 @@ jac run planning/demo.jac
 
 See `docs/PROGRESS.md` for final current verification. Tests use temporary
 databases. Browser verification uses isolated temporary travel/history files.
-No clean-checkout CI, live provider/model call, real booking, payment or cancellation
-is established by those checks.
+No GitHub-hosted CI result, live provider/model call, real booking, payment or
+cancellation is established by those checks.
 
 The current local regression has **387 passing tests** under Jac 0.37.23. All four
-application checks and both client builds pass. Sealed `jac build travel` still
-fails during precompilation on the `TripView`/`ItemView` JSX type boundary;
-`jac run --no-dev` returns 404 at the UI root in this setup. Development mode is
-the verified local browser path. Restart the server after changing backend
-modules so that imported code is loaded afresh.
+application checks and both client builds pass. The new
+[clean setup and verification path](../../docs/LOCAL_VERIFICATION.md) also builds
+and runs a complete sealed package, with source compilation forbidden, and
+checks source/package HTTP and CLI behavior in non-development mode. Use the
+version-guarded `scripts/build_jab.jac` command: it corrects Jac 0.37.23's staged
+import working directory while retaining every compiler/seal check. Raw
+`jac build travel` retains that upstream bug. The earlier root 404 was not
+reproduced in either clean non-development environment. Restart the development
+server after backend edits because imported modules may remain in HMR memory.
+Shared-owner approval remains separate; see the
+[review packet](../../docs/CONTRACT_REVIEW.md).

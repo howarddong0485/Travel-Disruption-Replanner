@@ -49,6 +49,12 @@ legacy stateless previews and separate sample lab remain read-only.
 
 ## Start the app
 
+For a new checkout, use the repository-root
+[setup and complete verification scripts](../docs/LOCAL_VERIFICATION.md).
+They pin Jac 0.37.23, create an independent Python 3.14 environment, build a
+sealed package, and verify non-development HTTP/CLI behavior. The guide also
+records the version-specific build compatibility command and packaged-run setup.
+
 From this folder:
 
 ```sh

@@ -50,7 +50,7 @@ def print_item(item: ItemView, unit: str) -> None {
 async def dispatch(args: argparse.Namespace) -> int {
     if args.command == "new" {
         trip = await save_trip(title=args.title, destination=args.destination, start_date=args.start,
-            end_date=args.end, currency=args.currency, budget=args.budget, notes=args.notes);
+            end_date=args.end, currency=args.currency, budget=args.budget, notes=args.notes, trip_id="");
         print("Created " + trip.title + " | " + trip.id); return 0;
     }
     trips = await list_trips();
@@ -70,7 +70,7 @@ async def dispatch(args: argparse.Namespace) -> int {
     if args.command == "add" {
         item = await save_item(trip_id=trip_id, title=args.title, category=args.category,
             date=args.date, time=args.time, location=args.location, reference=args.reference,
-            notes=args.notes, cost=args.cost);
+            notes=args.notes, cost=args.cost, item_id="");
         print_item(item, trip.currency); return 0;
     }
     items = await list_items(trip_id=trip_id);
@@ -99,7 +99,7 @@ async def main -> int {
     args = parser().parse_args();
     try { return await dispatch(args); }
     except BridgeUnavailable {
-        print("Start jac run --dev travel, then set JAC_APP_SERVER_URL to the printed API URL plus /api/server.", file=sys.stderr);
+        print("Start Roam, then set JAC_APP_SERVER_URL to its API URL plus /api/server.", file=sys.stderr);
         return 3;
     } except BridgeError as exc {
         print("Travel service: " + (exc.detail or str(exc)), file=sys.stderr); return 1;

@@ -15,6 +15,8 @@ upstream PRs have merged or that live-provider integration is complete.
 
 ## Documentation
 
+- [Setup, complete verification and packaged run](docs/LOCAL_VERIFICATION.md): checksum-pinned tools, fresh environments, source/sealed runtime checks and local CI commands.
+- [Shared contract review packet](docs/CONTRACT_REVIEW.md): ownership boundaries, demonstrated invariants and remaining approvals.
 - [Progress report](docs/PROGRESS.md): delivered foundation and implementation limits.
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md): linked Issues, ownership and planned PR sequence.
 
