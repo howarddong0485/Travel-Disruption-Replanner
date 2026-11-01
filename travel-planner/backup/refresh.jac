@@ -76,6 +76,7 @@ def refresh_alternatives(trip: TripContext, risk: RiskContext,
         payload = {"trip": asdict(trip), "risk": asdict(risk), "candidate": asdict(updated),
             "change": change, "provider_error": failed, "checked_at": now.isoformat()};
         result["evidence_fingerprint"] = sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest();
+        result["observed_candidate"] = asdict(updated);
         result["source"] = updated.item.evidence.source if updated.item.evidence is not None else "";
         result["evidence_expires_at"] = updated.item.evidence.expires_at if updated.item.evidence is not None else None;
         results.append(result);
@@ -83,6 +84,8 @@ def refresh_alternatives(trip: TripContext, risk: RiskContext,
     summary = {status: sum(r["status"] == status for r in results)
         for status in ("passed_fixture_checks", "invalid", "needs_validation")};
     return {"results": results, "summary": summary, "inventory_change": change,
+        "input_snapshot": {"trip": asdict(trip), "risk": asdict(risk),
+            "candidates": [asdict(candidate) for candidate in candidates]},
         "refresh_id": str(uuid.uuid4()), "checked_at": now.isoformat(),
         "expires_at": min(deadlines).isoformat(), "scope": "standalone_fixture",
         "message": "Fresh synthetic checks are shown below. No saved trip was changed."
