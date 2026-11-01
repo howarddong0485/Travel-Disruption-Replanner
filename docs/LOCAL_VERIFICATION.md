@@ -1,7 +1,7 @@
 # Reproduce the connected planning build
 
-This is the local verification path for the mock Boston/USD implementation on
-`codex/connected-backup-planning`. It does not approve the proposed shared
+This is the verification path for the mock Boston/USD implementation delivered
+to main by PR #36. It does not approve the proposed shared
 contracts or merge any PR. Use Python **3.14** and the checksum-pinned Jac
 **0.37.23** binary; no sibling project or copied virtual environment is needed.
 
@@ -128,3 +128,25 @@ and sealed HTTP/CLI smoke checks. Verification logs were uploaded as
 hosted-CI gate, while retaining the original dates/scopes of local/browser checks.
 
 See [MVP_STATUS.md](MVP_STATUS.md) for remaining feature work and review gates.
+
+## Pre-merge review corrections — 2026-11-01
+
+Code commit `a92e3da` fixes all five reproduced backend review findings: retain
+all activations per changed item; reconcile deleted/excluded supplemental item
+references while rejecting new foreign writes; preserve booking metadata on
+reschedule; use identical derived activation semantics for generation/acceptance;
+and bound reviewed finances by cancellation deadlines and policy evidence.
+Validator v2 rejects older stored proposals.
+
+The history and connected panels dispatch mount listeners through the current
+callback and drain queued checks after loading/refresh. The history correction
+was also delivered in #31 as `fe4d4df`. Browser checks in two tabs per panel
+verified that another tab's update clears the old results; neither panel logged
+a console error.
+
+The full pinned local verification passed: **419 reported tests**, four app
+checks, both client builds, 3/5/5 planning scenarios, the 46-module sealed package
+and both source/package HTTP/CLI checks. The seven new regression cases were
+added in `planning/test_review.jac` and `planning/test_service.jac`. The reported
+total includes imported companion checks. See the [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
+for hosted verification of the final delivery revision.

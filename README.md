@@ -4,9 +4,9 @@
 
 Travel Disruption Replanner is a Jac prototype for managing trips, preparing validated alternatives, and reviewing simulated changes. Initial itinerary generation is still pending; connected backups operate on saved or predefined sample trips. It considers the whole itinerary: a delayed flight can affect a rental car pickup, hotel check-in, dinner reservation, and the following day's activities.
 
-> **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner, mock backup plans, and [disruption replanning](travel-planner/replan/README.md). This review branch adds connected validation, risk analysis, comparison and version-safe traveler-approved updates. The shared contracts and dependency PRs still require review/merge. This milestone uses synthetic travel data and simulated disruptions.
+> **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner, mock backup plans, and [disruption replanning](travel-planner/replan/README.md). PR #36 delivers connected validation, risk analysis, comparison and version-safe traveler-approved updates to main. Shared contracts and separately imported source PRs still require owner coordination. This milestone uses synthetic travel data and simulated disruptions.
 
-The `codex/connected-backup-planning` proposal (#34) connects P1 profile/filter/budget,
+The connected implementation (#34, delivered by #36) connects P1 profile/filter/budget,
 P2 risk/policy, P3 multi-plan generation and P4 transactional application through
 a typed alternative contract and Roam comparison/review UI. See the
 [connected backup guide](travel-planner/planning/README.md) for supported synthetic
@@ -109,8 +109,7 @@ Assign one named owner at a time to shared schemas, orchestration walkers, commo
 ```bash
 git clone https://github.com/howarddong0485/Travel-Disruption-Replanner.git
 cd Travel-Disruption-Replanner
-# Connected implementation is in this review branch until the stack merges.
-git switch codex/connected-backup-planning
+git switch main
 bash scripts/setup.sh
 cd travel-planner
 ../.tools/jac-0.37.23 run --dev travel

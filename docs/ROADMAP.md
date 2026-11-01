@@ -1,8 +1,8 @@
 # Product Scope and Roadmap
 
-Updated **2026-11-01**. This roadmap defines completion targets; [MVP_STATUS.md](MVP_STATUS.md) records current implementation and remaining work. Jac/SQLite, pinned setup and CI are in place on the connected review branch. Initial generation, full policy UI, unified repairs/comparison and coordinated merges remain open.
+Updated **2026-11-01**. This roadmap defines completion targets; [MVP_STATUS.md](MVP_STATUS.md) records current implementation and remaining work. Jac/SQLite, pinned setup and CI are delivered on main. Initial generation, full policy UI, unified repairs/comparison and cross-owner confirmation remain open.
 
-| Milestone | Current review-branch state |
+| Milestone | Current main state |
 | --- | --- |
 | Shared foundation | Runtime/storage/CI implemented; shared-contract approval pending. |
 | General planner | Manual CRUD, structured requirements, filters and ledger implemented; initial generation missing. |

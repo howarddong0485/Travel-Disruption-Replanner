@@ -6,7 +6,7 @@ Use [MVP_STATUS.md](MVP_STATUS.md) for the P1–P5 implementation gaps,
 contribution attribution and remaining delivery gates. The connected code baseline
 `83fee96` passed [GitHub CI](https://github.com/howarddong0485/Travel-Disruption-Replanner/actions/runs/41315449524):
 387 tests, four app checks, two client builds, the sealed package and both
-source/package HTTP/CLI checks. Source/stack review and merges remain pending.
+source/package HTTP/CLI checks. The howarddong stack is delivered; source-PR coordination, cross-owner contract confirmation and the remaining role features stay open.
 
 The dated sections below are historical verification records. Their old runtime,
 build failures and incomplete integration describe those earlier revisions; use
@@ -322,3 +322,25 @@ The server tests use temporary databases and do not modify saved trips. These co
 Roam now includes a synthetic disruption simulator, dependency traversal, per-item backup combinations, optional typed Jac LLM selection, and atomic version-safe acceptance. The separate Boston demo covers arrival-delay cascades and fixed-item conflicts. See the [replanning guide](../travel-planner/replan/README.md) for setup, endpoints, tests and limits. Shared profile/eligibility validation, policy evidence and cross-agent review integration remain tracked in [issue #18](https://github.com/howarddong0485/Travel-Disruption-Replanner/issues/18).
 
 The web workspace uses a navy, slate and white business palette, with a flat trip overview and shared theme colors across backup and replanning panels.
+
+## Pre-merge review corrections — 2026-11-01
+
+Code commit `a92e3da` fixes all five reproduced backend review findings: retain
+all activations per changed item; reconcile deleted/excluded supplemental item
+references while rejecting new foreign writes; preserve booking metadata on
+reschedule; use identical derived activation semantics for generation/acceptance;
+and bound reviewed finances by cancellation deadlines and policy evidence.
+Validator v2 rejects older stored proposals.
+
+The history and connected panels dispatch mount listeners through the current
+callback and drain queued checks after loading/refresh. The history correction
+was also delivered in #31 as `fe4d4df`. Browser checks in two tabs per panel
+verified that another tab's update clears the old results; neither panel logged
+a console error.
+
+The full pinned local verification passed: **419 reported tests**, four app
+checks, both client builds, 3/5/5 planning scenarios, the 46-module sealed package
+and both source/package HTTP/CLI checks. The seven new regression cases were
+added in `planning/test_review.jac` and `planning/test_service.jac`. The reported
+total includes imported companion checks. See the [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
+for hosted verification of the final delivery revision.

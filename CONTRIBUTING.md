@@ -1,6 +1,6 @@
 # Contributing
 
-The project has runnable Jac mock workflows and proposed shared contracts. The connected review branch has pinned setup and successful CI; remaining code and review gates are listed in [MVP_STATUS.md](docs/MVP_STATUS.md). Read the [README](README.md), [architecture](docs/ARCHITECTURE.md), and [roadmap](docs/ROADMAP.md) before beginning implementation.
+The project has runnable Jac mock workflows and proposed shared contracts. The connected implementation on main has pinned setup and CI; remaining code and review gates are listed in [MVP_STATUS.md](docs/MVP_STATUS.md). Read the [README](README.md), [architecture](docs/ARCHITECTURE.md), and [roadmap](docs/ROADMAP.md) before beginning implementation.
 
 ## Component ownership
 
