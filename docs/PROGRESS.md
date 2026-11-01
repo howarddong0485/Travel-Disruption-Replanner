@@ -344,3 +344,22 @@ and both source/package HTTP/CLI checks. The seven new regression cases were
 added in `planning/test_review.jac` and `planning/test_service.jac`. The reported
 total includes imported companion checks. See the [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
 for hosted verification of the final delivery revision.
+
+## Final review corrections — 2026-11-01
+
+`f8dcf35` filters dependency endpoints when items leave the scheduled-node set,
+invalidates evidence when item facts are edited without confirmation, and
+replaces the original venue's supplemental hours with the newly observed
+provider hours. The category-change and provider-hours regressions detect the
+old failures. A browser reproduction changed a retained item's admission age:
+before the fix, saving without confirmation still yielded selectable plans;
+after the fix all three were unresolved with disabled acceptance, and explicit
+confirmation restored three selectable plans without console errors.
+
+The complete pinned local sequence passed again with **420 reported tests**,
+four app checks, two client builds, the 46-module sealed package and both
+source/package HTTP/CLI checks. There are eight added regression cases across
+`planning/test_review.jac` and `planning/test_service.jac`; imported companion
+checks are included in the reported total. The earlier 419-test run records
+`a92e3da` before this follow-up. See [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
+for hosted verification of the final delivery revision.
