@@ -163,3 +163,9 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .validation-refresh-control { margin: 16px 0; }
 .validation-refresh-control p { margin: 8px 0; font-size: 13px; }
 .validation-provider-error { color: var(--danger); font-weight: 600; }
+.validation-history { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 20px; }
+.validation-history-entry { border: 1px solid var(--line); border-radius: 6px; padding: 14px; margin-top: 12px; overflow-wrap: anywhere; }
+.validation-history-entry > summary { cursor: pointer; font-weight: 600; line-height: 1.6; }
+.validation-history-entry[open] > summary { margin-bottom: 12px; }
+.validation-history-entry p { margin: 8px 0; }
+.validation-history-entry p, .validation-history-entry li { font-size: 13px; line-height: 1.6; }

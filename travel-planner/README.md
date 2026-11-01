@@ -14,6 +14,7 @@ Application code, backend helpers, demos, and tests are written in `.jac` files.
 - **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Backup plans tab. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Demo and limitations](#backup-preview-demo).
 - **Standalone backup validation (PR #23):** Check synthetic replacements against an entire sample itinerary, including traveler requirements, costs, scheduling, opening hours and transfers. The read-only validation lab uses its own fixtures and is not connected to saved trips or the shared validator. [Commands and scope](backup/VALIDATION.md).
 - **Backup refresh:** Simulate price changes, sold-out inventory, expired evidence and provider failures; rerun full-trip checks and discard old conclusions. The sample panel in **Backup plans** and the standalone `backup_refresh` app use the same component. Refresh never changes a saved itinerary. [Refresh demo](backup/VALIDATION.md#refreshing-synthetic-inventory).
+- **Saved refresh history:** Store versioned sample observations separately from trips, inspect historical outcomes and restore controls after reopening. Current checks always require an explicit refresh. [Storage and UI guide](backup/HISTORY.md).
 - **Replanning:** Simulate delayed/interrupted items, combine synthetic backup inventory, edit dependencies and schedule rules, optionally use a Jac LLM to select combinations, and accept/reject version-safe revisions. Try the separate demo trip from the sidebar; see [the replanning guide](replan/README.md).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
 - **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and five planning tabs. The web interface adapts to phones and tablets.
@@ -173,6 +174,7 @@ jac test backup/test_validation.jac
 jac test server/test_validation.jac
 jac test backup/test_refresh.jac server/test_refresh.jac
 jac build travel --as client
+jac test backup/test_history.jac server/test_history.jac
 ```
 
 Tests use temporary SQLite databases. They do not read or modify your saved trips.
