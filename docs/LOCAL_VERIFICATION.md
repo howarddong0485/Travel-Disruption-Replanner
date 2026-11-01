@@ -243,3 +243,22 @@ race passes at the shared service boundary without itinerary changes. These two
 cases bring the final added regression count to fifteen and full-suite count to
 427. The final complete pinned verification uses one stable committed source
 revision; the older interrupted preparation record remains historical.
+
+
+## Remaining review findings — 2026-11-01
+
+The delivered stack remains partial. The final review identifies two outstanding
+functional defects, tracked in the open role issues:
+
+- P3 (#11/#34): reconcile `facts.travel_estimates` with the transfer constraints
+  used in generation and acceptance. A same-venue reschedule must satisfy the
+  evidenced connection estimate that triggered its risk.
+- P2 (#10): reject negated refund statements in the rule extractor; for example,
+  a statement that a full refund is unavailable must not become a 100% cash
+  entitlement. This defect is in the unchanged P2 source import.
+
+The 427 passing checks establish tested paths, not completion of these cases.
+P3 is not fully complete. The two review threads remain unresolved, and the
+parent issues retain their incomplete acceptance criteria alongside cross-owner
+contract confirmation. This documentation correction changes no application
+code; the complete application verification is at `9594e0e`.
