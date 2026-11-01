@@ -55,7 +55,7 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
         history: dict[str, any] | None = None, revision: int = 0, notice: str = "",
         sessionId: Ref[str] = Ref(""), retryId: Ref[str] = Ref(""),
         historyClock: float = 0, historyTimer: Ref[int] = Ref(0), syncListener: Ref[any] = Ref(None),
-        syncQueued: Ref[bool] = Ref(False);
+        syncQueued: Ref[bool] = Ref(False), reconcileCallback: Ref[any] = Ref(None);
     prefix = "saved-backup" if trip_id else "validation";
     storageKey = "roam.backup.trip-session.v1:" + trip_id if trip_id else "roam.backup.sample-session.v1";
 
@@ -68,7 +68,7 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
         initialize();
         browser: any = window;
         syncListener.current = lambda (event: any) {
-            if event.type == "focus" or event.key == "roam.backup.refresh-notice.v1" { reconcile(); }
+            if event.type == "focus" or event.key == "roam.backup.refresh-notice.v1" { reconcileCallback.current(); }
         };
         browser.addEventListener("storage", syncListener.current);
         browser.addEventListener("focus", syncListener.current);
@@ -113,7 +113,6 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
         } finally {
             if request == requestRef.current {
                 booting = False;
-                if syncQueued.current { reconcile(); }
             }
         }
     }
@@ -161,6 +160,10 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
             }
         }
     }
+    reconcileCallback.current = reconcile;
+    can with [booting, pending, history, revision] entry {
+        if not booting and not pending and syncQueued.current { reconcileCallback.current(); }
+    }
     async def run -> None {
         browser: any = window;
         if pending or booting or history is None { return; }
@@ -206,7 +209,6 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
         finally {
             if request == requestRef.current {
                 pending = False;
-                if syncQueued.current { reconcile(); }
             }
         }
     }
