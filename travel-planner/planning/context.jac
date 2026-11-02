@@ -10,6 +10,7 @@ import from datetime { datetime, timedelta }
 import from dataclasses { asdict }
 import from hashlib { sha256 }
 import from planning.profile_io { profile_from_data }
+import from planning.connections { estimate_connections }
 import from profile.checks { hard_requirements }
 import from budget.ledger { build_ledger }
 import from schema.bundle { bundle_from_dict }
@@ -129,6 +130,11 @@ def check_payload(data: dict[str, any], state: dict[str, any]) -> dict[str, any]
     for risk in data.get("manual_risks", []) {
         if not risk.get("node_ids") or set(risk["node_ids"]) - active_ids { raise ValueError("Foreign manual risk nodes"); }
     }
+    for route in data.get("travel_estimates", []) {
+        if type(route.get("minutes")) is not int or route["minutes"] < 0 or route["from_node_id"] == route["to_node_id"] {
+            raise ValueError("Travel estimates require distinct endpoints and nonnegative integer minutes");
+        }
+    }
     reconcile_item_hours(data);
     if len(json.dumps(data, allow_nan=False)) > 500000 { raise ValueError("Planning context is too large"); }
     return data;
@@ -233,6 +239,7 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
     bundle_data["itinerary"] = {"trip_id": trip["id"], "version": state["version"], "nodes": graph_nodes,
         "edges": [{"source_id": e.from_id, "target_id": e.to_id, "relation": "depends_on", "min_transition_minutes": e.buffer_minutes} for e in dependencies]};
     bundle = bundle_from_dict(bundle_data);
+    connections = estimate_connections(bundle, tuple(nodes), deadlines);
     for policy in bundle.policies {
         for tier in policy.tiers {
             if tier.deadline_local {
@@ -268,7 +275,7 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
     return {"contract_version": CONTEXT_VERSION, "trip_id": trip["id"], "trip_version": state["version"],
         "checked_at": now.isoformat(),
         "base_snapshot": fingerprint, "trip": context, "risks": risks, "bundle": bundle, "facts": deepcopy(facts),
-        "ledger": ledger_view, "state": deepcopy(state)};
+        "ledger": ledger_view, "state": deepcopy(state), "connection_estimates": connections};
 }
 
 def public_context(context: dict[str, any]) -> dict[str, any] {

@@ -5,7 +5,7 @@ import json;
 import time;
 import uuid;
 import subprocess;
-import from datetime { date, timedelta }
+import from datetime { date, datetime, timedelta }
 import from pathlib { Path }
 import from urllib.parse { urlparse, urljoin }
 import from urllib.request { Request, urlopen }
@@ -103,6 +103,37 @@ with entry {
     arrival_plans = generate(base, arrival, 5)["plans"];
     assert len(arrival_plans) == 5 and all(plan["selectable"] for plan in arrival_plans);
 
+    connection = call(base, "create_planning_demo", {"scenario":"rain"});
+    connection_trip = connection["trip_id"];
+    source = next(i["id"] for i in connection["items"] if i["category"] == "transport");
+    target = next(i["id"] for i in connection["items"] if i["category"] == "activity");
+    call(base, "replan_save_dependency", {"trip_id":connection_trip, "prerequisite_id":source,
+        "dependent_id":target, "buffer_minutes":0, "remove":False});
+    connection = call(base, "planning_state", {"trip_id":connection_trip}); facts = connection["facts"];
+    checked = datetime.fromisoformat(connection["checked_at"]);
+    facts["evidence"].append({"id":"connection-smoke", "source_ref":"fixture://connection-smoke",
+        "excerpt":"150-minute connection", "retrieved_at":checked.isoformat(), "origin":"mock"});
+    facts["evidence_deadlines"]["connection-smoke"] = (checked + timedelta(minutes=5)).isoformat();
+    facts["travel_estimates"] = [{"from_node_id":source, "to_node_id":target, "minutes":150,
+        "mode":"drive", "evidence_id":"connection-smoke"}];
+    connection = call(base, "save_planning_context", {"trip_id":connection_trip,
+        "payload":facts, "expected_version":connection["trip_version"]});
+    risk_ids = [r["id"] for r in connection["risks"] if r["rule_id"] == "tight_connection" and r["node_ids"] == [source,target]];
+    assert risk_ids;
+    connection_before = persisted_items(base, connection_trip);
+    connection_plans = call(base, "generate_backup_plans", {"trip_id":connection_trip,
+        "expected_version":connection["trip_version"], "max_plans":5, "risk_ids":risk_ids,
+        "use_llm":False, "request_id":str(uuid.uuid4())})["plans"];
+    connection_plan = next(p for p in connection_plans if p["strategy"] == "reschedule" and p["selectable"]);
+    rejected = next(p for p in connection_plans if p["id"] != connection_plan["id"]);
+    call(base, "review_backup_plan", {"trip_id":connection_trip, "proposal_id":rejected["id"], "accept":False});
+    assert persisted_items(base, connection_trip) == connection_before;
+    call(base, "review_backup_plan", {"trip_id":connection_trip, "proposal_id":connection_plan["id"], "accept":True});
+    connection_after = call(base, "planning_state", {"trip_id":connection_trip});
+    assert next(i for i in connection_after["items"] if i["id"] == target)["time"] == "12:30";
+    assert connection_after["facts"]["travel_estimates"] == facts["travel_estimates"];
+    assert not any(r["rule_id"] == "tight_connection" and r["node_ids"] == [source,target] and r["status"] == "flagged" for r in connection_after["risks"]);
+
     jac = os.environ["ROAM_SMOKE_JAC"];
     project = Path(__file__).resolve().parent.parent / "travel-planner";
     day = (date.today() + timedelta(days=7)).isoformat();
@@ -116,5 +147,6 @@ with entry {
     assert "CLI activity" in shown and "USD 12.34" in shown;
     print(json.dumps({"root_and_assets": "passed", "cli_new_add_show": "passed",
         "rejection_preserves_items": "passed", "acceptance_matches_candidate": "passed",
-        "weather_plans": len(plans), "arrival_plans": len(arrival_plans)}, sort_keys=True));
+        "weather_plans": len(plans), "arrival_plans": len(arrival_plans),
+        "supplemental_connection_acceptance":"passed"}, sort_keys=True));
 }

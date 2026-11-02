@@ -10,13 +10,14 @@ import from backup.validation { instant, evidence_problem }
 import from backup.validation_models { RiskContext, Evidence, Moment, Replacement, ScheduledItem }
 import from planning.context { parse_evidence, parse_moment }
 import from planning.validation { validate_plan }
+import from planning.connections { connection_boundaries }
 import from planning.comparison { compare_plan, comparison_expiry }
 import from planning.agent { select_backup_plans }
 import from tools.alternatives.catalog { search }
 import from schema.alternative { ALTERNATIVE_CONTRACT_VERSION as PLAN_CONTRACT, alternative_from_dict }
 import from schema.common { to_plain }
 
-glob VALIDATION_VERSION = "roam.planning-validator.v4";
+glob VALIDATION_VERSION = "roam.planning-validator.v5";
 glob SUPPORTED_REASONS = ("weather", "timing", "long_drive", "opening_hours", "booking_terms", "closure", "cancellation", "traveler_change", "budget_change", "inventory_change");
 
 def risk_context(context: dict[str, any], risk: dict[str, any], item_id: str) -> RiskContext {
@@ -83,6 +84,7 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
     selected = [risk for risk in selected if risk["category"] in SUPPORTED_REASONS];
     originals = {item.id: item for item in context["trip"].items};
     (targets, primary_ids) = activation_targets(context, selected);
+    estimates = context.get("connection_estimates", ());
     warnings = [];
     groups = []; ordered_ids = list(targets);
     if len(ordered_ids) > 8 { raise ValueError("Split requests into at most eight affected nodes"); }
@@ -129,9 +131,11 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
         # Propagate timing through the candidate subgraph before full validation.
         for _ in range(len(candidates)) {
             current_nodes = {**originals, **{candidate.replaces_id: candidate.item for candidate in candidates}};
+            boundaries = connection_boundaries(context["trip"], tuple(current_nodes.values()), estimates, now);
             adjusted = [];
             for candidate in candidates {
                 beginning = instant(candidate.item.start);
+                if candidate.replaces_id in boundaries { beginning = max(beginning, boundaries[candidate.replaces_id]); }
                 for dependency in context["trip"].dependencies {
                     if dependency.to_id == candidate.replaces_id {
                         beginning = max(beginning, instant(current_nodes[dependency.from_id].end) + timedelta(minutes=dependency.buffer_minutes));
@@ -143,7 +147,7 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
             candidates = tuple(adjusted);
         }
         activations = tuple(risk_context(context, risk, c.replaces_id) for c in candidates for risk in targets[c.replaces_id]);
-        checked = validate_plan(context["trip"], activations, candidates, now);
+        checked = validate_plan(context["trip"], activations, candidates, now, estimates);
         checked["expires_at"] = min(datetime.fromisoformat(checked["expires_at"]), comparison_expiry(context, candidates, now)).isoformat();
         identity: list[dict[str, any]] = [{"item": asdict(c.item), "action": c.action, "provider_id": c.provider_id} for c in candidates];
         # Observation timestamps are excluded from plan identity.

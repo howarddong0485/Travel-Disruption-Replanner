@@ -1,6 +1,40 @@
 # Project progress
 
-## Current status — 2026-11-01
+## Local P3 completion verification — 2026-11-01
+
+The `codex/p3-connection-validation` follow-up branch repairs the known P3 code gap
+relative to merged main `cb87bef`. Validator v5 carries P2 travel estimates into
+shared generation/validation/acceptance rules, binds them to the original venues,
+retains unresolved evidence and the earliest deadline, and checks nonadjacent
+connections. Rescheduling preserves the estimate; a replacement clears estimates
+for the old venue so later loads cannot rebind them.
+
+On macOS arm64, **Jac 0.37.23 / Python 3.14.7**, the complete pinned verification
+passed: **460 reported test passes**, **four app checks**, **both client builds**,
+CLI alternatives **3 / 5 / 5**, a complete **47-module sealed manifest**, and
+isolated source/package non-development HTTP/CLI checks. Eight new regression
+cases cover the connection path, including the 90-minute/10-minute-gap example,
+insufficient acceptance with no writes, multiple estimates, longer supplied
+transfers, nonadjacent constraints, unknown/expired/future evidence, replacement
+venues, strict duration inputs and the HTTP lifecycle. The runner total includes
+existing imported fixture checks; it is not a count of 460 new independent tests.
+
+The runtime smoke script was then strengthened with an actual **150-minute**
+connection and its source/package phases were repeated against the same verified
+application code and package. Both returned
+`"supplemental_connection_acceptance": "passed"`: rejection preserved items,
+acceptance saved **12:30**, the estimate remained present and the tight-connection
+risk cleared. The code/tests were not changed during the full build; the later
+runtime-script change extended coverage without changing application modules.
+
+This is local implementation/verification evidence, not a new hosted CI run or
+recorded team approval. P3's known remaining code item is complete in this
+branch. Cross-owner contract confirmation remains open, and P2's negated
+refund and fee-qualification defects remain separate work. The
+[conversational-agent assessment](AGENTIC_AI_ASSESSMENT.md) is a design proposal;
+a conversational coordinator/chat panel is not part of this patch.
+
+## Merged baseline status — 2026-11-01
 
 Use [MVP_STATUS.md](MVP_STATUS.md) for the P1–P5 implementation gaps,
 contribution attribution and remaining delivery gates. The connected code baseline

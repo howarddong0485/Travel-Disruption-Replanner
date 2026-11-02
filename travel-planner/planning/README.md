@@ -206,7 +206,7 @@ incompatible P3 proposals so open pages clear them; persistent P4 review decisio
 are preserved.
 
 
-## Remaining review findings — 2026-11-01
+## Historical review findings at cb87bef — 2026-11-01
 
 The delivered stack remains partial. The final review identifies two outstanding
 functional defects, tracked in the open role issues:
@@ -223,3 +223,30 @@ P3 is not fully complete. The two review threads remain unresolved, and the
 parent issues retain their incomplete acceptance criteria alongside cross-owner
 contract confirmation. This documentation correction changes no application
 code; the complete application verification is at `9594e0e`.
+
+
+## P3 connection follow-up branch — pending merge
+
+Validator v5 adapts every P2 travel estimate to its original pair of venues.
+Generation and acceptance use the same connection rules. Applicable estimates
+and longer supplied transfers combine by maximum required duration and earliest
+supporting expiry; missing/stale evidence stays unresolved. Nonadjacent unchanged
+connections remain constraints in the complete itinerary. A catalog route cannot
+replace an unresolved mandatory estimate with a shorter synthetic duration.
+
+A venue replacement uses current routing for the new venue and removes the old
+estimate on acceptance, so the next load cannot rebind it to the replacement.
+Same-venue rescheduling retains the estimate. Public alternative schemas remain
+unchanged; the validator version invalidates older unsafe proposals.
+
+Regression command from `travel-planner/`: `../.tools/jac-0.37.23 test planning/test_connections.jac planning/test_service.jac`.
+The first reproduces the 90-minute/10-minute-gap case, multiple estimates,
+nonadjacent constraints, expiry, venue replacement and strict duration inputs.
+The service test verifies a 150-minute connection through generation, rejection
+without item mutation, exact acceptance and risk rechecking.
+
+The P3 code finding above is repaired in the follow-up branch, pending merge. Cross-owner confirmation remains
+open. P2's negated-refund and fee-qualification findings remain separate upstream
+work. The [conversational-agent assessment](../../docs/AGENTIC_AI_ASSESSMENT.md)
+describes a proposed use of these services; a chat coordinator is not implemented
+by this follow-up.
