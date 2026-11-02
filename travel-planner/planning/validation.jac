@@ -3,16 +3,18 @@ import from dataclasses { replace, asdict }
 import from datetime { datetime }
 import from backup.validation { validate_replacement, evidence_problem }
 import from backup.validation_models { TripContext, RiskContext, Replacement }
-import from tools.alternatives.catalog { routes }
+import from backup.validation_models { Transfer }
+import from planning.connections { validation_routes, connection_checks }
 
-def validate_plan(trip: TripContext, risks: tuple[RiskContext, ...], replacements: tuple[Replacement, ...], now: datetime) -> dict[str, any] {
+def validate_plan(trip: TripContext, risks: tuple[RiskContext, ...], replacements: tuple[Replacement, ...], now: datetime,
+    estimates: tuple[Transfer, ...] = ()) -> dict[str, any] {
     originals = {item.id: item for item in trip.items};
     ids = [candidate.replaces_id for candidate in replacements];
     if not ids or len(set(ids)) != len(ids) or set(ids) - set(originals) { raise ValueError("Plan must replace distinct existing nodes"); }
     if {risk.item_id for risk in risks} != set(ids) { raise ValueError("Every changed node needs its activation context"); }
     changed = {candidate.replaces_id: candidate.item for candidate in replacements};
     nodes = tuple(changed.get(item.id, item) for item in trip.items);
-    try { travel = routes(trip, nodes, now); } except ValueError { travel = trip.transfers; }
+    (travel, constraints) = validation_routes(trip, nodes, estimates, now);
     reports = [];
     for risk in risks {
         candidate = next(c for c in replacements if c.replaces_id == risk.item_id);
@@ -39,10 +41,10 @@ def validate_plan(trip: TripContext, risks: tuple[RiskContext, ...], replacement
         }
         reports.append(checked_result);
     }
-    checks = [check for result_data in reports for check in result_data["checks"]];
+    checks = [check for result_data in reports for check in result_data["checks"]] + connection_checks(nodes, constraints, now);
     status = "invalid" if any(c["status"] == "fail" for c in checks) else "needs_validation" if any(c["status"] == "unknown" for c in checks) else "valid";
     deadlines = [];
-    supporting = [item.evidence for item in nodes] + [item.evidence for item in trip.items] + [risk.evidence for risk in risks] + [edge.evidence for edge in travel];
+    supporting = [item.evidence for item in nodes] + [item.evidence for item in trip.items] + [risk.evidence for risk in risks] + [edge.evidence for edge in travel] + [edge.evidence for edge in constraints];
     for source in supporting {
         if source is not None and not evidence_problem(source, now) { deadlines.append(datetime.fromisoformat(source.expires_at)); }
     }

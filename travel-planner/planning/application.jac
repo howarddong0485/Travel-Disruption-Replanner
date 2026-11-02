@@ -46,7 +46,7 @@ def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now
         activations.extend(risk_context(context, risk, previous.replaces_id) for risk in targets[previous.replaces_id]);
         candidates.append(updated);
     }
-    checked = validate_plan(context["trip"], tuple(activations), tuple(candidates), now);
+    checked = validate_plan(context["trip"], tuple(activations), tuple(candidates), now, context.get("connection_estimates", ()));
     if checked["status"] != "valid" { raise ValueError("Plan no longer passes all traveler, evidence, budget and timing checks"); }
     facts = deepcopy(context["facts"]);
     for candidate in candidates {
@@ -86,6 +86,10 @@ def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now
     }
     facts["transfers"] = checked["transfers"];
     changed_ids = {c.replaces_id for c in candidates};
+    changed_venues = {c.replaces_id for c in candidates if c.item.venue != originals[c.replaces_id].venue};
+    if "travel_estimates" in facts {
+        facts["travel_estimates"] = [route for route in facts["travel_estimates"] if not changed_venues.intersection((route["from_node_id"], route["to_node_id"]))];
+    }
     facts["manual_risks"] = [r for r in facts.get("manual_risks", []) if not changed_ids.intersection(r["node_ids"])];
     for item_id in changed_ids {
         conn.execute("DELETE FROM planning_fact_invalidations WHERE trip_id=? AND item_id=?", (context["trip_id"], item_id));

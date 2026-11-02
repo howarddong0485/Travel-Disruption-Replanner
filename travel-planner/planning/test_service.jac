@@ -67,6 +67,37 @@ test "both integrated scenarios generate compare reject and accept the actual P3
     }
 }
 
+test "supplemental connection evidence survives the HTTP generate reject and exact-accept lifecycle" {
+    with integrated_client() as client {
+        state = api(client, "create_planning_demo"); trip_id = state["trip_id"];
+        arrival = next(i["id"] for i in state["items"] if i["category"] == "transport");
+        activity = next(i["id"] for i in state["items"] if i["category"] == "activity");
+        api(client, "replan_save_dependency", trip_id=trip_id, prerequisite_id=arrival, dependent_id=activity, buffer_minutes=0, remove=False);
+        state = api(client, "planning_state", trip_id=trip_id); facts = state["facts"];
+        clock = datetime.fromisoformat(state["checked_at"]);
+        facts["evidence"].append({"id":"long-transfer", "source_ref":"fixture://connections/long-transfer", "excerpt":"150-minute connection", "retrieved_at":clock.isoformat(), "origin":"mock"});
+        facts["evidence_deadlines"]["long-transfer"] = (clock + timedelta(minutes=5)).isoformat();
+        facts["travel_estimates"] = [{"from_node_id":arrival, "to_node_id":activity, "minutes":150, "mode":"drive", "evidence_id":"long-transfer"}];
+        current = api(client, "save_planning_context", trip_id=trip_id, payload=facts, expected_version=state["trip_version"]);
+        risks = [r["id"] for r in current["risks"] if r["rule_id"] == "tight_connection" and r["node_ids"] == [arrival, activity]];
+        assert risks;
+        before = active_rows(); response = generate(client, current, risk_ids=risks, max_plans=5);
+        chosen = next(p for p in response["plans"] if p["strategy"] == "reschedule" and p["selectable"]);
+        change = next(c for c in chosen["replacements"] if c["replaces_id"] == activity);
+        assert change["item"]["start"]["local"].endswith("T12:30");
+        assert active_rows() == before;
+        other = next(p for p in response["plans"] if p["id"] != chosen["id"]);
+        api(client, "review_backup_plan", trip_id=trip_id, proposal_id=other["id"], accept=False);
+        assert active_rows() == before;
+        accepted = api(client, "review_backup_plan", trip_id=trip_id, proposal_id=chosen["id"], accept=True);
+        assert accepted["status"] == "accepted";
+        after = api(client, "planning_state", trip_id=trip_id);
+        assert after["trip_version"] > current["trip_version"] and after["facts"]["travel_estimates"] == facts["travel_estimates"];
+        assert next(i for i in after["items"] if i["id"] == activity)["time"] == "12:30";
+        assert not any(r["rule_id"] == "tight_connection" and r["node_ids"] == [arrival, activity] and r["status"] == "flagged" for r in after["risks"]);
+    }
+}
+
 test "context edits fixed rules and stale versions block old plan acceptance without itinerary changes" {
     with integrated_client() as client {
         state = api(client, "create_planning_demo"); plans = generate(client, state)["plans"];
