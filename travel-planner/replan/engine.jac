@@ -5,10 +5,11 @@ import copy;
 import itertools;
 import json;
 import sqlite3;
-import from datetime { datetime, timedelta }
+import from datetime { datetime, timedelta, timezone }
 import from uuid { uuid4 }
 import from events.simulator { simulated_event }
 import from replan.backups { backups_for }
+import from planning.application { apply_backup }
 def install_schema(conn: sqlite3.Connection) -> None {
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS trip_versions (
@@ -734,6 +735,13 @@ def decide(conn: any, trip_id: any, proposal_id: any, accept: any) -> dict[str, 
             );
         }
         proposal = json.loads(row['payload']);
+        if proposal.get('plan_contract') == 'roam.alternative-plan.v1' {
+            apply_backup(conn, state, proposal, datetime.now(timezone.utc));
+            conn.execute("UPDATE replan_proposals SET status=CASE WHEN id=? THEN 'accepted' ELSE 'superseded' END WHERE event_id=? AND status='proposed'", (proposal_id, row['event_id']));
+            conn.execute("UPDATE disruption_events SET status='applied' WHERE id=?", (row['event_id'],));
+            conn.commit();
+            return {'status': 'accepted', 'message': 'Validated backup applied to the simulated itinerary. No bookings or payments were made.'};
+        }
         nodes = {i['id']: i for i in state['items']};
         for change in proposal['changes'] {
             nodes[change['item_id']] = change['after'];

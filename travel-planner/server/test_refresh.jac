@@ -31,6 +31,11 @@ test "refresh transitions are serialized and never change saved trips" {
                 assert r["summary"] == {"passed_fixture_checks": passes, "invalid": rejected, "needs_validation": unknown};
                 assert r["trip_date"] == "2026-11-17" and r["scope"] == "standalone_fixture";
                 assert r["refresh_id"] != last_id;
+                assert r["results"][0]["changes"]["version"] == "backup-changes-v1";
+                assert r["results"][0]["changes"]["cost"]["original_total_minor"] == 41000;
+                if change == "provider_failure" {
+                    assert r["results"][0]["changes"]["cost"]["delta_minor"] is None;
+                }
                 last_id = r["refresh_id"];
                 assert refresh_storage_snapshot() == before;
             }

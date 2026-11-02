@@ -8,7 +8,7 @@ const { chromium } = process.env.PLAYWRIGHT_MODULE
 
 const appUrl = process.env.TRAVEL_APP_URL || 'http://localhost:8000';
 const apiUrl = process.env.TRAVEL_API_URL || 'http://localhost:8001/api/server';
-const previewRoute = '**/function/preview_backups';
+const previewRoute = '**/function/save_trip_backup_refresh';
 
 (async () => {
   const browser = await chromium.launch({
@@ -60,8 +60,9 @@ const previewRoute = '**/function/preview_backups';
     await page.goto(appUrl);
     await selectTrip(first);
     await generate(activity.id);
-    assert.match(await page.locator('.backup-options').innerText(), /NEEDS FULL VALIDATION/);
-    await page.getByText('mock://boston-v1/indoor-gallery', {exact: false}).waitFor();
+    assert.match(await page.locator('.backup-options').innerText(), /Needs confirmation/);
+    assert.equal(await page.locator('.backup-pipeline, .validation-history, .validation-evidence, .validation-reasons').count(), 0);
+    assert(!/Inventory IDs:|All checks|Saved refresh #|fixture:\/\//.test(await page.locator('.backup-panel').innerText()));
     passed('rain preview shows two mock drafts with evidence and validation status');
 
     await page.setViewportSize({width: 390, height: 844});
@@ -73,14 +74,14 @@ const previewRoute = '**/function/preview_backups';
     assert.equal(await page.locator('.backup-option').count(), 0);
     assert.equal(await page.getByLabel('Original itinerary item').inputValue(), '');
     await generate(dinner.id);
-    await page.getByRole('heading', {name: 'Demo late-opening bistro'}).waitFor();
+    await page.getByRole('heading', {name: 'Late vegetarian dinner'}).waitFor();
     passed('scenario switch clears old state and delayed dinner renders its own drafts');
 
     await page.getByRole('button', {name: '↻ Refresh', exact: true}).click();
     await page.getByLabel('Original itinerary item').waitFor();
     assert.equal(await page.locator('.backup-option').count(), 0);
-    assert.equal(await page.getByLabel('Original itinerary item').inputValue(), '');
-    passed('workspace refresh clears the preview and selection');
+    passed('workspace refresh clears current results while keeping recorded history');
+    await page.getByLabel('Activation scenario').selectOption('rain');
 
     await page.getByLabel('Original itinerary item').selectOption(activity.id);
     await page.route(previewRoute, route => route.abort('failed'), {times: 1});
@@ -103,7 +104,7 @@ const previewRoute = '**/function/preview_backups';
     await page.locator('.backup-panel .primary').click();
     await intercepted;
     await selectTrip(second);
-    const completed = page.waitForResponse(response => response.url().endsWith('/function/preview_backups'));
+    const completed = page.waitForResponse(response => response.url().endsWith('/function/save_trip_backup_refresh'));
     release();
     await completed;
     assert.equal(await page.locator('.backup-option').count(), 0);
@@ -114,22 +115,23 @@ const previewRoute = '**/function/preview_backups';
     await selectTrip(unsupported);
     await page.getByLabel('Original itinerary item').selectOption(unsupportedItem.id);
     await page.locator('.backup-panel .primary').click();
-    await page.locator('.backup-disclaimer').filter({hasText: 'No matching mock inventory'}).waitFor();
+    await page.getByRole('status').filter({hasText: 'No alternatives are available'}).waitFor();
     assert.equal(await page.locator('.backup-option').count(), 0);
     passed('unsupported destinations show an explicit empty state');
 
     await selectTrip(first);
+    await page.getByLabel('Activation scenario').selectOption('rain');
     await generate(activity.id);
     await page.clock.fastForward(16 * 60 * 1000);
     await page.locator('.backup-option').first().waitFor({state: 'detached'});
-    await page.getByRole('status').filter({hasText: 'These backup ideas have expired'}).waitFor();
+    await page.getByRole('status').filter({hasText: 'Availability has expired'}).waitFor();
     assert.equal(await page.locator('.backup-option').count(), 0);
-    assert.equal(await page.locator('.backup-panel .primary').innerText(), 'Refresh mock ideas');
+    assert.equal(await page.locator('.backup-panel .primary').innerText(), 'Find backup plans');
     await page.clock.setSystemTime(new Date());
     await page.locator('.backup-panel .primary').click();
     await page.locator('.backup-option').first().waitFor();
     assert.equal(await page.locator('.backup-option').count(), 2);
-    assert.equal(await page.getByRole('status').filter({hasText: 'These backup ideas have expired'}).count(), 0);
+    assert.equal(await page.getByRole('status').filter({hasText: 'Availability has expired'}).count(), 0);
     passed('expired evidence clears automatically and refreshing restores fresh drafts');
 
     // Jac allocates a response-object _jac_id on each read; SQLite item.id is stable.

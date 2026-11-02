@@ -30,7 +30,7 @@ class Window {
 @dataclass(frozen=True)
 class Profile {
     with entry {
-        adults: int;
+        adults: (int | None);
         child_ages: tuple[int, ...] = ();
         dietary: tuple[str, ...] = ();
         pet: str = "";
@@ -62,6 +62,7 @@ class ScheduledItem {
         fixed: bool = False;
         completed: bool = False;
         blocks_time: bool = True;
+        committed: bool = False;
     }
 }
 @dataclass(frozen=True)
@@ -97,6 +98,10 @@ class TripContext {
         items: tuple[ScheduledItem, ...];
         transfers: tuple[Transfer, ...];
         dependencies: tuple[Dependency, ...] = ();
+        traveler_profile: (dict[str, any] | None) = None;
+        extra_cost_minor: int = 0;
+        latest_starts: dict[str, Moment] = field(default_factory=`dict);
+        extra_items: tuple[dict[str, any], ...] = ();
     }
 }
 @dataclass(frozen=True)
@@ -118,5 +123,7 @@ class Replacement {
         replaces_id: str;
         item: ScheduledItem;
         transfers: tuple[Transfer, ...];
+        provider_id: str = "";
+        action: str = "replace";
     }
 }
