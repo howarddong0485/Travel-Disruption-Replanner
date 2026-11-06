@@ -366,7 +366,8 @@ def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
     return total;
 }
 def build_combination(
-    state: any, event: any, affected: any, choices: any, manual: any = False
+    state: any, event: any, affected: any, choices: any, manual: any = False,
+    inventory: any = None
 ) -> any {
     nodes = {i['id']: copy.deepcopy(i) for i in state['items']};
     original = {i['id']: i for i in state['items']};
@@ -405,7 +406,7 @@ def build_combination(
                     'Fixed or completed item conflicts: {}'.format(before['title'])
                 );
             }
-            options = backups_for(before);
+            options = backups_for(before) if inventory is None else [b for b in inventory if b['item_id'] == item_id];
             backup = next(
                 (
                     b
@@ -425,7 +426,7 @@ def build_combination(
                 reference='',
                 done=False,
                 paid=False,
-                location=before['location']
+                location=backup.get('location', before['location'])
             );
             earliest += timedelta(minutes=backup['offset_minutes']);
             retained += before['cost_cents'] if before['paid'] else 0;
