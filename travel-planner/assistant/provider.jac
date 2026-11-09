@@ -93,7 +93,7 @@ def contents(response: dict[str, any]) -> tuple[str, list[dict[str, str]]] {
 }
 
 def trip_schema -> dict[str, any] {
-    fields: dict[str, any] = {key: {"type": ["string", "null"]} for key in ["title", "destination", "start_date", "end_date", "currency", "notes"]};
+    fields: dict[str, any] = {key: {"type": ["string", "null"]} for key in ["title", "destination", "departure_location", "return_location", "start_date", "end_date", "currency", "notes"]};
     fields["budget_cents"] = {"type": ["integer", "null"], "description": "Budget in hundredths of the trip currency, not whole currency units. null means unchanged."};
     return {"type": "object", "properties": fields, "required": `list(fields), "additionalProperties": False};
 }
@@ -131,9 +131,10 @@ def generate(context: dict[str, any], history: list[dict[str, any]], message: st
         + "Distinguish sourced information from estimates, cite sources, and explain important uncertainty. Do not expose secrets. "
         + "For plan/backup/replan requests research actionable options, preserve fixed, paid and confirmed items, and consider downstream dependencies. "
         + "For ordinary questions, answer directly. The current task mode is " + mode + ".";
-    instructions += " You can propose edits to the active trip's name, destination, departure/return dates, currency, budget and notes. "
+    instructions += " You can propose edits to the active trip's name, destination, departure and return locations, departure/return dates, currency, budget and notes. "
         + "When an ordinary chat message requests such an edit, call prepare_trip_edit. This only prepares a reviewable draft; never claim an edit is saved. "
         + "Questions that do not request an edit can be answered directly. Ask a clarification if a date or requested field is ambiguous.";
+    instructions += " Use departure_location for the outbound journey and return_location for the journey after the trip. They may differ. Include realistic transfers in plans; when either is blank, keep it unknown and ask when needed to plan transport. Never assume the destination is the departure or return location.";
     instructions += preference_instructions(context);
     # Keep the conversation text, not repeated research/source/review payloads.
     recent_history = [{"role": m["role"], "text": m["text"][:5000]} for m in history[-12:]];

@@ -815,7 +815,7 @@ def seed_demo(conn: any) -> dict[str, any] {
     conn.execute('BEGIN IMMEDIATE');
     try {
         conn.execute(
-            'INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)',
+            'INSERT INTO trips (id,title,destination,start_date,end_date,currency,budget_cents,notes) VALUES (?,?,?,?,?,?,?,?)',
             (
                 trip_id,
                 'Backup & replan demo',

@@ -9,13 +9,22 @@ def:pub app -> JsxElement {
         tab: str = "planner", aiData: dict[str, any] = {}, aiReload: int = 0, aiCompose: int = 0,
         aiMode: str = "ask", aiText: str = "", day: str = "", loading: bool = True, busy: bool = False,
         error: str = "", notice: str = "", requestRef: Ref[int] = Ref(0),
+        routePaused: bool = False,
         trip_form: bool = False, editing_trip: str = "", trip_title: str = "",
+        departure_location: str = "", return_location: str = "",
         destination: str = "", start_date: str = "", end_date: str = "",
         currency: str = "USD", budget: str = "", trip_notes: str = "",
         editing_item: str = "", item_title: str = "", category: str = "activity",
         item_date: str = "", item_time: str = "", location: str = "",
         reference: str = "", item_notes: str = "", cost: str = "";
 
+    def toggleRoute -> None {
+        route: any = document.getElementById("journey-animation");
+        if route {
+            if routePaused { route.unpauseAnimations(); } else { route.pauseAnimations(); }
+            routePaused = not routePaused;
+        }
+    }
     def money(cents: int, unit: str) -> str {
         value = abs(cents);
         minor = value % 100;
@@ -153,11 +162,14 @@ def:pub app -> JsxElement {
                     <div className="trip-fields">
                         <div><label htmlFor="trip-name">Trip name</label><input id="trip-name" value={trip_title} maxLength={160} placeholder="A week in Kyoto" required={True} onChange={lambda (e: ChangeEvent) { trip_title = e.target.value; }}/></div>
                         <div><label htmlFor="destination">Destination</label><input id="destination" value={destination} maxLength={160} placeholder="Kyoto, Japan" required={True} onChange={lambda (e: ChangeEvent) { destination = e.target.value; }}/></div>
-                        <div><label htmlFor="departure">Departure</label><input id="departure" type="date" value={start_date} required={True} onChange={lambda (e: ChangeEvent) { start_date = e.target.value; }}/></div>
-                        <div><label htmlFor="return">Return</label><input id="return" type="date" value={end_date} min={start_date} required={True} onChange={lambda (e: ChangeEvent) { end_date = e.target.value; }}/></div>
+                        <div><label htmlFor="departure-location">Departing from</label><input id="departure-location" value={departure_location} maxLength={160} placeholder="Detroit, MI or DTW" onChange={lambda (e: ChangeEvent) { departure_location = e.target.value; }}/></div>
+                        <div><label htmlFor="return-location">Return to</label><input id="return-location" value={return_location} maxLength={160} placeholder="City or airport after the trip" onChange={lambda (e: ChangeEvent) { return_location = e.target.value; }}/></div>
+                        <div><label htmlFor="departure">Departure date</label><input id="departure" type="date" value={start_date} required={True} onChange={lambda (e: ChangeEvent) { start_date = e.target.value; }}/></div>
+                        <div><label htmlFor="return">Return date</label><input id="return" type="date" value={end_date} min={start_date} required={True} onChange={lambda (e: ChangeEvent) { end_date = e.target.value; }}/></div>
                         <div><label htmlFor="currency">Currency</label><select id="currency" value={currency} onChange={lambda (e: ChangeEvent) { currency = e.target.value; }}>{[<option key={unit} value={unit}>{unit}</option> for unit in ["USD", "EUR", "GBP", "CAD", "JPY", "CNY", "AUD", "CHF", "KRW", "INR"]]}</select></div>
                         <div><label htmlFor="budget">Trip budget</label><input id="budget" type="number" min="0" max="100000000" step="0.01" value={budget} placeholder="0.00" onChange={lambda (e: ChangeEvent) { budget = e.target.value; }}/></div>
                     </div>
+                    <p className="form-help">Departure and return locations are optional. Enter the same place for a round trip, or a different return city.</p>
                     <label htmlFor="trip-notes">Trip notes</label><textarea id="trip-notes" value={trip_notes} maxLength={5000} placeholder="Ideas, useful addresses, things to remember…" onChange={lambda (e: ChangeEvent) { trip_notes = e.target.value; }}/>
                     <button className="primary" type="submit" disabled={busy}>{"Saving…" if busy else "Save changes" if editing_trip else "Create trip ↗"}</button>
                 </form>
@@ -172,9 +184,32 @@ def:pub app -> JsxElement {
 
                     <div className="hero-content"><span className="status-pill">{status(current)}</span><p className="eyebrow">TRIP OVERVIEW</p>
                         <h1>{current.title}</h1><p className="destination">◎ {current.destination}</p>
+                        <p className="trip-route">{"Departing from: " + (current.departure_location or "Not set") + " · Return to: " + (current.return_location or "Not set")}</p>
                         <p className="trip-dates">{prettyDate(current.start_date) + " — " + prettyDate(current.end_date)}</p>
                         <button type="button" className="hero-edit" onClick={lambda { openTrip(current); }} disabled={busy or loading}>Edit trip ↗</button>
                     </div>
+                </section>
+                <section className="journey-card card" aria-label="Travel route">
+                    <div className="section-heading"><div><p className="eyebrow">FROM TAKEOFF TO HOME</p><h2>Your journey</h2></div>
+                        <button type="button" className="text-button journey-motion-control" aria-pressed={routePaused} onClick={toggleRoute}>{"Play animation" if routePaused else "Pause animation"}</button></div>
+                    <svg id="journey-animation" className="journey-animation" viewBox="0 0 900 180" aria-hidden="true" focusable="false">
+                        <path className="journey-track" d="M90 130 Q270 -30 450 130 Q630 -30 810 130"/>
+                        <path className="journey-track-dash" d="M90 130 Q270 -30 450 130 Q630 -30 810 130"/>
+                        <circle className="journey-halo" cx="90" cy="130" r="18"/><circle className="journey-stop" cx="90" cy="130" r="7"/>
+                        <circle className="journey-halo" cx="450" cy="130" r="18"/><circle className="journey-stop" cx="450" cy="130" r="7"/>
+                        <circle className="journey-halo" cx="810" cy="130" r="18"/><circle className="journey-stop" cx="810" cy="130" r="7"/>
+                        <g className="journey-plane">
+                            <circle r="23" className="journey-plane-disc"/>
+                            <path d="M16 0 L2 -4 L-8 -16 L-13 -16 L-8 -3 L-16 -3 L-20 -8 L-23 -8 L-20 0 L-23 8 L-20 8 L-16 3 L-8 3 L-13 16 L-8 16 L2 4 Z" transform="scale(.7)"/>
+                            <animateMotion dur="12s" repeatCount="indefinite" rotate="auto" path="M90 130 Q270 -30 450 130 Q630 -30 810 130" keyPoints="0;0;0.5;0.5;1;1" keyTimes="0;0.08;0.42;0.58;0.92;1" calcMode="linear"/>
+                        </g>
+                    </svg>
+                    <ol className="journey-labels">
+                        <li><span>01 · Departing from</span><strong>{current.departure_location or "Add departure location"}</strong><small>{prettyDate(current.start_date)}</small></li>
+                        <li><span>02 · Destination</span><strong>{current.destination}</strong><small>Explore &amp; enjoy</small></li>
+                        <li><span>03 · Return to</span><strong>{current.return_location or "Add return location"}</strong><small>{prettyDate(current.end_date)}</small></li>
+                    </ol>
+                    {(<p className="journey-help">Complete your route in <button type="button" className="text-button" onClick={lambda { openTrip(current); }} disabled={busy or loading}>Edit trip ↗</button></p>) if not current.departure_location or not current.return_location else None}
                 </section>
                 <section className="stats" aria-label="Trip summary">
                     <div><span className="stat-icon">↗</span><p><strong>{str(len(bookings))}</strong><small>reservations</small></p></div>

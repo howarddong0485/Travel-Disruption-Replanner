@@ -13,6 +13,8 @@ impl app.openTrip(trip: TripView | None = None) -> None {
     editing_trip = trip.id if trip else "";
     trip_title = trip.title if trip else "";
     destination = trip.destination if trip else "";
+    departure_location = trip.departure_location if trip else "";
+    return_location = trip.return_location if trip else "";
     start_date = trip.start_date if trip else today();
     end_date = trip.end_date if trip else today();
     currency = trip.currency if trip else "USD";
@@ -53,6 +55,9 @@ impl app.refresh -> None {
 }
 impl app.chooseTrip(trip_id: str) -> None {
     if busy or loading { return; }
+    route: any = document.getElementById("journey-animation");
+    if route { route.unpauseAnimations(); }
+    routePaused = False;
     selected = trip_id; items = []; day = ""; tab = "planner"; aiData = {}; aiCompose = 0; aiText = "";
     trip_form = False; notice = ""; resetItem();
     await refresh();
@@ -61,7 +66,8 @@ impl app.submitTrip(e: FormEvent) -> None {
     e.preventDefault(); if busy { return; } busy = True; notice = "";
     try {
         saved = await save_trip(title=trip_title, destination=destination, start_date=start_date,
-            end_date=end_date, currency=currency, budget=budget, notes=trip_notes, trip_id=editing_trip);
+            end_date=end_date, currency=currency, budget=budget, notes=trip_notes, trip_id=editing_trip,
+            departure_location=departure_location, return_location=return_location);
         if selected != saved.id { aiData = {}; aiCompose = 0; tab = "planner"; }
         selected = saved.id; trip_form = False; day = ""; resetItem();
         await refresh(); notice = "Trip saved. Let the planning begin.";

@@ -229,6 +229,7 @@ def:pub refresh_backup_validation(scenario: str = "rain", profile_name: str = "f
 obj TripView {
     has id: str, title: str, destination: str, start_date: str, end_date: str,
         currency: str, budget_cents: int, notes: str;
+    has departure_location: str = "", return_location: str = "";
 }
 obj ItemView {
     has id: str, trip_id: str, title: str, category: str, date: str, time: str,
@@ -244,6 +245,13 @@ def _connect -> sqlite3.Connection {
     conn.execute("PRAGMA foreign_keys = ON");
     conn.execute("PRAGMA journal_mode = WAL");
     conn.execute("CREATE TABLE IF NOT EXISTS trips (id TEXT PRIMARY KEY, title TEXT NOT NULL, destination TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, currency TEXT NOT NULL, budget_cents INTEGER NOT NULL, notes TEXT NOT NULL)");
+    # Add optional route endpoints to existing databases without touching saved trips.
+    conn.execute("BEGIN IMMEDIATE");
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(trips)")};
+    for field in ["departure_location", "return_location"] {
+        if field not in columns { conn.execute("ALTER TABLE trips ADD COLUMN " + field + " TEXT NOT NULL DEFAULT ''"); }
+    }
+    conn.commit();
     conn.execute("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE, title TEXT NOT NULL, category TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL, location TEXT NOT NULL, reference TEXT NOT NULL, notes TEXT NOT NULL, cost_cents INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, paid INTEGER NOT NULL DEFAULT 0)");
     conn.execute("CREATE INDEX IF NOT EXISTS items_trip ON items(trip_id)");
     conn.commit();
@@ -366,7 +374,7 @@ def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
     try {
         conn.execute("BEGIN IMMEDIATE");
         trip = sample["trip"];
-        conn.execute("INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)", (trip_id, "Integrated " + ("weather" if scenario == "rain" else "arrival delay") + " demo",
+        conn.execute("INSERT INTO trips (id,title,destination,start_date,end_date,currency,budget_cents,notes) VALUES (?,?,?,?,?,?,?,?)", (trip_id, "Integrated " + ("weather" if scenario == "rain" else "arrival delay") + " demo",
             "Boston", trip["start_date"], trip["end_date"], "USD", trip["budget_cents"], "Explicit synthetic profile, quotes, hours, routes and risk evidence"));
         for item in sample["items"] {
             conn.execute("INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (mapping[item["id"]], trip_id, item["title"], item["category"],
@@ -413,7 +421,8 @@ def _money(value: str) -> int {
 def _trip(row: sqlite3.Row) -> TripView {
     return TripView(id=str(row["id"]), title=str(row["title"]), destination=str(row["destination"]),
         start_date=str(row["start_date"]), end_date=str(row["end_date"]),
-        currency=str(row["currency"]), budget_cents=int(row["budget_cents"]), notes=str(row["notes"]));
+        currency=str(row["currency"]), budget_cents=int(row["budget_cents"]), notes=str(row["notes"]),
+        departure_location=str(row["departure_location"]), return_location=str(row["return_location"]));
 }
 def _item(row: sqlite3.Row) -> ItemView {
     return ItemView(id=str(row["id"]), trip_id=str(row["trip_id"]), title=str(row["title"]),
@@ -434,9 +443,12 @@ def:pub list_trips -> list[TripView] {
 }
 
 def:pub save_trip(title: str, destination: str, start_date: str, end_date: str,
-    currency: str = "USD", budget: str = "0", notes: str = "", trip_id: str = "") -> TripView {
+    currency: str = "USD", budget: str = "0", notes: str = "", trip_id: str = "",
+    departure_location: str | None = None, return_location: str | None = None) -> TripView {
     title = _text(title, "Trip name", 160, True);
     destination = _text(destination, "Destination", 160, True);
+    if departure_location is not None { departure_location = _text(departure_location, "Departure location", 160); }
+    if return_location is not None { return_location = _text(return_location, "Return location", 160); }
     start_date = _date(start_date);
     end_date = _date(end_date);
     if end_date < start_date { raise ValueError("Return date must be on or after departure"); }
@@ -456,10 +468,14 @@ def:pub save_trip(title: str, destination: str, start_date: str, end_date: str,
             if str(old["currency"]) != currency and conn.execute("SELECT id FROM items WHERE trip_id = ? AND cost_cents > 0 LIMIT 1", (trip_id,)).fetchone() is not None {
                 raise ValueError("Currency cannot change while the trip has costs; no exchange conversion is performed");
             }
-            conn.execute("UPDATE trips SET title=?, destination=?, start_date=?, end_date=?, currency=?, budget_cents=?, notes=? WHERE id=?", (title, destination, start_date, end_date, currency, cents, notes, trip_id));
+            conn.execute("UPDATE trips SET title=?, destination=?, start_date=?, end_date=?, currency=?, budget_cents=?, notes=?, departure_location=?, return_location=? WHERE id=?",
+                (title, destination, start_date, end_date, currency, cents, notes,
+                    str(old["departure_location"]) if departure_location is None else departure_location,
+                    str(old["return_location"]) if return_location is None else return_location, trip_id));
         } else {
             trip_id = str(uuid.uuid4());
-            conn.execute("INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (trip_id, title, destination, start_date, end_date, currency, cents, notes));
+            conn.execute("INSERT INTO trips (id,title,destination,start_date,end_date,currency,budget_cents,notes,departure_location,return_location) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (trip_id, title, destination, start_date, end_date, currency, cents, notes, departure_location or "", return_location or ""));
         }
         conn.commit();
         return _trip(_require_trip(conn, trip_id));

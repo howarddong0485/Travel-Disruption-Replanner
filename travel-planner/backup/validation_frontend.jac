@@ -1,4 +1,5 @@
 """Shared sample/saved-trip backup workflow using Roam's controls and styles."""
+import from browser_ids { request_id }
 import from server.main { load_backup_history, save_backup_refresh, load_trip_backup_history, save_trip_backup_refresh }
 
 def:pub BackupChanges(changes: dict[str, any], historical: bool = False, diagnostics: bool = False) -> JsxElement {
@@ -90,10 +91,10 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
             try {
                 saved = browser.localStorage.getItem(storageKey);
                 valid = saved and browser.RegExp("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").test(saved);
-                sessionId.current = saved if valid else browser.crypto.randomUUID();
+                sessionId.current = saved if valid else request_id(browser);
                 browser.localStorage.setItem(storageKey, sessionId.current);
             } except Exception {
-                sessionId.current = browser.crypto.randomUUID();
+                sessionId.current = request_id(browser);
                 notice = "Browser storage is unavailable. This session cannot be restored after closing the page.";
             }
             restored = await fetchHistory();
@@ -168,9 +169,9 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
         browser: any = window;
         if pending or booting or history is None { return; }
         clear(); pending = True; notice = "";
-        if not retryId.current { retryId.current = browser.crypto.randomUUID(); }
         request = requestRef.current;
         try {
+            if not retryId.current { retryId.current = request_id(browser); }
             response: dict[str, any] = {};
             if trip_id {
                 response = await save_trip_backup_refresh(session_id=str(sessionId.current or ""), request_id=str(retryId.current or ""),

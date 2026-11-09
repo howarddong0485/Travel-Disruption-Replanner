@@ -302,3 +302,51 @@ test "guided demo supports both backup scenarios and saved dependency-aware repl
         assert sum([i["cost_cents"] for i in saved["items"]]) == selected["projected_total_cents"];
     }
 }
+
+
+test "route locations persist, preserve omitted edits, clear explicitly and advance trip versions" {
+    with tempfile.TemporaryDirectory() as directory {
+        os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
+        created = save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07",
+            departure_location="  Detroit (DTW)  ", return_location="Chicago (ORD)");
+        assert created.departure_location == "Detroit (DTW)" and created.return_location == "Chicago (ORD)";
+        saved = list_trips()[0];
+        assert saved.departure_location == "Detroit (DTW)" and saved.return_location == "Chicago (ORD)";
+        version = replan_state(created.id)["version"];
+        # Older clients must not erase route endpoints when editing other fields.
+        updated = save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id);
+        assert updated.departure_location == "Detroit (DTW)" and updated.return_location == "Chicago (ORD)";
+        edited = save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id, return_location="Detroit (DTW)");
+        assert edited.departure_location == edited.return_location == "Detroit (DTW)";
+        assert replan_state(created.id)["version"] > version;
+        for field in ["departure_location", "return_location"] {
+            caught = False;
+            try {
+                save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id, **{field: "x" * 161});
+            } except ValueError { caught = True; }
+            assert caught;
+        }
+        cleared = save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id,
+            departure_location="", return_location="  ");
+        assert cleared.departure_location == cleared.return_location == "";
+    }
+}
+
+test "legacy trip databases migrate route fields without changing saved records" {
+    with tempfile.TemporaryDirectory() as directory {
+        os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
+        conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
+        try {
+            conn.execute("CREATE TABLE trips (id TEXT PRIMARY KEY, title TEXT NOT NULL, destination TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, currency TEXT NOT NULL, budget_cents INTEGER NOT NULL, notes TEXT NOT NULL)");
+            conn.execute("INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)", ("legacy", "Saved trip", "Boston", "2027-04-01", "2027-04-07", "USD", 100000, "Keep me"));
+            conn.commit();
+        } finally { conn.close(); }
+        migrated = list_trips()[0];
+        assert migrated.id == "legacy" and migrated.notes == "Keep me" and migrated.budget_cents == 100000;
+        assert migrated.departure_location == migrated.return_location == "";
+        save_trip("Saved trip", "Boston", "2027-04-01", "2027-04-07", trip_id="legacy", departure_location="Detroit", return_location="Chicago");
+        reopened = list_trips()[0];
+        assert reopened.departure_location == "Detroit" and reopened.return_location == "Chicago";
+        assert len(list_trips()) == 1;
+    }
+}
