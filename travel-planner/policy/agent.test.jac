@@ -223,3 +223,81 @@ test "extracted fixture policies give the same risk report as the hand-written o
     assert structural_problems(rebuilt) == [];
     assert {f.id for f in analyze_trip(rebuilt, NOW)} == expected;
 }
+
+glob NEGATED_TERMS: str = "Full refund to the original payment method is not available.";
+glob FEE_TERMS: str = ("Full refund to the original payment method until 24 hours before start, "
+    + "less a $25 processing fee.");
+
+test "negated full-refund statements stay unresolved instead of becoming free cancellation" {
+    for terms in [NEGATED_TERMS, "Free cancellation does not apply to this rate.",
+        "This booking isn't eligible for a full refund.", "A full refund can no longer be issued.",
+        "Full refunds are never available after check-in."] {
+        r = extract_policy(request(terms), use_llm=False);
+        assert r.needs_review, terms;
+        assert all(t.refund_percent is None for t in r.policy.tiers), terms;
+        s = evaluate_cancellation(r.policy, hotel(), parse_instant(NOW));
+        assert s.state == CancelState.UNKNOWN and s.refund_if_cancel_now_minor is None, terms;
+    }
+}
+
+test "a processing fee on a full-refund clause is kept" {
+    r = extract_policy(request(FEE_TERMS), use_llm=False);
+    assert not r.needs_review;
+    tier = r.policy.tiers[0];
+    assert tier.refund_percent == 100 and tier.fee_minor == 2500 and tier.hours_before_start == 24;
+    assert tier.refund_form == RefundForm.CASH;
+    s = evaluate_cancellation(r.policy, hotel(), parse_instant(NOW));
+    assert s.state == CancelState.PARTIAL_REFUND;
+    assert s.refund_if_cancel_now_minor == 49500 and s.fee_if_cancel_now_minor == 2500;
+}
+
+test "a deduction the rules cannot read sends the policy to review" {
+    for terms in ["Full refund until 24 hours before arrival, less a 10% processing fee.",
+        "Full refund until 24 hours before arrival, after which a $50 fee applies.",
+        "Full refund until 24 hours before arrival, less a processing fee.",
+        "Full refund until 24 hours before arrival, less a $25 fee and a $10 service charge."] {
+        r = extract_policy(request(terms), use_llm=False);
+        assert r.needs_review and "refund deduction not recognized" in " ".join(r.notes), terms;
+        s = evaluate_cancellation(r.policy, hotel(), parse_instant(NOW));
+        assert s.state == CancelState.UNKNOWN, terms;
+    }
+}
+
+test "stating no fee still yields free cancellation" {
+    for terms in ["Free cancellation up to 2 days before check-in with no cancellation fee.",
+        "You may cancel free of charge until 24 hours before arrival."] {
+        r = extract_policy(request(terms), use_llm=False);
+        assert not r.needs_review, terms;
+        assert r.policy.tiers[0].refund_percent == 100 and r.policy.tiers[0].fee_minor == 0, terms;
+        s = evaluate_cancellation(r.policy, hotel(), parse_instant(NOW));
+        assert s.state == CancelState.FREE_CANCEL_OPEN, terms;
+    }
+}
+
+test "an LLM full refund for a negated excerpt is not accepted" {
+    terms = NEGATED_TERMS + " No-shows are charged the full stay.";
+    draft = PolicyDraft(tiers=[DraftTier(excerpt=NEGATED_TERMS, refund_percent=100,
+        fee_amount="0", refund_form="cash")], no_show_refund_percent=0,
+        no_show_excerpt="No-shows are charged the full stay.");
+    (r, _) = with_llm(draft, request(terms));
+    assert r.policy.tiers[0].refund_percent is None;
+    assert "refund percentage 100 not supported" in " ".join(r.notes);
+    s = evaluate_cancellation(r.policy, hotel(), parse_instant(NOW));
+    assert s.state == CancelState.UNKNOWN and s.refund_if_cancel_now_minor is None;
+}
+
+test "an LLM zero fee for a fee-qualified excerpt becomes unknown, and the stated fee is kept" {
+    def fee_draft(fee: str) -> PolicyDraft {
+        return PolicyDraft(tiers=[DraftTier(excerpt=FEE_TERMS, hours_before_start=24,
+            refund_percent=100, fee_amount=fee, fee_currency="USD", refund_form="cash")]);
+    }
+    (free, _) = with_llm(fee_draft("0"), request(FEE_TERMS));
+    assert free.policy.tiers[0].fee_minor is None;
+    assert "zero fee contradicts a stated charge" in " ".join(free.notes);
+    s = evaluate_cancellation(free.policy, hotel(), parse_instant(NOW));
+    assert s.state == CancelState.UNKNOWN and s.refund_if_cancel_now_minor is None;
+    (kept, _) = with_llm(fee_draft("25.00"), request(FEE_TERMS));
+    assert kept.policy.tiers[0].fee_minor == 2500;
+    s = evaluate_cancellation(kept.policy, hotel(), parse_instant(NOW));
+    assert s.state == CancelState.PARTIAL_REFUND and s.refund_if_cancel_now_minor == 49500;
+}
