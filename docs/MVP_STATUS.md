@@ -1,17 +1,30 @@
 # Mock MVP status and remaining work
 
-Updated **2026-11-01** for delivery on `main` through PRs #30, #31, #32,
+Updated **2026-11-02** for the P3 follow-up branch and delivery on `main` through PRs #30, #31, #32,
 #35 and #36. Pre-merge review corrections and their final evidence are recorded below. The separately authored
 P1/P2 source PRs retain their own review status; importing their code does not
 record contract approval on their owners' behalf.
+
+## P3 follow-up branch — pending merge
+
+The `codex/p3-connection-validation` follow-up branch closes the known P3
+connection-estimate code gap: generation, whole-trip validation and acceptance
+share venue-bound estimates, freshness and expiry. Replacement venues use fresh
+routes; reschedules preserve applicable estimates. This branch implementation is
+separate from the merged `cb87bef` baseline and from affected-owner approval.
+The complete local check reports **460 passes**, four app checks, both clients,
+CLI alternatives **3 / 5 / 5** and a **47-module** sealed package. Both source
+and sealed HTTP checks also exercise exact acceptance of a 150-minute connection.
+See the [local verification record](LOCAL_VERIFICATION.md#local-p3-completion-verification--2026-11-01)
+and the [conversational-agent assessment](AGENTIC_AI_ASSESSMENT.md).
 
 ## Remaining implementation by role
 
 | Role | Implemented on main | Remaining implementation | Implementation attribution |
 | --- | --- | --- | --- |
 | **P1 — personalization and feasibility** | Structured profiles, hard/soft requirement models, per-place eligibility, ledger, profile loading, hard-requirement/fact forms and full-trip checks for connected backups. | Complete basic interest/pace/soft-preference intake and use it consistently in the supported mock workflow. Agree on the shared full-trip validator boundary with the integrator. | Daniel Hu: profile/filter/budget (#22, #24, #27). P3: profile loader/forms, whole-trip backup validation and adapters. P2: shared itinerary/evidence/policy/risk schema proposal. |
-| **P2 — policies and risks** | Evidenced policy extraction, cancellation evaluation, risk rules, unknown handling and tests. Connected backups consume results and display selectable risk summaries. | Fix rule extraction of negated refund statements; unsupported entitlements must stay unresolved (#10). Complete the Roam risk/policy panel: affected items, rule/severity, cited source/excerpt, checked time, missing evidence, cancellation deadlines and refund terms. Provide the supported policy-input/review flow in the UI. | czhobro: policy/risk/schema (#16). P3: saved-trip evidence/freshness adapter, risk selection/summary UI and comparison consumption. |
-| **P3 — proactive backups** | Up to five venue/provider, rescheduling and connected-node plans across ten supported categories; full-trip checks, refresh/invalidation, immutable observations/history, UI, actual-candidate handoff and engineering verification. | Reconcile supplemental P2 travel estimates with generation/acceptance transfer constraints (#11/#34). Cross-owner contract confirmation remains open; P3 is not fully complete. | Gehao Dong: backup logic/UI and connected integration (#30, #31, #32, #35, #36). Uses P1 filtering/ledger, P2 policy/risk and P4 transactions. P4 contributed earlier navigation/guided demo. |
+| **P2 — policies and risks** | Evidenced policy extraction, cancellation evaluation, risk rules, unknown handling and tests. Connected backups consume results and display selectable risk summaries. | Fix rule extraction of negated refund statements and fee-qualified full-refund clauses; unsupported entitlements must stay unresolved (#10 and the linked #36 review). Complete the Roam risk/policy panel: affected items, rule/severity, cited source/excerpt, checked time, missing evidence, cancellation deadlines and refund terms. Provide the supported policy-input/review flow in the UI. | czhobro: policy/risk/schema (#16). P3: saved-trip evidence/freshness adapter, risk selection/summary UI and comparison consumption. |
+| **P3 — proactive backups** | Up to five venue/provider, rescheduling and connected-node plans across ten supported categories; full-trip checks, refresh/invalidation, immutable observations/history, UI, actual-candidate handoff and engineering verification. | The known connection-estimate code gap is implemented in the follow-up branch (#11/#34), pending merge. No further P3 code gap is identified in the supported mock scope. Merge/delivery and cross-owner contract confirmation remain distinct from branch code completion. | Gehao Dong: backup logic/UI and connected integration (#30, #31, #32, #35, #36). Uses P1 filtering/ledger, P2 policy/risk and P4 transactions. P4 contributed earlier navigation/guided demo. |
 | **P4 — disruption repairs** | Delay/interruption simulation, dependency traversal, protected nodes, bounded combinations, event deduplication, version checks and atomic explicit acceptance. Connected P3 proposals can use the transaction. | Route legacy `propose_replan`/`combine_replan` through shared evidence/eligibility/ledger/comparison contracts; it still uses a separate synthetic catalog and validator. Regenerate relevant backups after accepted repairs and verify the lifecycle (#18). | JackyLiuhh: original engine/transaction/UI (#19), Roam foundation, theme and guided demo (#21, #25). P3: Jac migration and connected-candidate refresh/revalidation/application adapter. |
 | **P5 — comparison and traveler control** | Before/after items and times, deterministic money comparison, keep/reject/request-another/accept, stale-result guards and matching-version application. | Unify comparison across connected backups and legacy repairs; implement payment-timing-aware cash due now with evidenced usable credits/received refunds; complete convenience/experience tradeoffs and explanations. Surface shared time/travel metrics consistently. | P4: original review UI, navigation and theme. P3: connected comparison contract/calculator, review UI and integration checks. P1/P2 supply authoritative ledger/policy inputs. |
 
@@ -59,7 +72,7 @@ venue hours are refreshed from the accepted provider. Changed item facts lose
 old evidence until explicitly confirmed; derived opening-hours references are
 removed with the cleared evidence so an unresolved edit can still be saved.
 The UI was verified before confirmation, after confirmation and after editing
-previously confirmed facts without reconfirming. Validator `roam.planning-validator.v4` invalidates old
+previously confirmed facts without reconfirming. The follow-up validator `roam.planning-validator.v5` invalidates old
 proposals, enforces every selected activation and expires financial review at
 policy boundaries. Dated supplemental hours govern same-venue reschedules;
 closed-day evidence blocks them. Requesting other plans excludes already shown
@@ -68,8 +81,7 @@ All confirmed opening intervals are retained separately, and ordinary item edits
 invalidate affected evidence transactionally. Older contexts require confirmation
 once when the invalidation guard is installed.
 See [final PR checks](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/36/checks)
-for hosted verification of the merge revision. Two review findings remain open: supplemental travel estimates can be omitted from connected validation (#11), and P2 rule extraction can misread negated refund terms (#10). Passing checks do not establish completion of P3 or those paths. These checks cover implemented paths; they do not
-implement the gaps above or establish completion of the whole MVP.
+for hosted verification of the merge revision. The merged baseline had a P3 supplemental-estimate gap; the follow-up branch repairs that path. P2 rule extraction still needs negation and processing-fee fixes. Passing checks do not approve shared contracts or establish completion of the whole MVP. These checks cover the implemented paths listed above.
 
 Connected inventory is synthetic **Boston/USD**, bounded to eight affected nodes
 and 256 combinations. Live providers/monitoring, real bookings,

@@ -42,7 +42,7 @@ binary (`../.tools/jac-0.37.23`):
 | --- | --- |
 | P1 | `jac test profile/ filter/ budget/ planning/test_context.jac` |
 | P2 | `jac test schema/ policy/ risk/` and `jac run risk/demo.jac` |
-| P3 | `jac run planning/demo.jac` and `jac test planning/test_engine.jac planning/test_boundaries.jac planning/test_agent.jac` |
+| P3 | `jac run planning/demo.jac` and `jac test planning/test_engine.jac planning/test_boundaries.jac planning/test_agent.jac planning/test_connections.jac` |
 | P4/P5 handoff | `jac test planning/test_service.jac`; `bash scripts/verify.sh` from the repository root exercises real HTTP rejection, exact acceptance, versions and CLI against source and sealed servers. |
 
 The integration guide lists the exact source commits for the 33 unchanged P1/P2
@@ -61,3 +61,17 @@ The [hosted CI run](https://github.com/howarddong0485/Travel-Disruption-Replanne
 Remaining code gaps are listed in [MVP_STATUS.md](MVP_STATUS.md). The engineering checks and their precise verification scope are recorded in
 [LOCAL_VERIFICATION.md](LOCAL_VERIFICATION.md). Mock MVP verification does not
 establish production deployment or the later live-integration milestone.
+
+
+## P3 local technical review — 2026-11-01
+
+The connection follow-up implements validator v5 without changing the public
+alternative schema or P1/P2 source algorithms. P3's generation/acceptance adapter
+now enforces P2 travel estimates, binds them to the original venues, preserves
+unknown evidence, and uses the earliest supporting expiry. New tests cover the
+published counterexample, nonadjacent constraints, maximum duration, venue
+replacement and the HTTP application lifecycle.
+
+This records a technical implementation review. It is not approval from P1, P2,
+P4, P5 or the integrator. Those people still need to confirm the interface and
+financial boundaries; P2 policy extraction defects remain in its scope.
