@@ -6,6 +6,7 @@ import sqlite3;
 import datetime;
 import json;
 import from decimal { Decimal }
+import from dataclasses { asdict }
 import from backup.models { BackupPreview }
 import from backup.planner { prepare as prepare_backup }
 import from replan.engine { install_schema, snapshot, save_rules, save_dependency,
@@ -16,8 +17,9 @@ import from backup.history { read_history, save_refresh }
 import from backup.history { append_snapshot, clock, identifier }
 import from backup.saved_inputs { trip_session, saved_inputs, saved_fingerprint }
 import from backup.workflow { run_workflow }
-import from planning.context { install_context_schema, read_facts, check_payload, build_context, public_context }
-import from planning.engine { generate_plans, VALIDATION_VERSION }
+import from backup.validation { instant }
+import from planning.context { CONTEXT_VERSION, install_context_schema, read_facts, check_payload, build_context, public_context }
+import from planning.engine { at_time, generate_plans, VALIDATION_VERSION }
 import from planning.fixtures { sample_state }
 
 def _backup_source(trip_id: str) -> tuple[dict[str, any], list[dict[str, any]]] {
@@ -164,6 +166,46 @@ def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_ve
         conn.commit(); return result;
     } except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
+}
+
+def:pub report_itinerary_change(trip_id: str, item_id: str, reason: str, expected_version: any,
+    delay_minutes: any = 0) -> dict[str, any] {
+    if reason not in ("timing", "weather", "closure", "cancellation", "traveler_change") {
+        raise ValueError("Choose a supported disruption");
+    }
+    if reason == "timing" and (type(delay_minutes) is not int or not 1 <= delay_minutes <= 1440) {
+        raise ValueError("Enter a delay between 1 and 1440 minutes");
+    }
+    now = clock();
+    conn = _connect();
+    try {
+        conn.execute("BEGIN");
+        state = snapshot(conn, trip_id);
+        if state["version"] != expected_version { raise ValueError("Your trip changed. Reload before reporting a change."); }
+        context = build_context(state, read_facts(conn, trip_id), now);
+    } finally { conn.close(); }
+    matches = [item for item in context["trip"].items if item.id == item_id];
+    if not matches { raise ValueError("Choose an itinerary item in this trip"); }
+    item = matches[0];
+    risk_id = "itinerary-report:" + item_id + ":" + reason;
+    labels = {"timing": "Delay", "weather": "Weather disruption", "closure": "Closure", "cancellation": "Cancellation",
+        "traveler_change": "Alternative requested"};
+    risk: dict[str, any] = {"id": risk_id, "category": reason, "node_ids": [item_id],
+        "summary": labels[reason] + " reported for " + item.title,
+        "evidence": {"source": "user://trip/" + trip_id + "/reported-change", "checked_at": now.isoformat(),
+            "expires_at": (now + datetime.timedelta(minutes=15)).isoformat()}};
+    if reason == "timing" {
+        try {
+            risk["not_before"] = asdict(at_time(item.start, instant(item.start) + datetime.timedelta(minutes=delay_minutes)));
+        } except ValueError {
+            raise ValueError("A saved start time and timezone are required. Check the item's time and the trip facts in Backup plans.");
+        }
+    }
+    facts = context["facts"];
+    facts["contract_version"] = CONTEXT_VERSION;
+    facts["manual_risks"] = [r for r in facts.get("manual_risks", []) if r["id"] != risk_id] + [risk];
+    saved = save_planning_context(trip_id, facts, expected_version);
+    return {"risk_id": risk_id, "trip_version": saved["trip_version"], "not_before": risk.get("not_before")};
 }
 
 def _replay_planning_run(conn: any, payload: str, version: int, now: any) -> dict[str, any] {

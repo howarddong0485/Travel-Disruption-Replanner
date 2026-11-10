@@ -6,7 +6,7 @@ impl app.resetItem -> None {
 }
 impl app.chooseTab(value: str) -> None {
     if busy { return; }
-    tab = value; day = ""; resetItem();
+    resetReview(); tab = value; day = ""; railView = "auto"; placeId = ""; resetItem();
 }
 impl app.openTrip(trip: TripView | None = None) -> None {
     if busy { return; }
@@ -18,16 +18,16 @@ impl app.openTrip(trip: TripView | None = None) -> None {
     currency = trip.currency if trip else "USD";
     budget = str(trip.budget_cents / 100) if trip else "";
     trip_notes = trip.notes if trip else "";
-    trip_form = True; error = ""; notice = "";
+    trip_form = True; trip_review = False; error = ""; notice = "";
     window.scrollTo({"top": 0, "behavior": "smooth"});
 }
 impl app.editItem(item: ItemView) -> None {
+    resetReview(); railView = "editor";
     editing_item = item.id; item_title = item.title; category = item.category;
     item_date = item.date; item_time = item.time; location = item.location;
     reference = item.reference; item_notes = item.notes; cost = str(item.cost_cents / 100);
     notice = "";
-    element: any = document.getElementById("item-title");
-    if element { element.focus(); }
+    window.requestAnimationFrame(lambda { focusItineraryControl("item-title"); });
 }
 impl app.refresh -> None {
     token = (requestRef.current or 0) + 1;
@@ -52,16 +52,24 @@ impl app.refresh -> None {
 }
 impl app.chooseTrip(trip_id: str) -> None {
     if busy or loading { return; }
-    selected = trip_id; items = []; day = ""; tab = "itinerary";
-    trip_form = False; notice = ""; resetItem();
+    resetReview(); selected = trip_id; items = []; day = ""; tab = "itinerary";
+    railView = "auto"; placeId = "";
+    trip_form = False; notice = ""; revisionNotice = ""; resetItem();
     await refresh();
 }
 impl app.submitTrip(e: FormEvent) -> None {
-    e.preventDefault(); if busy { return; } busy = True; notice = "";
+    e.preventDefault(); if busy { return; }
+    if not editing_trip and not trip_review {
+        trip_review = True; error = "";
+        window.requestAnimationFrame(lambda { focusItineraryControl("trip-brief-summary"); });
+        return;
+    }
+    busy = True; notice = "";
     try {
         saved = await save_trip(title=trip_title, destination=destination, start_date=start_date,
             end_date=end_date, currency=currency, budget=budget, notes=trip_notes, trip_id=editing_trip);
-        selected = saved.id; trip_form = False; day = ""; resetItem();
+        if not editing_trip { tab = "itinerary"; }
+        resetReview(); selected = saved.id; trip_form = False; day = ""; resetItem();
         await refresh(); notice = "Trip saved. Let the planning begin.";
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
@@ -103,7 +111,7 @@ impl app.removeTrip -> None {
     if busy or not window.confirm("Delete this trip and all its itinerary, booking, packing, and cost records?") { return; }
     busy = True; notice = "";
     try {
-        await delete_trip(trip_id=selected); selected = ""; items = []; day = "";
+        await delete_trip(trip_id=selected); resetReview(); selected = ""; items = []; day = "";
         trip_form = False; resetItem(); await refresh();
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
@@ -112,7 +120,7 @@ impl app.removeTrip -> None {
 impl app.createDemo -> None {
     if busy or loading { return; } busy = True; error = "";
     try {
-        demo = await replan_demo(); selected = demo["trip_id"]; day = "";
+        demo = await replan_demo(); resetReview(); selected = demo["trip_id"]; day = "";
         trip_form = False; tab = "demo"; resetItem(); await refresh();
         notice = "Demo ready. Generate backup plans, simulate a flight delay, then accept a revised itinerary.";
     } except Exception as exc { error = str(exc); }
@@ -122,7 +130,7 @@ impl app.createDemo -> None {
 impl app.createIntegratedDemo(scenario: str = "rain") -> None {
     if busy or loading { return; } busy = True; error = "";
     try {
-        demo = await create_planning_demo(scenario=scenario); selected = demo["trip_id"]; day = "";
+        demo = await create_planning_demo(scenario=scenario); resetReview(); selected = demo["trip_id"]; day = "";
         trip_form = False; tab = "backups"; resetItem(); await refresh();
         notice = "Sample ready. Find different plans, compare the changes, then keep or accept one.";
     } except Exception as exc { error = str(exc); }
