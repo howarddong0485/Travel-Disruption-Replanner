@@ -111,8 +111,8 @@ def begin(conn: any, trip_id: str, request_id: str, message: str, mode: str, sea
 }
 
 def trip_patch(state: dict[str, any], facts: dict[str, any], patch: any) -> dict[str, any] {
-    allowed = {"title": 160, "destination": 160, "start_date": 10, "end_date": 10, "currency": 3, "notes": 5000, "budget_cents": 0};
-    if not isinstance(patch, dict) or any(key not in allowed for key in patch) { raise ValueError("Only the active trip's name, destination, dates, currency, budget and notes can be edited."); }
+    allowed = {"title": 160, "destination": 160, "departure_location": 160, "return_location": 160, "start_date": 10, "end_date": 10, "currency": 3, "notes": 5000, "budget_cents": 0};
+    if not isinstance(patch, dict) or any(key not in allowed for key in patch) { raise ValueError("Only the active trip's name, destination, departure and return locations, dates, currency, budget and notes can be edited."); }
     after = copy.deepcopy(state["trip"]);
     for (key, value) in patch.items() {
         if value is None { continue; }
@@ -122,7 +122,7 @@ def trip_patch(state: dict[str, any], facts: dict[str, any], patch: any) -> dict
             if not isinstance(value, str) or len(value) > allowed[key] { raise ValueError("Invalid trip " + key + "."); }
             value = value.strip();
             if key == "currency" { value = value.upper(); }
-            if key != "notes" and not value { raise ValueError("Trip " + key + " cannot be blank."); }
+            if key not in ["notes", "departure_location", "return_location"] and not value { raise ValueError("Trip " + key + " cannot be blank."); }
         }
         after[key] = value;
     }
@@ -194,7 +194,7 @@ def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any
     }
     total = validate(augmented, nodes, changes, reserve) if changes else sum(i["cost_cents"] for i in nodes.values()) + reserve;
     if "budget_cents" in delta and after_trip["budget_cents"] and total > after_trip["budget_cents"] { raise ValueError("Existing costs exceed the proposed budget. Include lower-cost item changes or choose a larger budget."); }
-    labels = {"title": "Trip name", "destination": "Destination", "start_date": "Departure", "end_date": "Return", "currency": "Currency", "budget_cents": "Budget", "notes": "Trip notes"};
+    labels = {"title": "Trip name", "destination": "Destination", "departure_location": "Departing from", "return_location": "Return to", "start_date": "Departure date", "end_date": "Return date", "currency": "Currency", "budget_cents": "Budget", "notes": "Trip notes"};
     return {"title": plan["title"].strip(), "summary": plan["summary"], "changes": displayed,
         "trip_changes": delta, "trip_before": state["trip"], "trip_after": after_trip,
         "trip_edits": [{"field": key, "label": labels[key], "before": state["trip"][key], "after": value} for (key, value) in delta.items()],
@@ -202,7 +202,7 @@ def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any
         "total_cents": None if missing_price else total, "reserve_cents": reserve,
         "checks": (["Trip details"] if delta else []) + (["Trip dates", "Schedule overlaps", "Dependencies and fixed items"] if changes else ["Itinerary date bounds"]) + (["Budget and reserve"] if not missing_price and (changes or "budget_cents" in delta) else []),
         "issues": ["Some prices are unknown. Ask for a revised estimate before saving."] if missing_price else [],
-        "warnings": ["AI prices are estimates, not live quotes. Confirm availability, opening hours, travel times and traveler eligibility before booking."] + (["Changing trip dates or destination requires fresh checks of hours, routes and reservations."] if any(key in delta for key in ["start_date", "end_date", "destination"]) else []),
+        "warnings": ["AI prices are estimates, not live quotes. Confirm availability, opening hours, travel times and traveler eligibility before booking."] + (["Changing trip dates or locations requires fresh checks of hours, routes and reservations."] if any(key in delta for key in ["start_date", "end_date", "destination", "departure_location", "return_location"]) else []),
         "can_apply": not missing_price};
 }
 
@@ -278,9 +278,9 @@ def review(conn: any, trip_id: str, draft_id: str, accept: bool, acknowledged: b
         if not checked["can_apply"] { raise ValueError("Resolve unknown prices before saving this draft."); }
         if checked["trip_changes"] {
             trip = checked["trip_after"];
-            conn.execute("UPDATE trips SET title=?,destination=?,start_date=?,end_date=?,currency=?,budget_cents=?,notes=? WHERE id=?",
-                (trip["title"], trip["destination"], trip["start_date"], trip["end_date"], trip["currency"], trip["budget_cents"], trip["notes"], trip_id));
-            if any(key in checked["trip_changes"] for key in ["destination", "start_date", "end_date", "currency"]) {
+            conn.execute("UPDATE trips SET title=?,destination=?,start_date=?,end_date=?,currency=?,budget_cents=?,notes=?,departure_location=?,return_location=? WHERE id=?",
+                (trip["title"], trip["destination"], trip["start_date"], trip["end_date"], trip["currency"], trip["budget_cents"], trip["notes"], trip["departure_location"], trip["return_location"], trip_id));
+            if any(key in checked["trip_changes"] for key in ["destination", "departure_location", "return_location", "start_date", "end_date", "currency"]) {
                 retained = {key: facts[key] for key in ["profile", "reserve_minor", "zone"] if key in facts};
                 if "destination" in checked["trip_changes"] { retained.pop("zone", None); }
                 conn.execute("UPDATE planning_contexts SET payload=? WHERE trip_id=?", (json.dumps(retained), trip_id));

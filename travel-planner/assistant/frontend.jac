@@ -1,4 +1,5 @@
 """Persistent trip conversation sidebar and the unified AI plan review workspace."""
+import from browser_ids { request_id }
 import from server.main { assistant_state, assistant_chat, assistant_review }
 
 def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int = 0,
@@ -35,7 +36,7 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         busy = True; failure = ""; pendingText = text.strip(); request = sequence.current;
         try {
             fresh = await assistant_chat(trip_id=trip_id, message=pendingText, mode=mode,
-                search=search, request_id=browser.crypto.randomUUID(), api_key=apiKey);
+                search=search, request_id=request_id(browser), api_key=apiKey);
             if alive.current and request == sequence.current {
                 previous = [draft["id"] for draft in data.get("drafts", [])];
                 created = len([draft for draft in fresh.get("drafts", []) if draft["id"] not in previous and draft["status"] == "pending"]) > 0;

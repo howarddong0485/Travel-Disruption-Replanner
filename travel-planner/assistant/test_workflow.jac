@@ -191,10 +191,10 @@ test "invalid generated plans get one automatic correction before traveler revie
 test "trip-only AI edits require review and persist all supported fields without item changes" {
     with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": os.path.join(directory, "trip.sqlite3")}) {
         id = trip(); response = result([]);
-        response["plans"][0]["trip_changes"] = {"title": "Tokyo spring", "destination": "Tokyo", "start_date": "2027-04-10", "end_date": "2027-04-14", "currency": "JPY", "budget_cents": 20000000, "notes": "Traveling with family"};
+        response["plans"][0]["trip_changes"] = {"title": "Tokyo spring", "destination": "Tokyo", "start_date": "2027-04-10", "end_date": "2027-04-14", "currency": "JPY", "budget_cents": 20000000, "notes": "Traveling with family", "departure_location": "Detroit (DTW)", "return_location": "Chicago (ORD)"};
         before = service.replan_state(id);
         draft = send(id, response)["drafts"][0];
-        assert len(draft["trip_edits"]) == 7 and draft["changes"] == [] and draft["can_apply"];
+        assert len(draft["trip_edits"]) == 9 and draft["changes"] == [] and draft["can_apply"];
         assert service.replan_state(id) == before;
         service.assistant_review(id, draft["id"], False, False);
         assert service.replan_state(id) == before;
@@ -424,5 +424,23 @@ test "invalid key input is rejected before a network request" {
             with check.assertRaises(ValueError) { provider.request({}, key); }
         }
         assert transport.call_count == 0;
+    }
+}
+
+
+test "saved route endpoints reach the assistant and changing them makes drafts stale" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": os.path.join(directory, "trip.sqlite3")}) {
+        id = trip();
+        service.save_trip("AI test", "Boston", "2027-01-01", "2027-01-03", "USD", "500", trip_id=id,
+            departure_location="Detroit", return_location="Chicago");
+        with patch.object(provider, "generate", return_value=result()) as model {
+            state = service.assistant_chat(id, "Plan a museum visit", "plan", False, str(uuid4()));
+            supplied = model.call_args[0][0]["trip"];
+            assert supplied["departure_location"] == "Detroit" and supplied["return_location"] == "Chicago";
+        }
+        service.save_trip("AI test", "Boston", "2027-01-01", "2027-01-03", "USD", "500", trip_id=id, return_location="Detroit");
+        check = unittest.TestCase();
+        with check.assertRaises(ValueError) { service.assistant_review(id, state["drafts"][0]["id"], True, True); }
+        assert service.list_items(id) == [];
     }
 }

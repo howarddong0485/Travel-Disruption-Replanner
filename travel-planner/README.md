@@ -40,7 +40,7 @@ stale, so generate a new plan after changing preferences. Turning the pet toggle
 off does not erase separately recorded pet requirements in your traveler facts.
 
 You can also ask the assistant to edit the active trip's name, destination,
-departure/return dates, budget, currency or notes, either in ordinary chat or
+departure/return locations and dates, budget, currency or notes, either in ordinary chat or
 **Edit trip details** mode. For example: “Move my trip to April 10–14, 2027 and
 raise my budget to USD 2,000.” A proposal shows each trip field before and after.
 Date changes must also move any affected flexible itinerary items into the new
@@ -315,3 +315,7 @@ jac test backup/test_changes.jac
 ```
 
 Tests use temporary SQLite databases. They do not read or modify your saved trips.
+
+Departure and return locations are optional cities or airports and may differ. Set them in Create/Edit trip or with CLI `new --depart-from "Detroit, MI" --return-to "Chicago, IL"`. They appear in the trip overview and assistant context. Existing databases migrate automatically with blank locations; older API clients that omit these fields preserve saved locations when editing.
+
+The trip overview animates the route from departure through destination to return, with a pause/play control. Reduced-motion settings show a static route. This is a route illustration, not a geographic map or live flight tracker.
