@@ -1,6 +1,7 @@
 """Day navigation and place cards for the saved itinerary."""
 import from server.main { ItemView }
 import from itinerary.actions { focusItineraryControl }
+import from journey.display { journeyCity }
 
 def:pub itineraryMapLink(location: str, destination: str) -> str {
     browser: any = window;
@@ -48,7 +49,7 @@ def:pub ItineraryPlaces(places: list[ItemView], place: ItemView | None, destinat
     return <section className="card itinerary-places" aria-labelledby="itinerary-places-heading">
         <div className="places-heading">
             <p className="eyebrow">EXPLORE YOUR STOPS</p>
-            <h2 id="itinerary-places-heading" tabIndex={-1}>Places in {destination}</h2>
+            <h2 id="itinerary-places-heading" tabIndex={-1}>Places in {journeyCity(place, destination)}</h2>
             <p>{shortDate(day) if day else "All days"} <span aria-hidden="true">·</span>
                 {" " + str(len(places)) + (" place" if len(places) == 1 else " places")}</p>
         </div>
@@ -67,7 +68,7 @@ def:pub ItineraryPlaces(places: list[ItemView], place: ItemView | None, destinat
                 <div className="place-actions">
                     <button type="button" className="itinerary-chip" disabled={disabled}
                         onClick={lambda { focusItineraryControl("itinerary-stop-" + activeId); }}>Show in itinerary</button>
-                    {(<a className="itinerary-chip" href={itineraryMapLink(address, destination)} target="_blank"
+                    {(<a className="itinerary-chip" href={itineraryMapLink(address, journeyCity(place, destination))} target="_blank"
                         rel="noopener noreferrer">Open in Maps ↗</a>) if hasMapAddress else None}
                     <button type="button" id="place-review-action" className="itinerary-chip" disabled={disabled}
                         onClick={lambda { onReview(activeId, "", "place-review-action"); }}>Review this stop</button>

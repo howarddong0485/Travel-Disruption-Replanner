@@ -12,6 +12,7 @@ import from itinerary.presentation { shiftLabel }
 import from itinerary.place_popover { PlacePopover }
 import from itinerary.trip_map { TripMap }
 import from journey.frontend { RouteEditor, journeyLabel, legLabel }
+import from journey.display { itineraryOrder, journeyCity }
 import from server.main { journey_state }
 import from assistant.frontend { ChatSidebar, AIPlanner }
 import from server.main { assistant_review, assistant_update_prices, assistant_save_preferences }
@@ -240,7 +241,7 @@ def:pub app -> JsxElement {
     ) and (not day or tab in ["packing", "budget"] or previewDate(item) == day)];
     if tab == "itinerary" {
         shown = sorted(shown, key=lambda (item: ItemView) -> str {
-            return (previewDate(item) or "9999") + "T" + (previewTime(item) or "99:99");
+            return itineraryOrder(item, itineraryPreview);
         });
     }
     places = [item for item in shown if item.location];
@@ -411,7 +412,7 @@ def:pub app -> JsxElement {
                                         {(<p className="item-schedule">{prettyDate(item.date) + (" · " + item.time if item.time else " · Flexible time")}</p>) if item.date else (<p className="item-schedule">{"Essential" if item.category == "packing" else "Date to be decided"}</p>)}
                                         {(<p className="item-schedule">{item.journey["zone"] + " → " + item.journey["arrival_date"] + " " + item.journey["arrival_time"] + " " + item.journey["end_zone"]}</p>) if item.journey else None}
                                         {(<p className="item-location">◎ {item.location if not item.location.startswith("fixture:") else "Sample location"}
-                                            {(<a className="itinerary-map" href={itineraryMapLink(item.location, current.destination)}
+                                            {(<a className="itinerary-map" href={itineraryMapLink(item.location, journeyCity(item, current.destination))}
                                                 target="_blank" rel="noopener noreferrer" aria-label={"Map for " + item.title + " (opens in a new tab)"}>Map ↗</a>) if tab == "itinerary" and not item.location.startswith("fixture:") else None}
                                         </p>) if item.location else None}
                                         {(<p className="itinerary-proposed" key={itineraryPreview["choice"]}>

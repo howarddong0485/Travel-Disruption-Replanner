@@ -2,6 +2,7 @@
 import from server.main { get_place_details, save_place_details }
 import from itinerary.actions { focusItineraryControl }
 import from itinerary.places { itineraryMapLink }
+import from journey.display { journeyCity }
 
 def:pub PlacePreview(trip_id: str, item: any, destination: str, control: str,
     onReview: any, onSelect: any, onSaved: any) -> JsxElement {
@@ -55,7 +56,7 @@ def:pub PlacePreview(trip_id: str, item: any, destination: str, control: str,
             loading="lazy" referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-popups"/>) if map else
             (<p className="place-media-empty">Add coordinates to preview the map here.</p>)}
         <div className="place-suggestions">
-            {(<a className="itinerary-chip" href={itineraryMapLink(item.location, destination)} target="_blank" rel="noopener noreferrer">Open map ↗</a>) if item.location and not item.location.startswith("fixture:") else None}
+            {(<a className="itinerary-chip" href={itineraryMapLink(item.location, journeyCity(item, destination))} target="_blank" rel="noopener noreferrer">Open map ↗</a>) if item.location and not item.location.startswith("fixture:") else None}
             <button type="button" className="itinerary-chip" onClick={lambda { onSelect(item.id); }}>Show in Places</button>
             <button type="button" className="itinerary-chip" onClick={lambda { onReview(item.id, "", control); }}>Review this stop</button>
             {(<button type="button" className="itinerary-chip" onClick={lambda { onReview(item.id, "weather", control); }}>Find indoor alternatives</button>) if item.category == "activity" else None}
