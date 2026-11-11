@@ -90,6 +90,41 @@ test "a saved-trip report makes versioned options without changing itinerary ite
     }
 }
 
+test "place photos and pins are address-bound and concurrent edits cannot overwrite them" {
+    with integrated_client() as client {
+        state = api(client, "create_planning_demo"); trip_id = state["trip_id"];
+        item = next(i for i in state["items"] if i["category"] == "activity");
+        before = active_rows();
+        original = api(client, "get_place_details", trip_id=trip_id, item_id=item["id"]);
+        assert original["revision"] == 0 and original["photo_url"] == "";
+        payload = {"latitude": 42.36, "longitude": -71.05, "photo_url": "https://example.org/my-photo.jpg",
+            "photo_source": "Traveler photo"};
+        saved = api(client, "save_place_details", trip_id=trip_id, item_id=item["id"], location=item["location"],
+            expected_revision=0, payload=payload);
+        assert saved["revision"] == 1 and saved["latitude"] == 42.36 and active_rows() == before;
+        assert api(client, "planning_state", trip_id=trip_id)["trip_version"] == state["trip_version"];
+        assert not client.post("/function/save_place_details", json={"trip_id": trip_id, "item_id": item["id"],
+            "location": item["location"], "expected_revision": 0, "payload": payload}).ok;
+        for invalid in ({**payload, "latitude": 91}, {**payload, "longitude": None},
+            {**payload, "photo_url": "javascript:alert(1)"}, {**payload, "photo_source": ""}) {
+            assert not client.post("/function/save_place_details", json={"trip_id": trip_id, "item_id": item["id"],
+                "location": item["location"], "expected_revision": 1, "payload": invalid}).ok;
+        }
+        other = api(client, "create_planning_demo");
+        assert not client.post("/function/get_place_details", json={"trip_id": other["trip_id"], "item_id": item["id"]}).ok;
+        api(client, "save_item", trip_id=trip_id, item_id=item["id"], title=item["title"], date=item["date"],
+            time=item["time"], location="A different address", cost=str(item["cost_cents"] / 100));
+        moved = api(client, "get_place_details", trip_id=trip_id, item_id=item["id"]);
+        assert moved["photo_url"] == "" and moved["latitude"] is None and moved["revision"] == 1;
+        assert not client.post("/function/save_place_details", json={"trip_id": trip_id, "item_id": item["id"],
+            "location": item["location"], "expected_revision": 1, "payload": payload}).ok;
+        api(client, "delete_item", trip_id=trip_id, item_id=item["id"]);
+        conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
+        try { assert conn.execute("SELECT count(*) FROM itinerary_place_details WHERE item_id=?", (item["id"],)).fetchone()[0] == 0; }
+        finally { conn.close(); }
+    }
+}
+
 test "a reported transport delay moves the existing arrangement and never offers a substitute vehicle" {
     with integrated_client() as client {
         state = api(client, "create_planning_demo"); trip_id = state["trip_id"];

@@ -1,24 +1,58 @@
 """Read impact from saved dependencies and review connected plans in the itinerary."""
 import from server.main { replan_state, planning_state, report_itinerary_change, generate_backup_plans, review_backup_plan }
 import from itinerary.actions { focusItineraryControl }
+import from itinerary.presentation { affectedItemIds, planTitle, shiftLabel, differenceLabel }
+import from itinerary.evidence { EvidencePopover, planSources }
 
 def:pub itinerarySchedule(date: str, time: str) -> str {
     return date + (" · " + time if time else " · Flexible time") if date else "Date to be decided";
 }
 
 def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
-    onPreview: any, onClose: any, onApplied: any) -> JsxElement {
+    onPreview: any, onClose: any, onApplied: any, onFacts: any) -> JsxElement {
     browser: any = window;
-    has target: str = request["item"], reason: str = request["reason"], delay: str = "",
+    has target: str = request["item"], reason: str = request["reason"], delay: str = request.get("delay", ""),
         snapshot: any = None, result: any = None, choice: str = "", earliest: str = "",
         failure: str = "", notice: str = "", loading: bool = True, busy: bool = False, checking: bool = False,
         showReport: bool = False,
+        sheetSize: str = "half", dragHeight: float = 0.0, drag: Ref[any] = Ref(None),
         alive: Ref[bool] = Ref(True), operation: Ref[int] = Ref(0),
         expiry: Ref[int] = Ref(0), listener: Ref[any] = Ref(None), focusHandler: Ref[any] = Ref(None),
         keyListener: Ref[any] = Ref(None), closeHandler: Ref[any] = Ref(None);
 
     def money(value: any) -> str {
         return "Needs confirmation" if value is None else currency + " " + (value / 100).toFixed(2);
+    }
+    def sheetHeight(size: str) -> float {
+        ratio = 0.30 if size == "peek" else 0.60 if size == "half" else 0.92;
+        return min(browser.innerHeight * 0.92, max(240.0, browser.innerHeight * ratio));
+    }
+    def resizeSheet(size: str) -> None { sheetSize = size; dragHeight = 0.0; }
+    def startDrag(e: any) -> None {
+        if e.button != 0 { return; }
+        drag.current = {"y": e.clientY, "height": sheetHeight(sheetSize), "moved": False, "active": True};
+        e.currentTarget.setPointerCapture(e.pointerId);
+    }
+    def moveDrag(e: any) -> None {
+        if drag.current is None or not drag.current["active"] { return; }
+        distance = drag.current["y"] - e.clientY;
+        if abs(distance) > 8 { drag.current["moved"] = True; }
+        if drag.current["moved"] {
+            dragHeight = max(sheetHeight("peek"), min(sheetHeight("full"), drag.current["height"] + distance));
+        }
+    }
+    def endDrag(e: any) -> None {
+        if drag.current is None { return; }
+        if drag.current["moved"] {
+            height = dragHeight;
+            nearest = "peek";
+            for size in ["half", "full"] {
+                if abs(sheetHeight(size) - height) < abs(sheetHeight(nearest) - height) { nearest = size; }
+            }
+            resizeSheet(nearest);
+        }
+        drag.current["active"] = False;
+        e.currentTarget.releasePointerCapture(e.pointerId);
     }
     def clear -> None {
         result = None; choice = ""; earliest = ""; showReport = False;
@@ -74,6 +108,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
     can with [result] entry {
         if expiry.current { window.clearTimeout(expiry.current); expiry.current = 0; }
         if result and len(result["plans"]) > 0 {
+            if sheetSize == "peek" { resizeSheet("half"); }
             focusItineraryControl("itinerary-review-options");
             expiry.current = window.setTimeout(lambda {
                 clear(); notice = "These options expired. Reload the impact and find fresh options.";
@@ -84,27 +119,21 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
         key=lambda (item: any) -> str { return (item["date"] or "9999") + "T" + item["time"]; }) if snapshot else [];
     originals = {item["id"]: item for item in available};
     selected_item = originals.get(target);
-    affected: list[str] = [];
-    if selected_item {
-        pending: list[str] = [target];
-        while len(pending) > 0 {
-            id = pending.pop(0);
-            if id not in affected {
-                affected.append(id);
-                pending = pending + [edge["dependent_id"] for edge in snapshot["dependencies"]
-                    if edge["prerequisite_id"] == id and edge["dependent_id"] in originals and edge["dependent_id"] not in affected];
-            }
-        }
-    }
+    affected = affectedItemIds(snapshot, target);
     affected_items = [item for item in available if item["id"] in affected];
     options: any = result["plans"] if result else [];
     matches = [plan for plan in options if plan["id"] == choice];
     plan = matches[0] if matches else None;
     changes: any = {change["replaces_id"]: change["item"] for change in plan["replacements"]} if plan else {};
     comparison: any = plan["comparison"] if plan else {};
+    readyOptions = [option for option in options if option["selectable"]];
+    priced = [option for option in readyOptions if option["comparison"]["projected_total_minor"] is not None];
+    lowest = min(option["comparison"]["projected_total_minor"] for option in priced) if len(priced) > 0 and len(priced) == len(readyOptions) else None;
+    facts = result.get("input_snapshot", {}).get("facts", {}) if result else {};
     can with [snapshot, target, choice, result] entry {
         onPreview({"affected": {item["id"]: index for (index, item) in enumerate(affected_items)},
-            "protected": [item["id"] for item in available if item["protected"]], "changes": changes, "choice": choice});
+            "protected": [item["id"] for item in available if item["protected"]], "changes": changes, "choice": choice,
+            "time_changes": {time["item_id"]: time["start_shift_minutes"] for time in comparison.get("time_changes", [])}});
     }
 
     delay_valid = browser.RegExp("^[0-9]+$").test(delay) and int(delay) >= 1 and int(delay) <= 1440;
@@ -158,12 +187,38 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
             }
         }
     }
-    return <aside className="card itinerary-review" aria-labelledby="itinerary-review-title">
+    return <aside className="card itinerary-review" aria-labelledby="itinerary-review-title" data-sheet-size={sheetSize}
+        data-dragging={dragHeight > 0} style={{"--review-drag-height": str(dragHeight) + "px"}}>
+        <div className="review-sheet-controls">
+            <button type="button" className="review-sheet-handle" aria-label="Resize review sheet"
+                onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag}
+                onPointerCancel={lambda { drag.current = None; dragHeight = 0.0; }}
+                onClick={lambda {
+                    moved = drag.current is not None and drag.current["moved"]; drag.current = None;
+                    if not moved { resizeSheet("half" if sheetSize == "peek" else "full" if sheetSize == "half" else "peek"); }
+                }}
+                onKeyDown={lambda (e: any) {
+                    if e.key in ["ArrowUp", "ArrowDown", "Home", "End"] {
+                        e.preventDefault();
+                        if e.key == "Home" { resizeSheet("peek"); }
+                        elif e.key == "End" { resizeSheet("full"); }
+                        elif e.key == "ArrowUp" { resizeSheet("half" if sheetSize == "peek" else "full"); }
+                        else { resizeSheet("half" if sheetSize == "full" else "peek"); }
+                    }
+                }}><span aria-hidden="true"/></button>
+            <div role="group" aria-label="Review sheet size">
+                {[<button type="button" key={size} aria-pressed={sheetSize == size} onClick={lambda { resizeSheet(size); }}>
+                    {"Summary" if size == "peek" else "Compare" if size == "half" else "Details"}
+                </button> for size in ["peek", "half", "full"]]}
+            </div>
+            <span className="sr-only" role="status">{"Review sheet " + sheetSize}</span>
+        </div>
         <div className="itinerary-panel-heading">
             <div><p className="eyebrow">{"2 · COMPARE OPTIONS" if len(options) > 0 else "1 · REVIEW A CHANGE"}</p>
                 <h2 id="itinerary-review-title" tabIndex={-1}>Impact and alternatives</h2></div>
             <button type="button" className="itinerary-chip" aria-label="Close review" disabled={busy and bool(result)} onClick={onClose}>×</button>
         </div>
+        <p className="review-peek-summary">{planTitle(plan) if plan else "Choose a stop and review its impact. Expand to enter the details."}</p>
         <div className="review-scroll">
         <p className="section-caption">Compare against your saved itinerary. Options use synthetic inventory and current trip facts.</p>
         {(<p className="alert error" role="alert">{failure}</p>) if failure else None}
@@ -214,13 +269,25 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
             {(<ul className="review-conflicts">{[<li key={message}>{message}</li> for message in conflicts]}</ul>) if conflicts else None}
             {(<div><h3 id="itinerary-review-options" tabIndex={-1}>Choose an option to preview</h3>
                 <fieldset className="review-options" aria-labelledby="itinerary-review-options">
-                {[<label className="review-option" key={option["id"]} data-selected={choice == option["id"]}>
+                {[<article className="review-option-card" key={option["id"]} data-selected={choice == option["id"]}>
+                    <label className="review-option">
                     <input type="radio" name="itinerary-option" value={option["id"]} checked={choice == option["id"]} disabled={busy}
                         onChange={lambda { choice = option["id"]; }}/>
-                    <span><strong>{"Option " + str(index + 1) + " · " + money(option["comparison"]["projected_total_minor"])}</strong>
-                        <small>{("Ready for review" if option["selectable"] else "Needs confirmation") +
-                            " · " + str(len(option["replacements"])) + " changed"}</small></span>
-                </label> for (index, option) in enumerate(options)]}
+                    <span><strong>{planTitle(option)}</strong>
+                        <span className="option-total">{money(option["comparison"]["projected_total_minor"])}</span>
+                        <small>{differenceLabel(option["comparison"]["planned_difference_minor"], currency) +
+                            " · " + str(len(option["replacements"])) +
+                            (" stop changed" if len(option["replacements"]) == 1 else " stops changed")}</small>
+                        <small>{", ".join([shiftLabel(time["start_shift_minutes"]) for time in option["comparison"]["time_changes"]])}</small>
+                        {(<span className="option-badge">Lowest total among ready options</span>) if option["selectable"] and
+                            lowest is not None and option["comparison"]["projected_total_minor"] == lowest else None}
+                        {(<small>Ready for review</small>) if option["selectable"] else None}
+                    </span>
+                    </label>
+                    {(<EvidencePopover id={"evidence-" + option["id"]}
+                        checks={[check for check in option["validation"]["checks"] if check["status"] == "unknown"]}
+                        sources={planSources(option, facts)} onFacts={onFacts}/>) if not option["selectable"] else None}
+                </article> for (index, option) in enumerate(options)]}
             </fieldset></div>) if len(options) > 0 else None}
             {(<div className="review-preview" aria-live="polite">
                 <div className="review-diff" key={choice}>
@@ -236,12 +303,15 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
                     <div><dt>Projected trip total</dt><dd>{money(comparison["projected_total_minor"])}</dd></div>
                     <div><dt>Change in total</dt><dd>{money(comparison["planned_difference_minor"])}</dd></div>
                     <div><dt>New purchase quotes</dt><dd>{money(comparison["new_purchase_quotes_minor"])}</dd></div>
-                    <div><dt>Cash due now</dt><dd>{money(comparison["cash_needed_now_minor"])}</dd></div>
+                    <div><dt>Cash due now</dt><dd>{money(comparison["cash_needed_now_minor"]) if comparison["cash_needed_now_minor"] is not None else
+                        (<EvidencePopover id="cash-evidence" checks={[{"code": "payment timing", "message": "Payment timing, received refunds and usable credits have not been supplied. Purchase quotes alone do not establish an amount due now."}]}
+                            sources={[]} onFacts={lambda { onFacts("budget"); }} actionLabel="View trip budget"/>)}</dd></div>
                 </dl>
                 <p className="section-caption">Totals include any saved reserve. Quotes are estimates.</p>
                 {(<div className="review-unresolved"><strong>Needs confirmation</strong>
                     <ul>{[<li key={message}>{message}</li> for message in missing]}</ul>
-                    <p>Complete the missing facts in Backup plans, then refresh these options.</p></div>) if not plan["selectable"] else None}
+                    <p>Complete the missing facts in Backup plans, then refresh these options.</p>
+                    <button type="button" className="itinerary-chip" disabled={busy} onClick={lambda { onFacts(); }}>Open saved trip facts</button></div>) if not plan["selectable"] else None}
             </div>) if plan else None}
         </section>) if result else None}
         </div>

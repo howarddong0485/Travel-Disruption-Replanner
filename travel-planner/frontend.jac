@@ -7,6 +7,9 @@ import from demo.frontend { GuidedDemo }
 import from itinerary.actions { ItemActions, focusItineraryControl }
 import from itinerary.places { ItineraryDays, ItineraryPlaces, itineraryMapLink }
 import from itinerary.review { ItineraryReview }
+import from itinerary.motion { animateTimeline }
+import from itinerary.presentation { shiftLabel }
+import from itinerary.place_popover { PlacePopover }
 
 def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
@@ -20,7 +23,7 @@ def:pub app -> JsxElement {
         reference: str = "", item_notes: str = "", cost: str = "",
         reviewRequest: any = None, itineraryPreview: any = None, reviewKey: Ref[int] = Ref(0),
         revisionNotice: str = "", revisionTimer: Ref[int] = Ref(0),
-        railView: str = "auto", placeId: str = "";
+        railView: str = "auto", placeId: str = "", timelinePositions: Ref[any] = Ref({});
 
     def money(cents: int, unit: str) -> str {
         value = abs(cents);
@@ -54,6 +57,14 @@ def:pub app -> JsxElement {
         if item.category in ["transport", "stay"] { return "Confirmed" if item.done else "Confirm"; }
         return "Done" if item.done else "Complete";
     }
+    def previewDate(item: ItemView) -> str {
+        return itineraryPreview["changes"][item.id]["start"]["local"][:10]
+            if itineraryPreview and item.id in itineraryPreview["changes"] else item.date;
+    }
+    def previewTime(item: ItemView) -> str {
+        return itineraryPreview["changes"][item.id]["start"]["local"][11:16]
+            if itineraryPreview and item.id in itineraryPreview["changes"] else item.time;
+    }
     def resetReview -> None {
         reviewKey.current += 1; reviewRequest = None; itineraryPreview = None;
     }
@@ -66,19 +77,22 @@ def:pub app -> JsxElement {
         if not editing_item and not item_date { item_date = day; }
         window.requestAnimationFrame(lambda { focusItineraryControl("item-title"); });
     }
-    def openReview(item_id: str, reason: str, control: str) -> None {
+    def openReview(item_id: str, reason: str, control: str, delay: str = "") -> None {
         if busy or loading { return; }
         if tab != "itinerary" { chooseTab("itinerary"); }
         else {
             resetReview();
             if control == "trip-actions-launch" { day = ""; }
         }
-        reviewRequest = {"item": item_id, "reason": reason, "control": control};
+        reviewRequest = {"item": item_id, "reason": reason, "control": control, "delay": delay};
     }
     def closeReview -> None {
         control = reviewRequest["control"];
         resetReview();
         window.requestAnimationFrame(lambda { focusItineraryControl(control); });
+    }
+    def showReviewFacts(section: str = "backups") -> None {
+        chooseTab(section);
     }
     async def revisionApplied(message: str) -> None {
         token = reviewKey.current;
@@ -107,6 +121,9 @@ def:pub app -> JsxElement {
         document.title = "Roam — Travel Planner";
         await refresh();
     }
+    can with [itineraryPreview, items, selected, day, tab] entry {
+        timelinePositions.current = animateTimeline(timelinePositions.current, bool(itineraryPreview and itineraryPreview["choice"]));
+    }
 
     matching = [trip for trip in trips if trip.id == selected];
     current: TripView | None = matching[0] if matching else None;
@@ -121,7 +138,12 @@ def:pub app -> JsxElement {
         item.category == "packing" if tab == "packing" else
         item.category in ["transport", "stay"] if tab == "bookings" else
         item.category in ["activity", "food", "transport", "stay"]
-    ) and (not day or tab in ["packing", "budget"] or item.date == day)];
+    ) and (not day or tab in ["packing", "budget"] or previewDate(item) == day)];
+    if tab == "itinerary" {
+        shown = sorted(shown, key=lambda (item: ItemView) -> str {
+            return (previewDate(item) or "9999") + "T" + (previewTime(item) or "99:99");
+        });
+    }
     places = [item for item in shown if item.location];
     selectedPlaces = [item for item in places if item.id == placeId];
     currentPlace = selectedPlaces[0] if selectedPlaces else places[0] if places else None;
@@ -248,7 +270,7 @@ def:pub app -> JsxElement {
                             {(<div className="empty-state"><span>{"…" if loading else icon(category)}</span><h3>{"Loading your plan…" if loading else "A little space for something good."}</h3><p>{"Your details will appear shortly." if loading else "Add an item using the form, or choose another date."}</p></div>) if loading or not shown else (
                             <div className="item-list">{[
                                 <div className="itinerary-row" key={item.id}>
-                                {(<h3 className="itinerary-day">{prettyDate(item.date) if item.date else "Flexible dates"}</h3>) if tab == "itinerary" and (index == 0 or shown[index - 1].date != item.date) else None}
+                                {(<h3 className="itinerary-day">{prettyDate(previewDate(item)) if previewDate(item) else "Flexible dates"}</h3>) if tab == "itinerary" and (index == 0 or previewDate(shown[index - 1]) != previewDate(item)) else None}
                                 <article className="travel-item" id={"itinerary-stop-" + item.id} tabIndex={-1} data-done={item.done}
                                     data-place-selected={bool(placesOpen and not reviewRequest and currentPlace and currentPlace.id == item.id)}
                                     data-affected={bool(itineraryPreview and item.id in itineraryPreview["affected"])}
@@ -265,15 +287,16 @@ def:pub app -> JsxElement {
                                         </p>) if item.location else None}
                                         {(<p className="itinerary-proposed" key={itineraryPreview["choice"]}>
                                             <strong>Proposed</strong> {itineraryPreview["changes"][item.id]["start"]["local"].replace("T", " ")}
+                                            {(<span className="time-shift">{shiftLabel(itineraryPreview["time_changes"][item.id])}</span>) if item.id in itineraryPreview.get("time_changes", {}) else None}
                                             {(" · " + itineraryPreview["changes"][item.id]["title"]) if itineraryPreview["changes"][item.id]["title"] != item.title else ""}
                                         </p>) if itineraryPreview and item.id in itineraryPreview["changes"] else None}
                                         {(<p className="reference">Booking ref: <strong>{item.reference}</strong></p>) if item.reference else None}
                                         {(<p className="item-notes">{item.notes}</p>) if item.notes else None}
                                         <div className="item-actions">
-                                            {(<ItemActions item_id={item.id} title={item.title} category={item.category}
+                                            {(<ItemActions trip_id={current.id} item_id={item.id} title={item.title} category={item.category}
                                                 disabled={busy or loading} onReview={openReview}/>) if tab == "itinerary" else None}
-                                            {(<button type="button" className="text-button place-detail-button" disabled={busy or loading}
-                                                aria-label={"Place details for " + item.title} onClick={lambda { showPlace(item.id); }}>Place details</button>) if tab == "itinerary" and item.location and not reviewRequest else None}
+                                            {(<PlacePopover trip_id={current.id} item={item} destination={current.destination} disabled={busy or loading}
+                                                onReview={openReview} onSelect={showPlace}/>) if tab == "itinerary" and item.location and not reviewRequest else None}
                                             {(<button type="button" className="state-button" data-checked={item.done} onClick={lambda { toggle(item); }} disabled={busy or loading}>{("✓ " if item.done else "○ ") + stateLabel(item)}</button>) if item.category != "expense" and tab != "budget" else None}
                                             {(<button type="button" className="state-button" data-checked={item.paid} onClick={lambda { toggle(item, True); }} disabled={busy or loading}>{"✓ Paid" if item.paid else "Mark paid"}</button>) if item.cost_cents else None}
                                             <button type="button" className="text-button" onClick={lambda { editItem(item); }} disabled={busy or loading}>Edit</button>
@@ -289,7 +312,7 @@ def:pub app -> JsxElement {
                     </div>
                     {(<ItineraryReview key={current.id + ":" + str(reviewKey.current)} trip_id={current.id} currency={current.currency}
                         items={items} request={reviewRequest} onPreview={lambda (preview: any) { itineraryPreview = preview; }}
-                        onClose={closeReview} onApplied={revisionApplied}/>) if reviewRequest and tab == "itinerary" else None}
+                        onClose={closeReview} onApplied={revisionApplied} onFacts={showReviewFacts}/>) if reviewRequest and tab == "itinerary" else None}
                     <div className="itinerary-side" hidden={bool(reviewRequest)}>
                     {(<div className="itinerary-side-tabs" role="group" aria-label="Itinerary tools">
                         <button type="button" className="itinerary-chip" aria-pressed={placesOpen}

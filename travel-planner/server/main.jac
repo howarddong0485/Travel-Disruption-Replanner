@@ -21,6 +21,7 @@ import from backup.validation { instant }
 import from planning.context { CONTEXT_VERSION, install_context_schema, read_facts, check_payload, build_context, public_context }
 import from planning.engine { at_time, generate_plans, VALIDATION_VERSION }
 import from planning.fixtures { sample_state }
+import from itinerary.place_data { read_place_details, write_place_details }
 
 def _backup_source(trip_id: str) -> tuple[dict[str, any], list[dict[str, any]]] {
     conn = _connect();
@@ -130,10 +131,24 @@ def _connect -> sqlite3.Connection {
     conn.execute("CREATE TABLE IF NOT EXISTS trips (id TEXT PRIMARY KEY, title TEXT NOT NULL, destination TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, currency TEXT NOT NULL, budget_cents INTEGER NOT NULL, notes TEXT NOT NULL)");
     conn.execute("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE, title TEXT NOT NULL, category TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL, location TEXT NOT NULL, reference TEXT NOT NULL, notes TEXT NOT NULL, cost_cents INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, paid INTEGER NOT NULL DEFAULT 0)");
     conn.execute("CREATE INDEX IF NOT EXISTS items_trip ON items(trip_id)");
+    conn.execute("CREATE TABLE IF NOT EXISTS itinerary_place_details (item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE, location TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)");
     conn.commit();
     install_schema(conn);
     install_context_schema(conn);
     return conn;
+}
+
+def:pub get_place_details(trip_id: str, item_id: str) -> dict[str, any] {
+    conn = _connect();
+    try { conn.execute("BEGIN"); return read_place_details(conn, trip_id, item_id); }
+    finally { conn.close(); }
+}
+
+def:pub save_place_details(trip_id: str, item_id: str, location: str,
+    expected_revision: any, payload: dict[str, any]) -> dict[str, any] {
+    conn = _connect();
+    try { return write_place_details(conn, trip_id, item_id, location, expected_revision, payload); }
+    finally { conn.close(); }
 }
 
 def:pub planning_state(trip_id: str) -> dict[str, any] {
