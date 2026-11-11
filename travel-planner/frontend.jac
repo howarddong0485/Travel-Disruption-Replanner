@@ -1,13 +1,13 @@
-"""Roam's responsive trip workspace."""
+"""Jacplan's responsive trip workspace."""
 import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip,
     list_items, save_item, set_item_state, delete_item, replan_demo, create_planning_demo }
-import from backup.frontend { BackupPanel }
-import from replan.frontend { ReplanPanel }
-import from demo.frontend { GuidedDemo }
+import from assistant.frontend { ChatSidebar, AIPlanner }
+import from server.main { assistant_review, assistant_update_prices, assistant_save_preferences }
 
 def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
-        tab: str = "itinerary", day: str = "", loading: bool = True, busy: bool = False,
+        tab: str = "planner", aiData: dict[str, any] = {}, aiReload: int = 0, aiCompose: int = 0,
+        aiMode: str = "ask", aiText: str = "", day: str = "", loading: bool = True, busy: bool = False,
         error: str = "", notice: str = "", requestRef: Ref[int] = Ref(0),
         trip_form: bool = False, editing_trip: str = "", trip_title: str = "",
         destination: str = "", start_date: str = "", end_date: str = "",
@@ -57,13 +57,55 @@ def:pub app -> JsxElement {
     async def submitTrip(e: FormEvent) -> None;
     async def submitItem(e: FormEvent) -> None;
     async def toggle(item: ItemView, payment: bool = False) -> None;
+    async def togglePacking(title: str) -> None;
+    def packingChecked(title: str) -> bool {
+        saved = [item for item in items if item.category == "packing" and item.title == title];
+        return saved[0].done if saved else False;
+    }
     async def removeItem(item: ItemView) -> None;
     async def removeTrip -> None;
     async def createDemo -> None;
     async def createIntegratedDemo(scenario: str = "rain") -> None;
     async def backupApplied -> None;
+    def composeAI(mode: str, text: str) -> None {
+        aiMode = mode; aiText = text; aiCompose += 1; tab = "planner";
+    }
+    def receiveAI(data: dict[str, any], generated: bool) -> None {
+        aiData = data;
+        if generated { tab = "planner"; }
+    }
+    async def reviewAI(draft_id: str, accept: bool, acknowledged: bool) -> None {
+        if busy { return; } busy = True; error = ""; notice = "";
+        try {
+            aiData = await assistant_review(trip_id=selected, draft_id=draft_id, accept=accept, acknowledged=acknowledged);
+            if accept { await refresh(); }
+            aiReload += 1;
+            notice = "Plan saved to your itinerary. No bookings or payments were made." if accept else "Your current itinerary is unchanged.";
+        } except Exception as exc { error = str(exc); aiReload += 1; }
+        finally { busy = False; }
+    }
+    async def priceAI(draft_id: str, prices: dict[str, any]) -> str {
+        if busy { return "A review is already running. Please wait."; } busy = True; error = ""; notice = "";
+        try {
+            aiData = await assistant_update_prices(trip_id=selected, draft_id=draft_id, prices=prices);
+            aiReload += 1;
+            notice = "Estimates checked. Review the total, then select the checkbox to save your plan.";
+            return "";
+        } except Exception as exc { error = str(exc); return str(exc); }
+        finally { busy = False; }
+    }
+    async def savePreferences(pet: bool, pace: str) -> None {
+        if busy or not aiData.get("trip_version", 0) { return; }
+        busy = True; error = ""; notice = "";
+        try {
+            aiData = await assistant_save_preferences(trip_id=selected, pet_friendly=pet, pace=pace, expected_version=aiData["trip_version"]);
+            aiReload += 1;
+            notice = "Planning preferences saved. Your next AI request will use them.";
+        } except Exception as exc { error = str(exc); aiReload += 1; }
+        finally { busy = False; }
+    }
     async can with entry {
-        document.title = "Roam — Travel Planner";
+        document.title = "Jacplan";
         await refresh();
     }
 
@@ -71,8 +113,8 @@ def:pub app -> JsxElement {
     current: TripView | None = matching[0] if matching else None;
     total = sum([item.cost_cents for item in items]);
     paid = sum([item.cost_cents for item in items if item.paid]);
-    packing = [item for item in items if item.category == "packing"];
-    packed = len([item for item in packing if item.done]);
+    packing = ["Passport / ID", "Wallet", "Phone & Charger", "Clothing"];
+    packed = len([title for title in packing if packingChecked(title)]);
     bookings = [item for item in items if item.category in ["transport", "stay"]];
     shown = [item for item in items if (
         item.cost_cents > 0 if tab == "budget" else
@@ -81,9 +123,9 @@ def:pub app -> JsxElement {
         item.category in ["activity", "food", "transport", "stay"]
     ) and (not day or tab in ["packing", "budget"] or item.date == day)];
 
-    <div className="app-shell">
+    <div className={"app-shell" + (" with-assistant" if current else "")}>
         <aside className="sidebar">
-            <a className="brand" href="#"><span className="brand-icon">↗</span>roam<span className="brand-dot">.</span></a>
+            <a className="brand" href="#"><span className="brand-icon">↗</span>Jacplan</a>
             <p className="brand-caption">Travel planning workspace.</p>
             <div className="sidebar-heading"><span>YOUR TRIPS</span><span>{str(len(trips))}</span></div>
             <div className="trip-list">{[
@@ -95,8 +137,7 @@ def:pub app -> JsxElement {
                 </button> for trip in trips
             ]}</div>
             <button type="button" className="new-trip" onClick={lambda { openTrip(); }} disabled={busy or loading}>＋ Plan a new trip</button>
-            <button type="button" className="text-button demo-trip" onClick={createDemo} disabled={busy or loading}>Start backup & replan demo ↗</button>
-            <button type="button" className="text-button demo-trip" onClick={lambda { createIntegratedDemo("rain"); }} disabled={busy or loading}>Try connected backup plans ↗</button>
+            <button type="button" className="text-button demo-trip" onClick={lambda { chooseTab("planner"); }} disabled={busy or loading or not selected}>✦ Open AI planner</button>
             <div className="sidebar-bottom"><p>Organized travel.</p><small>Your plans, all in one place.</small></div>
         </aside>
         <main className="workspace">
@@ -141,31 +182,20 @@ def:pub app -> JsxElement {
                     <div><span className="stat-icon">$</span><p><strong>{money(total, current.currency)}</strong><small>planned cost</small></p></div>
                     <div><span className="stat-icon">◎</span><p><strong>{money(current.budget_cents - total, current.currency) if current.budget_cents else "No budget yet"}</strong><small>{"budget remaining" if current.budget_cents else "set one in Edit trip"}</small></p></div>
                 </section>
-                <nav className="trip-workflow" aria-label="Planning workflow">
+                <nav className="trip-workflow ai-workflow" aria-label="Planning workflow">
+                    <button type="button" data-active={tab == "planner"} disabled={busy or loading} onClick={lambda { chooseTab("planner"); }}>
+                        <span className="workflow-number">✦</span><span><strong>Plan, prepare & adapt</strong><small>One assistant for every change</small></span>
+                    </button>
                     <button type="button" data-active={tab == "itinerary"} disabled={busy or loading} onClick={lambda { chooseTab("itinerary"); }}>
-                        <span className="workflow-number">1</span><span><strong>Build your itinerary</strong><small>Add activities, stays and transport</small></span>
-                    </button>
-                    <button type="button" data-active={tab == "backups"} disabled={busy or loading} onClick={lambda { chooseTab("backups"); }}>
-                        <span className="workflow-number">2</span><span><strong>Generate backup plans</strong><small>Prepare Plan B / C options</small></span>
-                    </button>
-                    <button type="button" data-active={tab == "replan"} disabled={busy or loading} onClick={lambda { chooseTab("replan"); }}>
-                        <span className="workflow-number">3</span><span><strong>Replan a disruption</strong><small>Compare changes and accept a plan</small></span>
+                        <span className="workflow-number">◎</span><span><strong>Your saved itinerary</strong><small>Review and manage your arrangements</small></span>
                     </button>
                 </nav>
                 <nav className="tabs" aria-label="Travel sections">{[
                     <button type="button" key={value} data-active={tab == value} onClick={lambda { chooseTab(value); }} disabled={busy or loading}>
-                        {"Guided demo" if value == "demo" else "Itinerary" if value == "itinerary" else "Bookings" if value == "bookings" else "Packing list" if value == "packing" else "Backup plans" if value == "backups" else "Replan" if value == "replan" else "Budget"}
-                    </button> for value in (["demo"] if current.title == "Backup & replan demo" else []) + ["itinerary", "backups", "replan", "bookings", "packing", "budget"]
+                        {"AI planner" if value == "planner" else "Itinerary" if value == "itinerary" else "Bookings" if value == "bookings" else "Packing list" if value == "packing" else "Budget"}
+                    </button> for value in ["planner", "itinerary", "bookings", "packing", "budget"]
                 ]}</nav>
-                {(<section className="backup-workspace" aria-label="Backup plans">
-                    <div className="card workflow-intro"><p className="eyebrow">PREPARE ALTERNATIVES</p><h2>Backup plans</h2>
-                        <p>Prepare alternatives for detected risks or a change you report. Compare the complete plans and explicitly accept a revision.</p>
-                        <div className="planning-demo-actions"><button type="button" className="secondary" disabled={busy} onClick={lambda { createIntegratedDemo("rain"); }}>Try weather sample</button>
-                            <button type="button" className="secondary" disabled={busy} onClick={lambda { createIntegratedDemo("arrival_delay"); }}>Try arrival-delay sample</button></div>
-                        <button type="button" className="text-button" onClick={lambda { chooseTab("replan"); }}>Replan after a disruption →</button>
-                    </div>
-                    <BackupPanel key={selected} trip={current} items={items} onApplied={backupApplied}/>
-                </section>) if not loading and tab == "backups" else None}
+                {(<AIPlanner data={aiData} currency={current.currency} onCompose={composeAI} onReview={reviewAI} onPrices={priceAI} onPreferences={savePreferences} busy={busy}/>) if tab == "planner" else None}
                 {(<section className="budget-overview card"><div><p className="eyebrow">EVERY LITTLE THING ADDS UP</p><h2>Your trip, in numbers.</h2>
                     <p>Costs are counted once, in {current.currency}. Mark each cost paid as you go.</p></div><div className="budget-numbers">
                     <p><span>Budget</span><strong>{money(current.budget_cents, current.currency) if current.budget_cents else "Not set"}</strong></p>
@@ -173,10 +203,17 @@ def:pub app -> JsxElement {
                     <p><span>Still to pay</span><strong>{money(total - paid, current.currency)}</strong></p>
                     {(<p className="over-budget">{"Over budget by " + money(total - current.budget_cents, current.currency)}</p>) if current.budget_cents and total > current.budget_cents else None}
                 </div></section>) if tab == "budget" else None}
-                {(<ReplanPanel key={selected} trip_id={selected} currency={current.currency} onApplied={refresh}/>) if tab == "replan" else None}
-                {(<GuidedDemo key={selected} trip={current} items={items} onRefresh={refresh}
-                    onViewItinerary={lambda { chooseTab("itinerary"); }}/>) if tab == "demo" else None}
-                <div className="detail-grid" hidden={tab in ["backups", "replan", "demo"]}>
+                {(<section className="card packing-card" aria-label="Packing checklist">
+                    <div className="section-heading"><h2>Your packing list</h2><span className="count-pill">{str(packed) + " / 4 packed"}</span></div>
+                    <p className="section-caption">Check off the essentials before you head out.</p>
+                    <div className="packing-checklist">{[
+                        <label key={title} className="packing-check" data-checked={packingChecked(title)}>
+                            <input type="checkbox" checked={packingChecked(title)} disabled={busy or loading}
+                                onChange={lambda { togglePacking(title); }}/><span>{title}</span>
+                        </label> for title in packing
+                    ]}</div>
+                </section>) if tab == "packing" else None}
+                <div className="detail-grid" hidden={tab in ["planner", "packing"]}>
                     <div>
                         <section className="card plan-card">
                             <div className="section-heading"><div><p className="eyebrow">{"SMALL THINGS, BIG DIFFERENCE" if tab == "packing" else "KEEP THE DETAILS HANDY" if tab == "bookings" else "MAKE IT ALL ADD UP" if tab == "budget" else "LEAVE A LITTLE ROOM TO WANDER"}</p>
@@ -227,7 +264,9 @@ def:pub app -> JsxElement {
                     </aside>
                 </div>
             </div>)}
-            <footer>roam. <span>A place for your plans. A little room for the unexpected.</span></footer>
+            <footer>Jacplan <span>A place for your plans. A little room for the unexpected.</span></footer>
         </main>
+        {(<ChatSidebar key={selected} trip_id={selected} destination={current.destination} onUpdate={receiveAI} reload={aiReload}
+            compose={aiCompose} composeMode={aiMode} composeText={aiText} externalBusy={busy}/>) if current else None}
     </div>
 }

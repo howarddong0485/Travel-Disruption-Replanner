@@ -1,7 +1,7 @@
 [project]
 name = "travel-planner"
 version = "0.1.0"
-description = "Roam: trips, itineraries, reservations, packing, and budgets"
+description = "Jacplan: trips, itineraries, reservations, packing, and budgets"
 jac-version = "==0.37.23"
 default-app = "travel"
 
@@ -40,7 +40,7 @@ entry-point = "backup.refresh_app"
 # Used only when the traveler enables LLM-assisted combination selection.
 # Keep provider credentials in the server environment. BYLLM_DEFAULT_MODEL overrides this.
 [byllm.model]
-default_model = "gpt-4o-mini"
+default_model = "gpt-6-luna"
 
 [placement.pins]
 "schema.*" = "server"
@@ -49,3 +49,6 @@ default_model = "gpt-4o-mini"
 "profile.*" = "server"
 "filter.*" = "server"
 "budget.*" = "server"
+"assistant.provider" = "server"
+"assistant.workflow" = "server"
+"assistant.preferences" = "server"

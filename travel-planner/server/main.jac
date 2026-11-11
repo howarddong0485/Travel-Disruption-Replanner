@@ -19,6 +19,71 @@ import from backup.workflow { run_workflow }
 import from planning.context { install_context_schema, read_facts, check_payload, build_context, public_context }
 import from planning.engine { generate_plans, VALIDATION_VERSION }
 import from planning.fixtures { sample_state }
+import assistant.workflow as ai_workflow;
+import assistant.provider as ai_provider;
+import assistant.preferences as ai_preferences;
+
+def:pub assistant_save_preferences(trip_id: str, pet_friendly: any, pace: str, expected_version: any) -> dict[str, any] {
+    conn = _connect();
+    try {
+        ai_preferences.save(conn, trip_id, pet_friendly, pace, expected_version);
+        return ai_workflow.read(conn, trip_id);
+    } except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
+
+def:pub assistant_state(trip_id: str) -> dict[str, any] {
+    conn = _connect();
+    try { return ai_workflow.read(conn, trip_id); }
+    finally { conn.close(); }
+}
+
+def:pub assistant_chat(trip_id: str, message: str, mode: str, search: any, request_id: str, api_key: str = "") -> dict[str, any] {
+    api_key = ai_provider.validate_key(api_key);
+    conn = _connect();
+    try { captured = ai_workflow.begin(conn, trip_id, request_id, message, mode, search); }
+    except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+    if captured["replay"] { return assistant_state(trip_id); }
+    try {
+        result = ai_provider.generate(captured["context"], captured["history"], message, mode, search, api_key);
+        failures: list[str] = [];
+        if result.get("plans", []) {
+            for plan in result.get("plans", []) {
+                try {
+                    checked = ai_workflow.check_plan(captured["state"], captured["facts"], plan);
+                    if not checked["can_apply"] { failures.append("Every item needs a realistic numeric planning estimate; some prices are missing."); }
+                } except (ValueError, KeyError, TypeError) as error { failures.append(str(error)); }
+            }
+            if failures { result = ai_provider.repair(captured["context"], result, failures, api_key); }
+        }
+        conn = _connect();
+        try { return ai_workflow.finish(conn, trip_id, request_id, message, mode, captured, result); }
+        except Exception { conn.rollback(); raise; }
+        finally { conn.close(); }
+    } except Exception {
+        conn = _connect();
+        try {
+            conn.execute("UPDATE assistant_requests SET status='failed' WHERE id=? AND trip_id=? AND status='pending'", (request_id, trip_id));
+            conn.commit();
+        } finally { conn.close(); }
+        raise;
+    }
+}
+
+def:pub assistant_update_prices(trip_id: str, draft_id: str, prices: dict[str, any]) -> dict[str, any] {
+    conn = _connect();
+    try { return ai_workflow.update_prices(conn, trip_id, draft_id, prices); }
+    except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
+
+def:pub assistant_review(trip_id: str, draft_id: str, accept: any, acknowledged: any = False) -> dict[str, any] {
+    conn = _connect();
+    try { return ai_workflow.review(conn, trip_id, draft_id, accept, acknowledged); }
+    except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
 
 def _backup_source(trip_id: str) -> tuple[dict[str, any], list[dict[str, any]]] {
     conn = _connect();
@@ -98,6 +163,59 @@ def:pub save_backup_refresh(session_id: str, request_id: str, expected_revision:
         budget, inventory_change, sample_date);
 }
 
+import from tools.alternatives.expedia { configuration as expedia_configuration }
+import from replan.expedia { plans as expedia_plans }
+import from tools.alternatives.liteapi { configuration as liteapi_configuration }
+import from tools.geoapify { search as search_geoapify }
+
+def:pub travel_provider_status -> dict[str, any] {
+    try { liteapi = liteapi_configuration(); }
+    except ValueError { liteapi = {"configured": False, "mode": "sandbox"}; }
+    return {"liteapi": liteapi, "geoapify": {"configured": bool(os.environ.get("GEOAPIFY_API_KEY", "").strip())}};
+}
+
+def:pub discover_travel_places(trip_id: str, destination: str, country: str = "US", category: str = "hotels") -> dict[str, any] {
+    conn = _connect();
+    try { _require_trip(conn, trip_id); }
+    finally { conn.close(); }
+    return search_geoapify(destination, country, category);
+}
+
+def:pub preview_liteapi_hotels(trip_id: str, item_id: str, checkout: str, city: str,
+    destination_country: str = "US", occupancy: str = "2", nationality: str = "US",
+    mode: str = "backup", kind: str = "interrupted", delay_minutes: int = 180) -> dict[str, any] {
+    conn = _connect();
+    try { state = snapshot(conn, trip_id); }
+    finally { conn.close(); }
+    result = expedia_plans(state, item_id, checkout, [], occupancy, nationality, mode, kind,
+        delay_minutes, provider="liteapi", city=city, destination_country=destination_country);
+    conn = _connect();
+    try {
+        if snapshot(conn, trip_id)["version"] != state["version"] {
+            raise ValueError("Trip changed while searching. Generate fresh hotel options.");
+        }
+    } finally { conn.close(); }
+    return result;
+}
+
+def:pub expedia_status -> dict[str, any] { return expedia_configuration(); }
+
+def:pub preview_expedia_hotels(trip_id: str, item_id: str, checkout: str,
+    property_ids: list[str], occupancy: str = "2", country: str = "US",
+    mode: str = "backup", kind: str = "interrupted", delay_minutes: int = 180) -> dict[str, any] {
+    conn = _connect();
+    try { state = snapshot(conn, trip_id); }
+    finally { conn.close(); }
+    result = expedia_plans(state, item_id, checkout, property_ids, occupancy, country, mode, kind, delay_minutes);
+    conn = _connect();
+    try {
+        if snapshot(conn, trip_id)["version"] != state["version"] {
+            raise ValueError("Trip changed while searching Expedia. Generate fresh options.");
+        }
+    } finally { conn.close(); }
+    return result;
+}
+
 def:pub preview_backup_validation(scenario: str = "rain", profile_name: str = "family", budget: str = "600") -> dict[str, any] {
     return run_fixture(scenario, profile_name, budget);
 }
@@ -131,6 +249,7 @@ def _connect -> sqlite3.Connection {
     conn.commit();
     install_schema(conn);
     install_context_schema(conn);
+    ai_workflow.install(conn);
     return conn;
 }
 

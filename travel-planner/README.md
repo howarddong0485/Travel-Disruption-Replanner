@@ -1,26 +1,109 @@
-# Roam — Travel Planner
+# Jacplan — Travel Planner
 
-Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Keep multiple trips, daily itineraries, reservations, packing lists, notes, and costs together in one workspace.
+Jacplan is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Keep multiple trips, daily itineraries, reservations, packing lists, notes, and costs together in one workspace.
 
 Application code, backend helpers, demos, and tests are written in `.jac` files. Jac imports Python standard-library modules for SQLite, dataclasses, date/time handling, and CLI argument parsing; no project-owned Python source files are required.
 
-For implementation gaps by role and contribution attribution, see [MVP_STATUS.md](../docs/MVP_STATUS.md). Initial itinerary generation is still pending; demo trips are predefined samples.
+The main workspace now uses **GPT-6 Luna** with reasoning disabled for faster conversation, web research, initial itinerary drafts, alternatives and disruption repairs. Full itineraries and web research still take time. The earlier mock modules and endpoints remain available for regression checks; their milestone status is recorded in [MVP_STATUS.md](../docs/MVP_STATUS.md).
 
-## Features
+## AI planning workspace
 
-- **Trips:** Create and edit a trip name, destination, departure/return dates, currency, budget, and notes. Switch between saved trips; upcoming, current, and past status follows the local calendar.
-- **Itinerary:** Add activities, dining, flights/transport, and stays. Dates and local 24-hour times are optional; dated items sort chronologically, with timed items before flexible plans and undated ideas last. Filter by day, edit details, and complete/reopen items.
-- **Bookings:** Store locations, confirmation references, and notes for transport and stays. Confirm/reopen reservations. The same record appears in the itinerary, bookings, and budget; it is not duplicated.
-- **Packing:** Add essentials and check them off. Packed/total counts appear in the trip summary.
-- **Budget:** Record costs on itinerary/booking items and add other costs such as insurance or shopping. Track planned total, paid total, unpaid total, remaining budget, and overspending. Mark payment independently from confirmation or completion.
-- **Connected backup plans:** Address detected risks or traveler-reported changes with up to five different venue, timing or connected-item plans. P1 profile/filter/ledger, P2 risk/policy and P4 version-safe application now connect through a typed alternative contract. Compare and explicitly accept simulated changes from **Backup plans**. [Connected flow and limits](planning/README.md).
-- **Backup validation:** Check complete proposed itineraries for traveler requirements, costs, scheduling, opening hours, routes, dependencies and fixed items. Missing facts remain unresolved and cannot be accepted. Passing has explicit synthetic scope. [Integration](planning/README.md) and [legacy validator](backup/VALIDATION.md).
-- **Backup refresh:** Reconfirm inventory before acceptance; changed prices, sold-out or expired evidence and provider failures block old conclusions. The standalone sample lab retains its explicit fault-injection scenarios. Search and refresh do not change active itinerary items. [Refresh demo](backup/VALIDATION.md#refreshing-synthetic-inventory).
-- **Saved refresh history:** Store versioned sample and saved-trip observations separately from trips, inspect historical outcomes in diagnostics and restore controls after reopening. Current checks always require an explicit refresh. [Storage and UI guide](backup/HISTORY.md).
-- **Legacy candidate backfill:** The preserved sample/history workflow refreshes the full synthetic pool before selecting up to two alternatives; the connected flow above supports up to five. Rejected or unavailable options can be replaced by eligible candidates, and one/no-option outcomes are explained. Normal demo pages hide diagnostics. [Selection policy and examples](backup/SELECTION.md).
-- **Replanning:** Simulate delayed/interrupted items, combine synthetic backup inventory, edit dependencies and schedule rules, optionally use a Jac LLM to select combinations, and accept/reject version-safe revisions. Try the separate demo trip from the sidebar; see [the replanning guide](replan/README.md).
-- **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
-- **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and five planning tabs. The web interface adapts to phones and tablets.
+The **AI planner** combines initial planning, backup preparation and disruption
+replanning. A persistent conversation sidebar stays beside your itinerary,
+bookings, packing and budget. Chat history is stored separately for each trip.
+
+1. Create or select a trip with dates, destination, currency and budget.
+2. Choose **Plan my trip**, **Find alternatives**, or **Something changed**.
+3. Edit the prompt in the conversation sidebar and send it. **Ask a question**
+   answers without generating a draft. Web search can be switched off.
+4. Review proposals in the main area: before/after changes, estimated totals,
+   schedule checks and uncertainty. Refine a proposal in chat or keep your plan.
+5. Acknowledge the estimates and choose **Save this plan** to write the reviewed
+   changes. Chat and search never directly change itinerary items.
+
+### Pet-friendly and trip pace
+
+Before asking GPT to plan, use the controls in **AI planner**:
+
+- **Pet-friendly**: toggle on to request pet-suitable stays, dining, activities,
+  breaks and fee allowances. GPT must flag unverified policies and species/size
+  restrictions; this setting does not verify that a venue accepts your pet.
+- **Intense**: targets 4–6 main activities per full day, with fuller schedules.
+- **Balanced** (default): targets 2–3 main activities with breaks and flexibility.
+- **Relax**: targets 1–2 main activities and generous rest/free time.
+
+These are pacing targets, adjusted for arrival/departure days and constraints.
+The controls save automatically for each trip and are included in research,
+structured plan generation, backups, replanning and automatic correction calls.
+Changing them leaves saved itinerary items intact and makes older proposals
+stale, so generate a new plan after changing preferences. Turning the pet toggle
+off does not erase separately recorded pet requirements in your traveler facts.
+
+You can also ask the assistant to edit the active trip's name, destination,
+departure/return dates, budget, currency or notes, either in ordinary chat or
+**Edit trip details** mode. For example: “Move my trip to April 10–14, 2027 and
+raise my budget to USD 2,000.” A proposal shows each trip field before and after.
+Date changes must also move any affected flexible itinerary items into the new
+trip window; accepting saves trip and item changes in one transaction. Locked
+bookings stay protected, and currency changes cannot relabel existing costs.
+New date/destination edits clear obsolete venue/route evidence while preserving
+traveler preferences. No edit is applied until you review and save the proposal.
+
+Users can open **OpenAI API key** in the Travel assistant, enter their own key,
+and choose **Use key**. Their key overrides the server key for every AI stage,
+including research, planning and automatic repairs. **Clear key** restores the
+server fallback. Keys remain only in the assistant’s browser memory and the
+current server request; refreshing or closing the assistant clears them. They are
+not saved to browser storage, the database, conversation history or `.env`.
+OpenAI checks the key on the first message; API charges apply to its account.
+
+For an optional app-owner fallback and model settings, set these values in
+`travel-planner/.env` (never commit actual credentials):
+
+```dotenv
+OPENAI_API_KEY=your_key_here
+OPENAI_CHAT_MODEL=gpt-6-luna
+OPENAI_PLANNING_MODEL=gpt-6-luna
+```
+
+The server reads these settings from its environment or the project `.env`.
+No hotel, place or flight provider keys are needed for this workflow. Existing
+provider adapters are retained but their panels are removed from the main UI.
+
+OpenAI's Responses API performs optional web research with clickable sources.
+Planning requests use a separate structured-output call to convert the research
+and trip context into bounded drafts. Web research is limited to three built-in
+tool calls and concise evidence notes, including representative pet policies.
+Policies without evidence remain explicitly unverified. Turn off **Search the web**
+for a faster draft with estimated costs: pet and pace preferences still apply.
+Ordinary questions use one call; planning with search uses two. Planning without
+search and explicit **Edit trip details** requests skip the research call and
+build a draft directly. Local validation may add at most one correction call.
+Planning history includes conversation text without resending old research and
+review metadata. Model and search usage incur OpenAI API charges. Missing keys, quota
+errors and timeouts appear in the conversation; no mock answer is substituted.
+API keys and booking references are not sent as model context. Server keys are never returned to the browser; user keys are submitted only with their AI requests.
+
+Local checks cover trip dates, schedule overlap, stored dependencies, latest-start
+rules, fixed items and the whole-trip budget including an existing reserve.
+Paid, confirmed, completed, fixed and booking-reference items stay unchanged.
+Prices remain estimates: these checks do **not** establish live availability,
+opening hours, transfer feasibility, dietary/accessibility/pet eligibility,
+refunds or booking terms. New GPT drafts require numeric planning estimates for every item. If a draft fails local budget or schedule checks, one automatic correction is attempted before review. Older drafts with missing prices can be completed through GPT or by entering traveler estimates and rerunning the budget check. Unknown prices are never silently counted as free. The existing
+synthetic full-trip validator is separate from this AI draft workflow.
+
+Drafts expire after 30 minutes. Acceptance checks the current trip and facts
+again under a write transaction, rejecting stale drafts; request IDs and review
+states prevent duplicate requests and repeated application. Saving one option
+invalidates sibling drafts. User-entered trip data and recent conversation are
+sent to OpenAI to answer requests; Responses requests use `store: false` while
+conversation records remain in the local SQLite database.
+
+Core trip editing, chronological itineraries, reservations, packing, notes,
+planned/paid/unpaid budget totals, CLI access and local SQLite persistence remain
+available. No real bookings, payments or cancellations are performed.
+
+Offline AI regressions: `jac test assistant/test_workflow.jac`.
 
 ## Guided backup and replan demo
 
@@ -39,15 +122,13 @@ Backup previews and proposal generation leave itinerary items unchanged. Accepta
 
 ## Workspace navigation
 
-Use the three workflow shortcuts to **build your itinerary → generate backup plans → replan a disruption**.
+- **AI planner:** Initial itinerary drafts, alternatives and repairs in one flow.
+- **Itinerary:** Review saved plans and manually add or edit arrangements.
+- **Bookings, Packing list, Budget:** Manage reservations, essentials and costs.
+- **Travel assistant:** Trip-specific conversation, questions, sources and planning prompts.
 
-- **Itinerary:** Add and edit the active trip's activities, meals, stays and transport.
-- **Backup plans:** Record traveler/trip facts, select detected risks or report a change, compare up to five complete alternatives, reject or explicitly accept a validated simulated plan.
-- **Replan:** Report a delay or interruption, generate replan options, compare changes and explicitly accept or reject a revised plan. Expand **Schedule rules and dependencies** to configure timing and connections; customize backup combinations below the proposals.
-- **Bookings, Packing list, Budget:** Manage reservations, essentials and trip spending.
-
-The connected Backup plans flow applies only after explicit acceptance. The
-legacy stateless previews and separate sample lab remain read-only.
+The historical guided/mock examples below document retained backend/demo modules;
+the primary navigation uses the unified AI workspace.
 
 ## Start the app
 
@@ -71,6 +152,33 @@ For the CLI and focused examples below, `jac` means this checksum-verified
 Open the **App** URL printed by Jac. Create a trip, then add details using the itinerary, bookings, packing, and budget tabs. Use **Edit trip** for notes or a budget. Refresh to see changes made through the CLI or another browser.
 
 A fresh clone needs an independent Python 3.14 environment; `setup.sh` creates it and installs the declared dependencies. See the [current verification guide](../docs/LOCAL_VERIFICATION.md).
+
+## LiteAPI hotel backups and Geoapify places
+
+The **Backup plans** and **Replan** tabs include **LiteAPI + Geoapify** panels. Configure `LITEAPI_API_KEY` with your free sandbox key for city-based hotel rates and automatic Plan B/C drafts; configure `GEOAPIFY_API_KEY` for nearby hotel, restaurant and attraction suggestions. Neither requires Expedia access. The hotel drafts check stored itinerary constraints and show costs and downstream schedule changes; Geoapify suggestions have unknown prices and availability. These are read-only previews requiring further validation. See [free-provider setup and usage](../docs/FREE_PROVIDERS.md). Legacy Expedia endpoints remain available; see [their setup guide](../docs/EXPEDIA.md).
+
+## Wikipedia destination and attraction discovery
+
+Fetch live English Wikipedia information without an API key, app server, or database:
+
+```sh
+jac run --no-cache tools/wikipedia_demo.jac -- Boston --interest museum --limit 5
+jac run --no-cache tools/wikipedia_demo.jac -- "Kyoto" --interest temple --limit 5
+```
+
+The JSON includes a destination introduction and ranked article candidates matching the destination and containing the interest in their titles. Use a short interest such as `museum`, `park`, or `temple`; title filtering can miss relevant places with other names. Each article includes its title, plain-text summary, source URL, coordinates when present, retrieval time and attribution. Destination lookup uses an article title and follows redirects; use a precise title such as `Paris` or `Cambridge, Massachusetts`. Missing pages return `not_found`; disambiguation pages return `ambiguous` and require a more specific title.
+
+Reuse the helper in server-side Jac code:
+
+```jac
+import from tools.wikipedia { destination_summary, search_attractions }
+```
+
+Call `destination_summary("Boston")` and `search_attractions("Boston", "museum", 5)`. These are standalone helpers, not yet wired into the browser UI. Search results are discovery candidates, not verified local attractions: review the source and location before using them. They do not supply verified opening hours, prices, availability or traveler eligibility. Requests have a ten-second timeout and report provider errors; there are no automatic retries. Text comes from Wikipedia contributors under its source license; retain the returned attribution and article link when displaying or reusing it. No images are fetched.
+
+The default identifying User-Agent links to this repository. Override it with `WIKIPEDIA_USER_AGENT` if deploying under another project/contact. See the official [Search API](https://www.mediawiki.org/wiki/API:Search), [TextExtracts API](https://www.mediawiki.org/wiki/Extension:TextExtracts), and [User-Agent policy](https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy).
+
+Offline checks: `jac test tools/test_wikipedia.jac`.
 
 ## CLI
 

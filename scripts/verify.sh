@@ -30,7 +30,7 @@ step() {
 cd "$roam_root/travel-planner"
 step version "$roam_jac" --version
 step check "$roam_jac" check --nowarn
-step tests "$roam_jac" test server/ backup/ planning/ profile/ filter/ budget/ schema/ policy/ risk/
+step tests "$roam_jac" test server/ backup/ planning/ profile/ filter/ budget/ schema/ policy/ risk/ assistant/
 step travel-client "$roam_jac" build travel --as client
 step backup-client "$roam_jac" build backup_refresh --as client
 step planning-demo "$roam_jac" run planning/demo.jac

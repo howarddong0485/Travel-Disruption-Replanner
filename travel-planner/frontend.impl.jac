@@ -43,6 +43,7 @@ impl app.refresh -> None {
         if target { fresh_items = await list_items(trip_id=target); }
         if requestRef.current == token {
             trips = fresh_trips; selected = target; items = fresh_items; error = "";
+            aiReload += 1;
         }
     } except Exception as exc {
         if requestRef.current == token { error = str(exc); }
@@ -52,7 +53,7 @@ impl app.refresh -> None {
 }
 impl app.chooseTrip(trip_id: str) -> None {
     if busy or loading { return; }
-    selected = trip_id; items = []; day = ""; tab = "itinerary";
+    selected = trip_id; items = []; day = ""; tab = "planner"; aiData = {}; aiCompose = 0; aiText = "";
     trip_form = False; notice = ""; resetItem();
     await refresh();
 }
@@ -61,6 +62,7 @@ impl app.submitTrip(e: FormEvent) -> None {
     try {
         saved = await save_trip(title=trip_title, destination=destination, start_date=start_date,
             end_date=end_date, currency=currency, budget=budget, notes=trip_notes, trip_id=editing_trip);
+        if selected != saved.id { aiData = {}; aiCompose = 0; tab = "planner"; }
         selected = saved.id; trip_form = False; day = ""; resetItem();
         await refresh(); notice = "Trip saved. Let the planning begin.";
     } except Exception as exc { error = str(exc); }
@@ -89,6 +91,17 @@ impl app.toggle(item: ItemView, payment: bool = False) -> None {
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
 }
+impl app.togglePacking(title: str) -> None {
+    if busy or loading or not selected { return; }
+    busy = True; error = ""; notice = "";
+    try {
+        saved = [item for item in items if item.category == "packing" and item.title == title];
+        packing_item = saved[0] if saved else await save_item(trip_id=selected, title=title, category="packing", cost="0");
+        await set_item_state(trip_id=selected, item_id=packing_item.id, done=not packing_item.done, paid=packing_item.paid);
+        await refresh();
+    } except Exception as exc { error = str(exc); }
+    finally { busy = False; }
+}
 impl app.removeItem(item: ItemView) -> None {
     if busy or not window.confirm("Delete “" + item.title + "” from this trip?") { return; }
     busy = True; notice = "";
@@ -113,7 +126,7 @@ impl app.createDemo -> None {
     if busy or loading { return; } busy = True; error = "";
     try {
         demo = await replan_demo(); selected = demo["trip_id"]; day = "";
-        trip_form = False; tab = "demo"; resetItem(); await refresh();
+        trip_form = False; tab = "planner"; resetItem(); await refresh();
         notice = "Demo ready. Generate backup plans, simulate a flight delay, then accept a revised itinerary.";
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
@@ -123,7 +136,7 @@ impl app.createIntegratedDemo(scenario: str = "rain") -> None {
     if busy or loading { return; } busy = True; error = "";
     try {
         demo = await create_planning_demo(scenario=scenario); selected = demo["trip_id"]; day = "";
-        trip_form = False; tab = "backups"; resetItem(); await refresh();
+        trip_form = False; tab = "planner"; resetItem(); await refresh();
         notice = "Sample ready. Find different plans, compare the changes, then keep or accept one.";
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
