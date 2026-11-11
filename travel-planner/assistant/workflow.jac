@@ -150,7 +150,7 @@ def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any
         journey = journey_model.normalize(journey, after_trip);
         endpoints = {"departure_location": journey["origin"]["city"], "return_location": journey["return_to"]["city"] if journey["return_to"] else "", "destination": journey["stops"][0]["city"]};
         for (key, value) in endpoints.items() {
-            if key in plan.get("trip_changes", {}) and after_trip[key] != value { raise ValueError("Trip cities must match the proposed journey route. Update the route and affected items together."); }
+            if plan.get("trip_changes", {}).get(key) is not None and after_trip[key] != value { raise ValueError("Trip cities must match the proposed journey route. Update the route and affected items together."); }
         }
         after_trip.update(endpoints);
     }

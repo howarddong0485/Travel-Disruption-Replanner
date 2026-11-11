@@ -99,6 +99,7 @@ test "journey schema rejects invalid zones duplicate stops order and DST ambigui
 test "journey one-way routes need outbound and intercity transport but no invented return" {
     with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": directory + "/trip.db"}) {
         id = create(); proposal = plan(); proposal["journey"]["return_to"] = None; proposal["journey"]["legs"].pop(); proposal["changes"].pop();
+        proposal["trip_changes"] = {key: None for key in provider.trip_schema()["properties"]};
         draft = send(id, proposal)["drafts"][0]; api.assistant_review(id, draft["id"], True, True);
         assert api.list_trips()[0].return_location == "" and len(api.journey_state(id)["journey"]["legs"]) == 3;
     }

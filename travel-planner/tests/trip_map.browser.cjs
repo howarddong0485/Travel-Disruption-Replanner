@@ -142,6 +142,16 @@ const screenshots = process.env.TRAVEL_MAP_SCREENSHOTS;
     const state = await api('load_trip_map', {trip_id: regular.id});
     assert.equal(state.routes[item.id].route.from.label, 'Chicago');
     assert.equal(state.trip_version, version);
+    await edit.getByRole('button', {name: 'Edit route', exact: true}).click();
+    await api('save_trip_map_route', {trip_id: regular.id, item_id: item.id, title: item.title,
+      location: item.location, expected_revision: 1, payload: {kind:'flight',
+        from:{label:'Detroit',lat:42.33,lon:-83.05}, to:{label:'Seattle',lat:47.61,lon:-122.33}}});
+    const focusedRefresh = page.waitForResponse(r => r.url().endsWith('/function/load_trip_map'));
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await focusedRefresh;
+    await edit.getByRole('button', {name: 'Save route', exact: true}).click();
+    await edit.getByRole('alert').waitFor();
+    assert.equal((await api('load_trip_map', {trip_id: regular.id})).routes[item.id].route.from.label, 'Detroit');
     await api('save_trip_map_route', {trip_id: regular.id, item_id: item.id, title: item.title,
       location: item.location, expected_revision: 0, payload: null}, true);
     await api('save_trip_map_route', {trip_id: regular.id, item_id: item.id, title: item.title,
