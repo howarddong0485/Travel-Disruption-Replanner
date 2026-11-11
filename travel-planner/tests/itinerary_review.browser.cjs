@@ -61,6 +61,7 @@ const apiUrl = process.env.TRAVEL_API_URL || 'http://localhost:8001/api/server';
 
     await page.goto(appUrl);
     const regularBefore = await chooseTrip(regular.id, regular.title);
+    await page.getByRole('group', {name: 'Itinerary view'}).getByRole('button', {name: 'List', exact: true}).click();
     await page.getByRole('link', {name: /Map for Flight to Seattle/}).waitFor();
     const places = page.getByRole('region', {name: 'Places in Seattle'});
     await places.getByRole('button', {name: /Pike Place dinner/}).click();
