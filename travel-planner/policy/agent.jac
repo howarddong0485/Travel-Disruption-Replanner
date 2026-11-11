@@ -7,6 +7,8 @@ against the source text:
   evidence records store the source's own wording, never the draft's;
 - a partial refund percentage, a fee amount, and a deadline's day or hour count must
   appear in that tier's excerpt, and a fee must be in the booking's currency;
+- a positive refund percentage is rejected when its excerpt negates the refund, and a
+  zero fee is rejected when its excerpt states a charge or deduction;
 - a field that fails becomes unknown; an unverifiable tier, deadline or tier order,
   a stated ambiguity, or instruction-like text in the terms sends the whole policy
   to review, which reports it as unknown rather than guessing.
@@ -17,7 +19,7 @@ import from schema.itinerary { ItineraryNode }
 import from schema.policy { RefundPolicy, CancellationTier, RefundForm }
 import from policy.draft { PolicyDraft, DraftTier }
 import from policy.extract_llm { draft_policy_with_llm, llm_credentials_present }
-import from policy.extract_rules { extract_terms_rules }
+import from policy.extract_rules { extract_terms_rules, denies_refund, states_deduction }
 
 enum ExtractionMethod: str { LLM = "llm", RULES = "rules" }
 
@@ -64,6 +66,7 @@ def _integers(text: str) -> list[int] {
 }
 
 def _percent_supported(percent: int, excerpt: str) -> bool {
+    if percent > 0 and denies_refund(excerpt) { return False; }
     if percent in [0, 100] { return True; }
     return re.search(rf"\b{percent}\s*(?:%|percent)", excerpt, re.IGNORECASE) is not None;
 }
@@ -87,6 +90,7 @@ def _check_tier(t: DraftTier, currency: str, evidence_id: str,
         elif t.fee_currency and t.fee_currency.upper() != currency {
             notes.append(f"fee is in {t.fee_currency}, booking is in {currency}; no conversion is made");
         } elif fee != 0 and fee not in stated { notes.append(f"fee {t.fee_amount} does not appear in: {found}"); }
+        elif fee == 0 and states_deduction(found) { notes.append(f"zero fee contradicts a stated charge in: {found}"); }
         else { tier.fee_minor = fee; }
     }
     try { tier.refund_form = RefundForm(t.refund_form.lower()); }

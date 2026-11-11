@@ -17,6 +17,37 @@ glob DEADLINE_CUE: str = r"\b(?:until|till|before|by|through|up to|prior to)\b|\
 glob FREE_PATTERN: str = r"(?:free cancellation|full refund|cancel free of charge)";
 glob NONREFUNDABLE_PATTERN: str = r"non-?refundable|no refunds";
 glob DISCRETIONARY: list[str] = ["discretion", "may be considered", "subject to approval", "case-by-case", "case by case"];
+glob NEGATION_PATTERN: str = (r"\b(?:not|never|cannot|no longer|unavailable|ineligible)\b"
+    + r"|\b(?:can|won|isn|aren|doesn|don|wasn|weren)['’]t\b|\bno (?:full )?refunds?\b");
+glob DEDUCTION_PATTERN: str = (r"\b(?:less|minus|deduct\w*|fees?|charged?|charges|penalt(?:y|ies)"
+    + r"|surcharges?|withh[eo]ld|retain(?:s|ed)?)\b");
+glob NO_FEE_PATTERN: str = (r"free of charge|fee-free"
+    + r"|\b(?:no|without(?: any)?|zero)\s+(?:\w+\s+)?(?:fees?|charges?|penalty|penalties)\b");
+glob LATER_PERIOD_PATTERN: str = r"\b(?:after|afterwards?|thereafter|then|later)\b";
+
+"""True when the text negates a refund or cancellation entitlement, e.g. "a full refund is not available".
+Checked per clause, so any negation in a refund clause leaves its entitlement unresolved."""
+def denies_refund(text: str) -> bool {
+    return re.search(NEGATION_PATTERN, text, re.IGNORECASE) is not None;
+}
+
+"""True when the text states a fee, charge or deduction, ignoring phrases such as "free of charge" or "no fee"."""
+def states_deduction(text: str) -> bool {
+    stripped = re.sub(NO_FEE_PATTERN, " ", text, flags=re.IGNORECASE);
+    return re.search(DEDUCTION_PATTERN, stripped, re.IGNORECASE) is not None;
+}
+
+"""The fee a full-refund clause deducts, as (amount, currency). ("0", "") when it states none.
+None, with an ambiguity noted, when a deduction is stated but cannot be read as one amount."""
+def _full_refund_fee(sentence: str, ambiguities: list[str]) -> tuple[str, str] | None {
+    if not states_deduction(sentence) { return ("0", ""); }
+    amounts = list(re.finditer(AMOUNT_PATTERN, sentence));
+    if len(amounts) != 1 or "%" in sentence or re.search(LATER_PERIOD_PATTERN, sentence, re.IGNORECASE) {
+        ambiguities.append(f"refund deduction not recognized: {sentence}");
+        return None;
+    }
+    return (amounts[0].group("amount"), SYMBOL_CURRENCY[amounts[0].group("symbol")]);
+}
 
 def _mixes_periods(clause: str) -> bool {
     lowered = clause.lower();
@@ -96,7 +127,14 @@ def extract_terms_rules(terms: str) -> PolicyDraft {
             continue;
         }
         if re.search(FREE_PATTERN, lowered) {
-            tier = DraftTier(excerpt=sentence, refund_percent=100, fee_amount="0", refund_form=_form(sentence));
+            if denies_refund(sentence) {
+                draft.ambiguities.append(f"refund terms are negated or restricted: {sentence}");
+                continue;
+            }
+            fee = _full_refund_fee(sentence, draft.ambiguities);
+            if fee is None { continue; }
+            tier = DraftTier(excerpt=sentence, refund_percent=100, fee_amount=fee[0],
+                fee_currency=fee[1], refund_form=_form(sentence));
             tier.hours_before_start = _relative_hours(sentence);
             if tier.hours_before_start is None {
                 noted = len(draft.ambiguities);
