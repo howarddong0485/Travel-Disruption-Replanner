@@ -425,7 +425,7 @@ def:pub app -> JsxElement {
                                             {(<ItemActions trip_id={current.id} item_id={item.id} title={item.title} category={item.category}
                                                 disabled={busy or loading} onReview={openReview}/>) if tab == "itinerary" else None}
                                             {(<PlacePopover trip_id={current.id} item={item} destination={current.destination} disabled={busy or loading}
-                                                onReview={openReview} onSelect={showPlace}/>) if tab == "itinerary" and item.location and not reviewRequest else None}
+                                                onReview={openReview} onSelect={showPlace} onSaved={lambda { mapRevision += 1; }}/>) if tab == "itinerary" and item.location and not reviewRequest else None}
                                             {(<button type="button" className="state-button" data-checked={item.done} onClick={lambda { toggle(item); }} disabled={busy or loading}>{("✓ " if item.done else "○ ") + stateLabel(item)}</button>) if item.category != "expense" and tab != "budget" else None}
                                             {(<button type="button" className="state-button" data-checked={item.paid} onClick={lambda { toggle(item, True); }} disabled={busy or loading}>{"✓ Paid" if item.paid else "Mark paid"}</button>) if item.cost_cents else None}
                                             <button type="button" className="text-button" onClick={lambda { editItem(item); }} disabled={busy or loading}>Edit</button>

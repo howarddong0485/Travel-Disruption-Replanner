@@ -4,7 +4,7 @@ import from itinerary.actions { focusItineraryControl }
 import from itinerary.places { itineraryMapLink }
 
 def:pub PlacePreview(trip_id: str, item: any, destination: str, control: str,
-    onReview: any, onSelect: any) -> JsxElement {
+    onReview: any, onSelect: any, onSaved: any) -> JsxElement {
     has data: any = None, failure: str = "", busy: bool = False, photoFailed: bool = False,
         latitude: str = "", longitude: str = "", photo: str = "", credit: str = "",
         alive: Ref[bool] = Ref(True);
@@ -32,7 +32,7 @@ def:pub PlacePreview(trip_id: str, item: any, destination: str, control: str,
                 "photo_url": photo, "photo_source": credit};
             fresh = await save_place_details(trip_id=trip_id, item_id=item.id, location=data["location"],
                 expected_revision=data["revision"], payload=payload);
-            if alive.current { fill(fresh); }
+            if alive.current { fill(fresh); onSaved(); }
         } except Exception as exc { if alive.current { failure = str(exc); } }
         finally { if alive.current { busy = False; } }
     }
@@ -82,7 +82,7 @@ def:pub PlacePreview(trip_id: str, item: any, destination: str, control: str,
 }
 
 def:pub PlacePopover(trip_id: str, item: any, destination: str, disabled: bool,
-    onReview: any, onSelect: any) -> JsxElement {
+    onReview: any, onSelect: any, onSaved: any) -> JsxElement {
     has open: bool = False, placement: any = {}, outside: Ref[any] = Ref(None);
     control = "place-details-" + item.id;
     def close -> None { open = False; focusItineraryControl(control); }
@@ -121,7 +121,7 @@ def:pub PlacePopover(trip_id: str, item: any, destination: str, disabled: bool,
             <button type="button" id={control + "-close"} className="itinerary-chip place-popover-close"
                 aria-label="Close place details" onClick={close}>×</button>
             <PlacePreview key={item.id + item.location} trip_id={trip_id} item={item} destination={destination}
-                control={control} onReview={review} onSelect={lambda (id: str) { open = False; onSelect(id); }}/>
+                control={control} onReview={review} onSelect={lambda (id: str) { open = False; onSelect(id); }} onSaved={onSaved}/>
         </div>) if open else None}
     </div>
 }
