@@ -1,9 +1,9 @@
 """Roam's responsive trip workspace."""
 import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip,
-    list_items, save_item, set_item_state, delete_item, replan_demo }
+    list_items, save_item, set_item_state, delete_item, replan_demo, create_planning_demo }
 import from backup.frontend { BackupPanel }
 import from replan.frontend { ReplanPanel }
-import from backup.validation_frontend { ValidationLab }
+import from demo.frontend { GuidedDemo }
 
 def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
@@ -60,6 +60,8 @@ def:pub app -> JsxElement {
     async def removeItem(item: ItemView) -> None;
     async def removeTrip -> None;
     async def createDemo -> None;
+    async def createIntegratedDemo(scenario: str = "rain") -> None;
+    async def backupApplied -> None;
     async can with entry {
         document.title = "Roam — Travel Planner";
         await refresh();
@@ -93,7 +95,8 @@ def:pub app -> JsxElement {
                 </button> for trip in trips
             ]}</div>
             <button type="button" className="new-trip" onClick={lambda { openTrip(); }} disabled={busy or loading}>＋ Plan a new trip</button>
-            <button type="button" className="text-button demo-trip" onClick={createDemo} disabled={busy or loading}>Try a mock replanning trip ↗</button>
+            <button type="button" className="text-button demo-trip" onClick={createDemo} disabled={busy or loading}>Start backup & replan demo ↗</button>
+            <button type="button" className="text-button demo-trip" onClick={lambda { createIntegratedDemo("rain"); }} disabled={busy or loading}>Try connected backup plans ↗</button>
             <div className="sidebar-bottom"><p>Organized travel.</p><small>Your plans, all in one place.</small></div>
         </aside>
         <main className="workspace">
@@ -102,7 +105,6 @@ def:pub app -> JsxElement {
                 <span className="avatar" title="Personal travel workspace">ZL</span></div></header>
             {(<div className="alert error" role="alert">{error}<button type="button" aria-label="Dismiss error" onClick={lambda { error = ""; }}>×</button></div>) if error else None}
             {(<div className="alert success" role="status">{notice}</div>) if notice else None}
-            <ValidationLab/>
             {(<section className="trip-editor card">
                 <div className="section-heading"><div><p className="eyebrow">TRIP DETAILS</p><h2>{"Edit your trip" if editing_trip else "Where are you headed?"}</h2></div>
                     <button type="button" className="text-button" onClick={lambda { trip_form = False; }} disabled={busy}>Cancel</button></div>
@@ -139,12 +141,31 @@ def:pub app -> JsxElement {
                     <div><span className="stat-icon">$</span><p><strong>{money(total, current.currency)}</strong><small>planned cost</small></p></div>
                     <div><span className="stat-icon">◎</span><p><strong>{money(current.budget_cents - total, current.currency) if current.budget_cents else "No budget yet"}</strong><small>{"budget remaining" if current.budget_cents else "set one in Edit trip"}</small></p></div>
                 </section>
+                <nav className="trip-workflow" aria-label="Planning workflow">
+                    <button type="button" data-active={tab == "itinerary"} disabled={busy or loading} onClick={lambda { chooseTab("itinerary"); }}>
+                        <span className="workflow-number">1</span><span><strong>Build your itinerary</strong><small>Add activities, stays and transport</small></span>
+                    </button>
+                    <button type="button" data-active={tab == "backups"} disabled={busy or loading} onClick={lambda { chooseTab("backups"); }}>
+                        <span className="workflow-number">2</span><span><strong>Generate backup plans</strong><small>Prepare Plan B / C options</small></span>
+                    </button>
+                    <button type="button" data-active={tab == "replan"} disabled={busy or loading} onClick={lambda { chooseTab("replan"); }}>
+                        <span className="workflow-number">3</span><span><strong>Replan a disruption</strong><small>Compare changes and accept a plan</small></span>
+                    </button>
+                </nav>
                 <nav className="tabs" aria-label="Travel sections">{[
                     <button type="button" key={value} data-active={tab == value} onClick={lambda { chooseTab(value); }} disabled={busy or loading}>
-                        {"Itinerary" if value == "itinerary" else "Bookings" if value == "bookings" else "Packing list" if value == "packing" else "Replan" if value == "replan" else "Budget"}
-                    </button> for value in ["itinerary", "bookings", "packing", "budget", "replan"]
+                        {"Guided demo" if value == "demo" else "Itinerary" if value == "itinerary" else "Bookings" if value == "bookings" else "Packing list" if value == "packing" else "Backup plans" if value == "backups" else "Replan" if value == "replan" else "Budget"}
+                    </button> for value in (["demo"] if current.title == "Backup & replan demo" else []) + ["itinerary", "backups", "replan", "bookings", "packing", "budget"]
                 ]}</nav>
-                {(<BackupPanel key={selected} trip={current} items={items}/>) if not loading and tab == "itinerary" else None}
+                {(<section className="backup-workspace" aria-label="Backup plans">
+                    <div className="card workflow-intro"><p className="eyebrow">PREPARE ALTERNATIVES</p><h2>Backup plans</h2>
+                        <p>Prepare alternatives for detected risks or a change you report. Compare the complete plans and explicitly accept a revision.</p>
+                        <div className="planning-demo-actions"><button type="button" className="secondary" disabled={busy} onClick={lambda { createIntegratedDemo("rain"); }}>Try weather sample</button>
+                            <button type="button" className="secondary" disabled={busy} onClick={lambda { createIntegratedDemo("arrival_delay"); }}>Try arrival-delay sample</button></div>
+                        <button type="button" className="text-button" onClick={lambda { chooseTab("replan"); }}>Replan after a disruption →</button>
+                    </div>
+                    <BackupPanel key={selected} trip={current} items={items} onApplied={backupApplied}/>
+                </section>) if not loading and tab == "backups" else None}
                 {(<section className="budget-overview card"><div><p className="eyebrow">EVERY LITTLE THING ADDS UP</p><h2>Your trip, in numbers.</h2>
                     <p>Costs are counted once, in {current.currency}. Mark each cost paid as you go.</p></div><div className="budget-numbers">
                     <p><span>Budget</span><strong>{money(current.budget_cents, current.currency) if current.budget_cents else "Not set"}</strong></p>
@@ -153,7 +174,9 @@ def:pub app -> JsxElement {
                     {(<p className="over-budget">{"Over budget by " + money(total - current.budget_cents, current.currency)}</p>) if current.budget_cents and total > current.budget_cents else None}
                 </div></section>) if tab == "budget" else None}
                 {(<ReplanPanel key={selected} trip_id={selected} currency={current.currency} onApplied={refresh}/>) if tab == "replan" else None}
-                <div className="detail-grid" hidden={tab == "replan"}>
+                {(<GuidedDemo key={selected} trip={current} items={items} onRefresh={refresh}
+                    onViewItinerary={lambda { chooseTab("itinerary"); }}/>) if tab == "demo" else None}
+                <div className="detail-grid" hidden={tab in ["backups", "replan", "demo"]}>
                     <div>
                         <section className="card plan-card">
                             <div className="section-heading"><div><p className="eyebrow">{"SMALL THINGS, BIG DIFFERENCE" if tab == "packing" else "KEEP THE DETAILS HANDY" if tab == "bookings" else "MAKE IT ALL ADD UP" if tab == "budget" else "LEAVE A LITTLE ROOM TO WANDER"}</p>

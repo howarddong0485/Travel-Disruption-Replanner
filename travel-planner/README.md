@@ -2,6 +2,10 @@
 
 Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Keep multiple trips, daily itineraries, reservations, packing lists, notes, and costs together in one workspace.
 
+Application code, backend helpers, demos, and tests are written in `.jac` files. Jac imports Python standard-library modules for SQLite, dataclasses, date/time handling, and CLI argument parsing; no project-owned Python source files are required.
+
+For implementation gaps by role and contribution attribution, see [MVP_STATUS.md](../docs/MVP_STATUS.md). Initial itinerary generation is still pending; demo trips are predefined samples.
+
 ## Features
 
 - **Trips:** Create and edit a trip name, destination, departure/return dates, currency, budget, and notes. Switch between saved trips; upcoming, current, and past status follows the local calendar.
@@ -9,31 +13,64 @@ Roam is a personal travel planner built with **Jac 0.37.23**, following GoPlanne
 - **Bookings:** Store locations, confirmation references, and notes for transport and stays. Confirm/reopen reservations. The same record appears in the itinerary, bookings, and budget; it is not duplicated.
 - **Packing:** Add essentials and check them off. Packed/total counts appear in the trip summary.
 - **Budget:** Record costs on itinerary/booking items and add other costs such as insurance or shopping. Track planned total, paid total, unpaid total, remaining budget, and overspending. Mark payment independently from confirmation or completion.
-- **Backup previews (Gehao Dong, week one):** Prepare mock Plan B/C ideas for rain-affected activities or delayed dinners from the Itinerary page. Boston/USD fixtures include source, timestamps and expiry. Suggestions stay `needs_validation`; they never modify the itinerary or budget. [Demo and limitations](#backup-preview-demo).
-- **Standalone backup validation (PR #23):** Check synthetic replacements against an entire sample itinerary, including traveler requirements, costs, scheduling, opening hours and transfers. The read-only validation lab uses its own fixtures and is not connected to saved trips or the shared validator. [Commands and scope](backup/VALIDATION.md).
+- **Connected backup plans:** Address detected risks or traveler-reported changes with up to five different venue, timing or connected-item plans. P1 profile/filter/ledger, P2 risk/policy and P4 version-safe application now connect through a typed alternative contract. Compare and explicitly accept simulated changes from **Backup plans**. [Connected flow and limits](planning/README.md).
+- **Backup validation:** Check complete proposed itineraries for traveler requirements, costs, scheduling, opening hours, routes, dependencies and fixed items. Missing facts remain unresolved and cannot be accepted. Passing has explicit synthetic scope. [Integration](planning/README.md) and [legacy validator](backup/VALIDATION.md).
+- **Backup refresh:** Reconfirm inventory before acceptance; changed prices, sold-out or expired evidence and provider failures block old conclusions. The standalone sample lab retains its explicit fault-injection scenarios. Search and refresh do not change active itinerary items. [Refresh demo](backup/VALIDATION.md#refreshing-synthetic-inventory).
+- **Saved refresh history:** Store versioned sample and saved-trip observations separately from trips, inspect historical outcomes in diagnostics and restore controls after reopening. Current checks always require an explicit refresh. [Storage and UI guide](backup/HISTORY.md).
+- **Legacy candidate backfill:** The preserved sample/history workflow refreshes the full synthetic pool before selecting up to two alternatives; the connected flow above supports up to five. Rejected or unavailable options can be replaced by eligible candidates, and one/no-option outcomes are explained. Normal demo pages hide diagnostics. [Selection policy and examples](backup/SELECTION.md).
 - **Replanning:** Simulate delayed/interrupted items, combine synthetic backup inventory, edit dependencies and schedule rules, optionally use a Jac LLM to select combinations, and accept/reject version-safe revisions. Try the separate demo trip from the sidebar; see [the replanning guide](replan/README.md).
 - **Persistence:** Web and CLI share `.jac/data/travel.sqlite3`, independent of GoPlanner. Stable IDs, transactional writes, date/time/amount validation, and deletion confirmations protect your records.
 - **Responsive design:** A business-style navy, slate, and white interface with a flat trip overview, trip sidebar, overview cards, and five planning tabs. The web interface adapts to phones and tablets.
 
+## Guided backup and replan demo
+
+For the connected P1/P2/P3/P4 flow, choose **Try connected backup plans** in the
+sidebar, or the weather/arrival-delay sample buttons in **Backup plans**. Those
+plans are directly reviewed and passed to P4. The older guided demo below is
+retained as a separate legacy example.
+
+Click **Start backup & replan demo** in the sidebar. Each start saves a separate Boston/USD trip with six scheduled items, a USD 1,500 budget, dependencies and a protected museum visit.
+
+1. **Generate backups:** Dinner is preselected. Click **Find backup plans** to fetch up to two synthetic dining alternatives. For rain backups, select the rain scenario and **Outdoor harbor walk**.
+2. **Simulate & replan:** Continue, keep **Flight arrival** delayed by **180 minutes**, and click **Generate replan options**. Compare three alternatives, optionally build a custom combination, then accept or reject a proposal.
+3. **Updated itinerary:** Acceptance persists the revision and opens an original-versus-saved schedule with revised costs. Click **Open updated itinerary** to inspect the regular workspace.
+
+Backup previews and proposal generation leave itinerary items unchanged. Acceptance updates only this demo trip. The backup preview catalog and replanning catalog are separate synthetic modules; preview cards are not directly applied. No provider credentials are required.
+
+## Workspace navigation
+
+Use the three workflow shortcuts to **build your itinerary → generate backup plans → replan a disruption**.
+
+- **Itinerary:** Add and edit the active trip's activities, meals, stays and transport.
+- **Backup plans:** Record traveler/trip facts, select detected risks or report a change, compare up to five complete alternatives, reject or explicitly accept a validated simulated plan.
+- **Replan:** Report a delay or interruption, generate replan options, compare changes and explicitly accept or reject a revised plan. Expand **Schedule rules and dependencies** to configure timing and connections; customize backup combinations below the proposals.
+- **Bookings, Packing list, Budget:** Manage reservations, essentials and trip spending.
+
+The connected Backup plans flow applies only after explicit acceptance. The
+legacy stateless previews and separate sample lab remain read-only.
+
 ## Start the app
 
-From this folder:
+For a new checkout, use the repository-root
+[setup and complete verification scripts](../docs/LOCAL_VERIFICATION.md).
+They pin Jac 0.37.23, create an independent Python 3.14 environment, build a
+sealed package, and verify non-development HTTP/CLI behavior. The guide also
+records the version-specific build compatibility command and packaged-run setup.
+
+From the repository root on the connected review branch:
 
 ```sh
-jac --version
-jac install
-jac run --dev travel
+bash scripts/setup.sh
+cd travel-planner
+../.tools/jac-0.37.23 run --dev travel
 ```
+
+For the CLI and focused examples below, `jac` means this checksum-verified
+0.37.23 executable; invoke `../.tools/jac-0.37.23` if your shell resolves another version.
 
 Open the **App** URL printed by Jac. Create a trip, then add details using the itinerary, bookings, packing, and budget tabs. Use **Edit trip** for notes or a budget. Refresh to see changes made through the CLI or another browser.
 
-If Jac is missing from your shell:
-
-```sh
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-A fresh clone does not include `.jac/venv`. Use a working Jac installation to provision dependencies; do not rely on another developer's sibling project. The manifest pins Jac 0.37.23; see the [verification boundary](../docs/PROGRESS.md#latest-verification-boundary) for dated validation results.
+A fresh clone needs an independent Python 3.14 environment; `setup.sh` creates it and installs the declared dependencies. See the [current verification guide](../docs/LOCAL_VERIFICATION.md).
 
 ## CLI
 
@@ -65,28 +102,52 @@ Editing trip and item details is available in the web app. CLI `done` means comp
 
 ## Backup preview demo
 
+The current saved-trip UI uses the [connected planning flow](planning/README.md).
+This section describes the preserved legacy preview APIs and sample/history lab.
+
 From `travel-planner/`, run the deterministic, storage-free demo:
 
 ```sh
 jac run backup/demo.jac
 ```
 
-In the web app, create a Boston/USD trip and add a dated, unfinished activity and dining item. In **Itinerary**, choose **Rain affects an outdoor activity** or **Delayed arrival affects dinner**, select the original item, and prepare Plan B/C. The panel shows up to two drafts with activation conditions, synthetic prices, mock sources, checked/expiry times and validation notes. Switching trips, scenarios or items clears the previous result. When the earliest evidence expires, the panel removes the drafts and prompts a refresh.
+In the standalone `backup_refresh` app's sample view, choose rain or delayed
+arrival and **Find backup plans**. The legacy saved-trip panel can be inspected
+through its explicit diagnostics entry. These fixture endpoints retain their
+search, refresh, history and evidence-expiry behavior.
 
-Unsupported locations/currencies show an empty result or exclusion reasons. Unavailable/unknown inventory, missing sources, expired timestamps and invalid evidence are excluded. Preview success and failure preserve saved trip/items and costs. Drafts remain `needs_validation`; full-trip constraints, automatic risks, live inventory, comparison, acceptance, booking and trip changes are separate work.
+Unsupported locations/currencies show an empty result or exclusion reasons.
+The legacy endpoints preserve saved trip/items and costs; missing facts remain
+unresolved. Their current and historical results retain change explanations.
+See the [legacy workflow guide](backup/WORKFLOW.md).
 
-The draft contract is in `backup/models.jac`, the search/refresh adapter in `tools/alternatives/mock.jac`, and the public endpoint is `preview_backups(trip_id, item_id, trigger)`. These are local mock contracts, not the final shared AlternativePlan schema.
+The original `backup/models.jac`, `preview_backups`, `load_trip_backup_history`
+and `save_trip_backup_refresh` remain compatible. New connected proposals use
+`schema/alternative.jac` and the service interfaces in [planning/README.md](planning/README.md).
 
 ### Standalone full-itinerary validation demo
 
 The implementation in [PR #23](https://github.com/howarddong0485/Travel-Disruption-Replanner/pull/23) adds a separate synthetic validation lab. From this folder:
 
 ```sh
-python3 -m backup.validation_demo --scenario rain --budget 450
-python3 -m unittest backup.test_validation -v
+jac run backup/validation_demo.jac -- --scenario rain --budget 450
+jac test backup/test_validation.jac
 ```
 
-The rain example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. In Roam, expand **Plan B / C · Validation lab** and choose **Run sample checks**. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the dated progress record](../docs/PROGRESS.md#progress-snapshot--2026-10-21).
+This legacy CLI example returns a USD 440 whole-trip Plan B that passes the implemented fixture checks and rejects a USD 470 Plan C against the USD 450 budget. The current `backup_refresh` page uses the expanded pool and fills that second slot with the eligible USD 425 covered market. It offers **Synthetic sample trip** and **Find backup plans**; Roam's **Backup plans** tab uses the selected saved itinerary. Both default to a presentation view without developer check records. Add `?diagnostics=1` to the standalone URL to inspect search traces, checks and history. A passing fixture result is not shared-validator approval or permission to book/apply a replacement. See [the validation guide](backup/VALIDATION.md) and [the current workflow guide](backup/WORKFLOW.md).
+
+To run the changing-inventory sequence and its isolated web demo:
+
+```sh
+jac run backup/refresh_demo.jac
+jac test backup/test_refresh.jac server/test_refresh.jac
+jac run --host 127.0.0.1 --port 8320 backup_refresh
+```
+
+Fresh results include **What changes?** explanations for original/proposed totals,
+cost differences, budget remaining and elapsed-time changes. History preserves
+the recorded values. See [backup change explanations](backup/CHANGES.md) for
+examples, calculation semantics and verification.
 
 ### Browser regression check
 
@@ -116,8 +177,8 @@ The script creates and deletes its own synthetic trips. It checks both scenarios
 | Web | `main.jac`, `frontend.jac`, `frontend.impl.jac`, `styles.css` | Trip workspace and responsive browser UI |
 | Service | `server/main.jac` | Shared trip/item API, validation, and SQLite storage |
 | CLI | `cli/main.jac` | Terminal commands using the same service |
-| Standalone backup validation | `backup/validation.py`, `backup/validation_models.py`, `backup/validation_fixtures.py`, `backup/validation_demo.py`, `backup/validation_frontend.jac` | Synthetic full-itinerary checks, CLI and read-only lab from PR #23 |
-| Tests | `server/main.test.jac`, `backup/test_planner.jac`, `server/test_backup.jac`, `tests/backup_preview.browser.cjs` | Service regressions, draft screening, read-only storage checks, and browser states/expiry |
+| Standalone backup validation | `backup/validation.jac`, `backup/validation_models.jac`, `backup/validation_fixtures.jac`, `backup/validation_demo.jac`, `backup/validation_frontend.jac` | Synthetic full-itinerary checks, CLI and read-only lab from PR #23 |
+| Tests | `server/main.test.jac`, `backup/test_planner.jac`, `backup/test_validation.jac`, `server/test_backup.jac`, `server/test_validation.jac`, `tests/backup_preview.browser.cjs` | Service regressions, draft screening, full-itinerary validation, read-only storage checks, and browser states/expiry |
 | Configuration | `jac.toml` | Jac version, dependencies, and app declarations |
 
 ## Data and planning rules
@@ -137,11 +198,14 @@ jac check --nowarn
 jac test server/main.test.jac
 jac test backup/test_planner.jac
 jac test server/test_backup.jac
-python3 -m unittest backup.test_validation -v
+jac test backup/test_validation.jac
 jac test server/test_validation.jac
 jac test profile/test_models.jac
 jac test filter/test_evaluate.jac
+jac test backup/test_refresh.jac server/test_refresh.jac
 jac build travel --as client
+jac test backup/test_history.jac server/test_history.jac
+jac test backup/test_changes.jac
 ```
 
 Tests use temporary SQLite databases. They do not read or modify your saved trips.

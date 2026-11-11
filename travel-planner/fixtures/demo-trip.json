@@ -1,0 +1,127 @@
+{
+  "description": "Synthetic demo trip (mock data). A family flies Detroit to Denver, then drives to Moab.",
+  "fixture_clock": "2026-10-27T12:00:00-04:00",
+  "itinerary": {
+    "trip_id": "demo-denver-family",
+    "version": 1,
+    "nodes": [
+      {
+        "id": "flight-01", "kind": "flight", "title": "Flight DTW to DEN",
+        "tz": "America/Detroit", "start_local": "2026-10-30T09:05",
+        "end_local": "2026-10-30T10:35", "end_tz": "America/Denver",
+        "location": "DTW", "area": "Denver, CO", "booking_status": "booked",
+        "policy_id": "pol-flight-01", "currency": "USD", "price_minor": 64000, "paid_minor": 64000
+      },
+      {
+        "id": "car-01", "kind": "car_rental", "title": "Rental car pickup at DEN",
+        "tz": "America/Denver", "start_local": "2026-10-30T11:00", "end_local": "2026-10-30T11:30",
+        "location": "DEN rental center", "area": "Denver, CO", "booking_status": "booked",
+        "currency": "USD", "price_minor": 21000, "paid_minor": 0
+      },
+      {
+        "id": "hotel-01", "kind": "stay", "title": "Pet-friendly hotel, 2 nights",
+        "tz": "America/Denver", "start_local": "2026-10-30T15:00", "end_local": "2026-11-01T11:00",
+        "location": "Downtown Denver", "area": "Denver, CO", "booking_status": "booked",
+        "policy_id": "pol-hotel-01", "currency": "USD", "price_minor": 52000, "paid_minor": 52000,
+        "tags": ["pet_friendly"]
+      },
+      {
+        "id": "dinner-01", "kind": "food", "title": "Dinner at a vegetarian bistro",
+        "tz": "America/Denver", "start_local": "2026-10-30T18:30", "end_local": "2026-10-30T20:00",
+        "location": "Highland, Denver", "area": "Denver, CO", "booking_status": "booked",
+        "tags": ["vegetarian"]
+      },
+      {
+        "id": "hike-01", "kind": "activity", "title": "Red Rocks trail hike",
+        "tz": "America/Denver", "start_local": "2026-10-31T09:00", "end_local": "2026-10-31T12:00",
+        "location": "Red Rocks Park", "area": "Denver, CO", "tags": ["outdoor", "pet_friendly"]
+      },
+      {
+        "id": "museum-01", "kind": "activity", "title": "Nature and science museum",
+        "tz": "America/Denver", "start_local": "2026-10-31T14:00", "end_local": "2026-10-31T17:30",
+        "location": "City Park, Denver", "area": "Denver, CO", "booking_status": "booked",
+        "policy_id": "pol-museum-01", "currency": "USD", "price_minor": 8800, "paid_minor": 8800,
+        "tags": ["indoor"]
+      },
+      {
+        "id": "drive-01", "kind": "drive", "title": "Drive to Moab",
+        "tz": "America/Denver", "start_local": "2026-11-01T11:30", "end_local": "2026-11-01T17:15",
+        "location": "Denver to Moab", "area": "Moab, UT"
+      }
+    ],
+    "edges": [
+      {"source_id": "flight-01", "target_id": "car-01", "relation": "depends_on", "min_transition_minutes": 45},
+      {"source_id": "car-01", "target_id": "hotel-01", "relation": "precedes"},
+      {"source_id": "hike-01", "target_id": "museum-01", "relation": "precedes"},
+      {"source_id": "hotel-01", "target_id": "drive-01", "relation": "precedes"}
+    ]
+  },
+  "policies": [
+    {
+      "id": "pol-flight-01", "booking_node_id": "flight-01", "scope": "Basic Economy fare, 3 passengers",
+      "tz": "America/Detroit", "currency": "USD", "retrieved_at": "2026-10-27T09:00:00-04:00",
+      "source_text": "Basic Economy tickets are non-refundable and cannot be changed after 24 hours from purchase.",
+      "tiers": [
+        {"evidence_id": "ev-flight-terms", "refund_percent": 0, "refund_form": "none"}
+      ],
+      "no_show_refund_percent": 0, "no_show_evidence_id": "ev-flight-terms"
+    },
+    {
+      "id": "pol-hotel-01", "booking_node_id": "hotel-01", "scope": "Standard queen room, flexible rate",
+      "tz": "America/Denver", "currency": "USD", "retrieved_at": "2026-10-27T09:00:00-04:00",
+      "source_text": "Free cancellation until 6:00 PM local time on October 28, 2026. Cancellations after that time are charged one night's rate ($260.00); the remainder is refunded to the original payment method. No-shows are charged the full stay.",
+      "tiers": [
+        {"evidence_id": "ev-hotel-free", "deadline_local": "2026-10-28T18:00", "refund_percent": 100, "fee_minor": 0, "refund_form": "cash"},
+        {"evidence_id": "ev-hotel-late", "refund_percent": 100, "fee_minor": 26000, "refund_form": "cash"}
+      ],
+      "no_show_refund_percent": 0, "no_show_evidence_id": "ev-hotel-noshow"
+    },
+    {
+      "id": "pol-museum-01", "booking_node_id": "museum-01", "scope": "Timed-entry tickets, 2 adults and 1 child",
+      "tz": "America/Denver", "currency": "USD", "retrieved_at": "2026-10-27T09:00:00-04:00",
+      "source_text": "Ticket refunds may be considered at the museum's discretion.",
+      "tiers": [
+        {"evidence_id": "ev-museum-terms", "refund_form": "unknown"}
+      ],
+      "unknowns": ["refund percentage"]
+    }
+  ],
+  "evidence": [
+    {"id": "ev-flight-terms", "source_ref": "fixture:airline-fare-rules", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "Basic Economy tickets are non-refundable and cannot be changed after 24 hours from purchase."},
+    {"id": "ev-hotel-free", "source_ref": "fixture:hotel-confirmation", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "Free cancellation until 6:00 PM local time on October 28, 2026."},
+    {"id": "ev-hotel-late", "source_ref": "fixture:hotel-confirmation", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "Cancellations after that time are charged one night's rate ($260.00); the remainder is refunded to the original payment method."},
+    {"id": "ev-hotel-noshow", "source_ref": "fixture:hotel-confirmation", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "No-shows are charged the full stay."},
+    {"id": "ev-museum-terms", "source_ref": "fixture:museum-ticket-terms", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "Ticket refunds may be considered at the museum's discretion."},
+    {"id": "ev-forecast-1031", "source_ref": "fixture:weather-forecast", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "Denver, Oct 31 06:00-12:00: rain showers, 70% chance of precipitation."},
+    {"id": "ev-hours-dinner", "source_ref": "fixture:place-details", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "Friday hours: 5:00 PM - 9:00 PM."},
+    {"id": "ev-hours-hike", "source_ref": "fixture:place-details", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "Park open daily 5:00 AM - 11:00 PM."},
+    {"id": "ev-hours-museum", "source_ref": "fixture:place-details", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "Saturday hours: 9:00 AM - 5:00 PM."},
+    {"id": "ev-est-car-hotel", "source_ref": "fixture:routing", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "DEN rental center to Downtown Denver: about 40 minutes by car."},
+    {"id": "ev-est-hike-museum", "source_ref": "fixture:routing", "retrieved_at": "2026-10-27T09:00:00-04:00",
+     "excerpt": "Red Rocks Park to City Park: about 50 minutes by car."}
+  ],
+  "place_hours": [
+    {"node_id": "dinner-01", "date": "2026-10-30", "open_local": "17:00", "close_local": "21:00", "evidence_id": "ev-hours-dinner"},
+    {"node_id": "hike-01", "date": "2026-10-31", "open_local": "05:00", "close_local": "23:00", "evidence_id": "ev-hours-hike"},
+    {"node_id": "museum-01", "date": "2026-10-31", "open_local": "09:00", "close_local": "17:00", "evidence_id": "ev-hours-museum"}
+  ],
+  "forecasts": [
+    {"id": "fc-denver-1031-am", "area": "Denver, CO", "tz": "America/Denver",
+     "start_local": "2026-10-31T06:00", "end_local": "2026-10-31T12:00",
+     "condition": "rain showers", "precip_probability_pct": 70, "evidence_id": "ev-forecast-1031"}
+  ],
+  "travel_estimates": [
+    {"from_node_id": "car-01", "to_node_id": "hotel-01", "mode": "drive", "minutes": 40, "evidence_id": "ev-est-car-hotel"},
+    {"from_node_id": "hike-01", "to_node_id": "museum-01", "mode": "drive", "minutes": 50, "evidence_id": "ev-est-hike-museum"}
+  ]
+}

@@ -86,6 +86,36 @@ test "party problems are reported" {
     assert "needs a species" in problems_text(profile) and "Pet size 'huge'" in problems_text(profile);
 }
 
+test "booleans and non-whole numbers are rejected for adults and child ages" {
+    # Typed as `any` so the wrong values reach the checker, as they could from JSON or a teammate's code.
+    bad_adult_counts: list[any] = [True, False, 2.0];
+    for bad_adults in bad_adult_counts {
+        profile = solo_traveler();
+        profile.adults = bad_adults;
+        assert "Number of adults must be a whole number" in problems_text(profile), repr(bad_adults);
+        rejected = False;
+        try { require_valid_profile(profile); }
+        except ValueError { rejected = True; }
+        assert rejected, repr(bad_adults);
+    }
+    bad_child_ages: list[any] = [True, False, 6.5];
+    for bad_age in bad_child_ages {
+        profile = family_with_pet_vegetarian();
+        profile.child_ages = [bad_age];
+        assert "Each child age must be a whole number" in problems_text(profile), repr(bad_age);
+        rejected = False;
+        try { require_valid_profile(profile); }
+        except ValueError { rejected = True; }
+        assert rejected, repr(bad_age);
+    }
+}
+
+test "boundary child ages 0 and 17 are accepted" {
+    profile = family_with_pet_vegetarian();
+    profile.child_ages = [0, 17];
+    assert profile_problems(profile) == [];
+}
+
 test "requirement problems are reported" {
     profile = family_with_pet_vegetarian();
     profile.requirements[1].id = "req-vegetarian";
