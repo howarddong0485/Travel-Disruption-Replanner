@@ -4,6 +4,7 @@ import re;
 import uuid;
 import sqlite3;
 import datetime;
+import json;
 import from decimal { Decimal }
 import from backup.models { BackupPreview }
 import from backup.planner { prepare as prepare_backup }
@@ -11,9 +12,100 @@ import from replan.engine { install_schema, snapshot, save_rules, save_dependenc
     prepare, candidates, model_packet, store_proposals, decide, seed_demo, custom_proposal }
 import from replan.agent { select_combinations }
 import from backup.validation_fixtures { run_fixture }
+import from backup.history { read_history, save_refresh }
+import from backup.history { append_snapshot, clock, identifier }
+import from backup.saved_inputs { trip_session, saved_inputs, saved_fingerprint }
+import from backup.workflow { run_workflow }
+import from planning.context { install_context_schema, read_facts, check_payload, build_context, public_context }
+import from planning.engine { generate_plans, VALIDATION_VERSION }
+import from planning.fixtures { sample_state }
+
+def _backup_source(trip_id: str) -> tuple[dict[str, any], list[dict[str, any]]] {
+    conn = _connect();
+    try {
+        conn.execute("BEGIN");
+        trip = dict(_require_trip(conn, trip_id));
+        items = [dict(row) for row in conn.execute("SELECT * FROM items WHERE trip_id=? ORDER BY id", (trip_id,))];
+        return (trip, items);
+    } finally { conn.close(); }
+}
+
+def _trip_history(session_id: str, trip: dict[str, any], items: list[dict[str, any]], now: datetime.datetime) -> dict[str, any] {
+    data = read_history(trip_session(session_id, trip["id"]), now);
+    fingerprint = saved_fingerprint(trip, items);
+    for record in data["entries"] {
+        if record["context"].get("base_snapshot") != fingerprint { record["reasons"].append("trip_changed"); }
+    }
+    data["base_snapshot"] = fingerprint;
+    data["targets"] = [{"id": item["id"], "title": item["title"], "date": item["date"], "category": item["category"]}
+        for item in items if item["date"] and not item["done"] and item["category"] in ("activity", "food")];
+    data["trip_title"] = trip["title"];
+    return data;
+}
+
+def:pub load_trip_backup_history(session_id: str, trip_id: str) -> dict[str, any] {
+    (trip, items) = _backup_source(trip_id);
+    return _trip_history(session_id, trip, items, clock());
+}
+
+def:pub save_trip_backup_refresh(session_id: str, request_id: str, expected_revision: any,
+    trip_id: str, item_id: str, expected_base_snapshot: str, trigger: str = "rain",
+    inventory_change: str = "unchanged") -> dict[str, any] {
+    if type(expected_revision) is not int or expected_revision < 0 { raise ValueError("Expected revision must be a nonnegative integer"); }
+    identifier(session_id); identifier(request_id);
+    now = clock(); (trip, items) = _backup_source(trip_id);
+    fingerprint = saved_fingerprint(trip, items);
+    if expected_base_snapshot != fingerprint {
+        current = _trip_history(session_id, trip, items, now);
+        return {"outcome": "trip_changed", "replayed": False, "revision": current["revision"], "report": None, "history": current};
+    }
+    (context_trip, risk) = saved_inputs(trip, items, item_id, trigger);
+    result_data = run_workflow(context_trip, risk, trip["destination"], inventory_change, now, sample=False);
+    target = next(item for item in items if item["id"] == item_id);
+    context = {"source": "saved_trip", "trip_id": trip_id, "item_id": item_id, "base_snapshot": fingerprint, "currency": trip["currency"],
+        "scenario": trigger, "profile_name": "unknown", "budget": format(Decimal(trip["budget_cents"]) / 100, "f"),
+        "inventory_change": inventory_change, "sample_date": target["date"]};
+    result_data.update({"scope": "saved_trip_mock", "trip_date": target["date"], "trip_zone": "Not recorded",
+        "base_snapshot": fingerprint, "profile_summary": "Saved trip: " + trip["title"] + ". Traveler requirements are not supplied.",
+        "message": "Searched and checked synthetic alternatives against this saved itinerary. Missing trip facts remain unresolved. No trip was changed."
+            if result_data["results"] else result_data["message"]});
+    # A trip edit during search cannot publish a current result from an old snapshot.
+    (latest_trip, latest_items) = _backup_source(trip_id);
+    if saved_fingerprint(latest_trip, latest_items) != fingerprint {
+        current = _trip_history(session_id, latest_trip, latest_items, clock());
+        return {"outcome": "trip_changed", "replayed": False, "revision": current["revision"], "report": None, "history": current};
+    }
+    response = append_snapshot(trip_session(session_id, trip_id), request_id, expected_revision, context, result_data, now);
+    (latest_trip, latest_items) = _backup_source(trip_id);
+    response["history"] = _trip_history(session_id, latest_trip, latest_items, clock());
+    if response["revision"] != response["history"]["revision"] or response["history"]["base_snapshot"] != fingerprint {
+        response["report"] = None;
+    }
+    return response;
+}
+def:pub load_backup_history(session_id: str) -> dict[str, any] {
+    return read_history(session_id);
+}
+
+def:pub save_backup_refresh(session_id: str, request_id: str, expected_revision: any,
+    scenario: str = "rain", profile_name: str = "family", budget: str = "600",
+    inventory_change: str = "unchanged", sample_date: str = "") -> dict[str, any] {
+    # Preserve raw JSON types: the bridge would otherwise coerce True or "1" to int.
+    if type(expected_revision) is not int or expected_revision < 0 {
+        raise ValueError("Expected revision must be a nonnegative integer");
+    }
+    return save_refresh(session_id, request_id, expected_revision, scenario, profile_name,
+        budget, inventory_change, sample_date);
+}
 
 def:pub preview_backup_validation(scenario: str = "rain", profile_name: str = "family", budget: str = "600") -> dict[str, any] {
     return run_fixture(scenario, profile_name, budget);
+}
+
+def:pub refresh_backup_validation(scenario: str = "rain", profile_name: str = "family",
+    budget: str = "600", inventory_change: str = "unchanged", sample_date: str = "") -> dict[str, any] {
+    if not inventory_change { raise ValueError("Choose an inventory change"); }
+    return run_fixture(scenario, profile_name, budget, inventory_change=inventory_change, sample_date=sample_date);
 }
 
 obj TripView {
@@ -38,7 +130,142 @@ def _connect -> sqlite3.Connection {
     conn.execute("CREATE INDEX IF NOT EXISTS items_trip ON items(trip_id)");
     conn.commit();
     install_schema(conn);
+    install_context_schema(conn);
     return conn;
+}
+
+def:pub planning_state(trip_id: str) -> dict[str, any] {
+    conn = _connect();
+    try {
+        conn.execute("BEGIN");
+        result = public_context(build_context(snapshot(conn, trip_id), read_facts(conn, trip_id), clock()));
+        result["review_statuses"] = {};
+        for row in conn.execute("SELECT id,status,payload FROM replan_proposals WHERE trip_id=? ORDER BY rowid DESC LIMIT 100", (trip_id,)) {
+            proposal = json.loads(row["payload"]);
+            result["review_statuses"][row["id"]] = "incompatible" if row["status"] == "proposed" and proposal.get("plan_contract") == "roam.alternative-plan.v1" and proposal.get("validator_version") != VALIDATION_VERSION else row["status"];
+        }
+        return result;
+    } finally { conn.close(); }
+}
+
+def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_version: any) -> dict[str, any] {
+    if type(expected_version) is not int or expected_version < 1 { raise ValueError("Expected trip version must be a positive integer"); }
+    conn = _connect();
+    try {
+        conn.execute("BEGIN IMMEDIATE");
+        state = snapshot(conn, trip_id);
+        if state["version"] != expected_version { raise ValueError("Trip changed; reload before saving planning facts"); }
+        facts = check_payload(payload, state);
+        build_context(state, facts, clock());
+        conn.execute("DELETE FROM planning_fact_invalidations WHERE trip_id=?", (trip_id,));
+        conn.execute("INSERT INTO planning_contexts VALUES (?,?) ON CONFLICT(trip_id) DO UPDATE SET payload=excluded.payload",
+            (trip_id, json.dumps(facts, sort_keys=True, allow_nan=False)));
+        result = public_context(build_context(snapshot(conn, trip_id), facts, clock()));
+        conn.commit(); return result;
+    } except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
+
+def _replay_planning_run(conn: any, payload: str, version: int, now: any) -> dict[str, any] {
+    recorded = json.loads(payload); recorded["replayed"] = True;
+    for plan in recorded["plans"] {
+        stored = conn.execute("SELECT status FROM replan_proposals WHERE id=?", (plan["id"],)).fetchone();
+        if stored is None or stored["status"] != "proposed" { plan["selectable"] = False; plan["review_status"] = stored["status"] if stored else "removed"; }
+        if plan.get("validator_version") != VALIDATION_VERSION or plan["base_version"] != version or datetime.datetime.fromisoformat(plan["expires_at"]) <= now {
+            plan["selectable"] = False; plan["stale"] = True;
+        }
+    }
+    return recorded;
+}
+
+def:pub generate_backup_plans(trip_id: str, expected_version: any, max_plans: any, risk_ids: list[str],
+    use_llm: bool = False, request_id: str = "", exclude_candidate_ids: list[str] = []) -> dict[str, any] {
+    if type(expected_version) is not int or expected_version < 1 { raise ValueError("Expected trip version must be a positive integer"); }
+    if type(max_plans) is not int or not 1 <= max_plans <= 5 { raise ValueError("Choose one to five plans"); }
+    # Jac 0.37.23's HTTP bridge retains an omitted list default as literal text.
+    if exclude_candidate_ids is None or exclude_candidate_ids == "[]" { exclude_candidate_ids = []; }
+    if not isinstance(exclude_candidate_ids, list) or len(exclude_candidate_ids) > 256 or any(not isinstance(key, str) or not re.fullmatch(r"plan-[0-9a-f]{20}", key) for key in exclude_candidate_ids) {
+        raise ValueError("Invalid candidate exclusions");
+    }
+    request_id = identifier(request_id or str(uuid.uuid4()));
+    request_data = {"trip_id": trip_id, "version": expected_version, "risks": risk_ids, "limit": max_plans, "llm": use_llm};
+    if exclude_candidate_ids { request_data["exclude_candidate_ids"] = sorted(set(exclude_candidate_ids)); }
+    request_hash = json.dumps(request_data, sort_keys=True);
+    conn = _connect();
+    try {
+        conn.execute("BEGIN");
+        state = snapshot(conn, trip_id);
+        previous = conn.execute("SELECT * FROM planning_runs WHERE id=?", (request_id,)).fetchone();
+        if previous is not None {
+            if previous["request_hash"] != request_hash { raise ValueError("Request ID was used with different inputs"); }
+            return _replay_planning_run(conn, previous["payload"], state["version"], clock());
+        }
+        if state["version"] != expected_version { raise ValueError("Trip changed; reload before finding plans"); }
+        context = build_context(state, read_facts(conn, trip_id), clock());
+        excluded = set(exclude_candidate_ids);
+        for row in conn.execute("SELECT payload FROM replan_proposals WHERE trip_id=? AND base_version=? AND status='rejected'", (trip_id, expected_version)) {
+            rejected_plan = json.loads(row["payload"]);
+            if rejected_plan.get("plan_contract") == "roam.alternative-plan.v1" { excluded.add(rejected_plan["candidate_id"]); }
+        }
+        conn.rollback();
+        generated = generate_plans(context, clock(), risk_ids, max_plans, use_llm, excluded);
+        conn.execute("BEGIN IMMEDIATE");
+        if snapshot(conn, trip_id)["version"] != expected_version { raise ValueError("Trip changed during search; generated plans were not saved"); }
+        # A concurrent identical request may have completed while inventory was searched.
+        previous = conn.execute("SELECT * FROM planning_runs WHERE id=?", (request_id,)).fetchone();
+        if previous is not None {
+            if previous["request_hash"] != request_hash { raise ValueError("Request ID was used with different inputs"); }
+            return _replay_planning_run(conn, previous["payload"], expected_version, clock());
+        }
+        event_id = "backup:" + request_id;
+        conn.execute("INSERT INTO disruption_events(id,trip_id,payload) VALUES (?,?,?)",
+            (event_id, trip_id, json.dumps({"type": "proactive_backup", "trip_id": trip_id, "risk_ids": risk_ids})));
+        for plan in generated["plans"] {
+            plan["candidate_id"] = plan["id"]; plan["id"] = str(uuid.uuid4());
+            conn.execute("INSERT INTO replan_proposals(id,trip_id,event_id,base_version,payload) VALUES (?,?,?,?,?)",
+                (plan["id"], trip_id, event_id, expected_version, json.dumps(plan, sort_keys=True, allow_nan=False)));
+        }
+        generated["request_id"] = request_id; generated["replayed"] = False;
+        conn.execute("INSERT INTO planning_runs VALUES (?,?,?,?)", (request_id, trip_id, request_hash, json.dumps(generated, sort_keys=True, allow_nan=False)));
+        conn.commit(); return generated;
+    } except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
+
+def:pub review_backup_plan(trip_id: str, proposal_id: str, accept: any) -> dict[str, any] {
+    if type(accept) is not bool { raise ValueError("Accept must be an explicit boolean decision"); }
+    conn = _connect();
+    try { return decide(conn, trip_id, proposal_id, accept); }
+    finally { conn.close(); }
+}
+
+def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
+    if scenario not in ("rain", "arrival_delay") { raise ValueError("Choose rain or arrival_delay"); }
+    (sample, facts) = sample_state(clock(), scenario);
+    trip_id = str(uuid.uuid4()); mapping = {i["id"]: str(uuid.uuid4()) for i in sample["items"]};
+    conn = _connect();
+    try {
+        conn.execute("BEGIN IMMEDIATE");
+        trip = sample["trip"];
+        conn.execute("INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)", (trip_id, "Integrated " + ("weather" if scenario == "rain" else "arrival delay") + " demo",
+            "Boston", trip["start_date"], trip["end_date"], "USD", trip["budget_cents"], "Explicit synthetic profile, quotes, hours, routes and risk evidence"));
+        for item in sample["items"] {
+            conn.execute("INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (mapping[item["id"]], trip_id, item["title"], item["category"],
+                item["date"], item["time"], item["location"], "", "Synthetic sample", item["cost_cents"], int(item["done"]), int(item["paid"])));
+            conn.execute("INSERT INTO replan_rules VALUES (?,?,?,?)", (mapping[item["id"]], item["duration_minutes"], item["latest_start"], int(item["fixed"])));
+        }
+        for dependency in sample["dependencies"] {
+            conn.execute("INSERT INTO dependencies VALUES (?,?,?,?)", (trip_id, mapping[dependency["prerequisite_id"]], mapping[dependency["dependent_id"]], dependency["buffer_minutes"]));
+        }
+        facts["items"] = {mapping[key]: value for (key, value) in facts["items"].items()};
+        for route in facts["transfers"] { route["from_id"] = mapping[route["from_id"]]; route["to_id"] = mapping[route["to_id"]]; }
+        for hours in facts["place_hours"] { hours["node_id"] = mapping[hours["node_id"]]; }
+        for risk in facts["manual_risks"] { risk["node_ids"] = [mapping[key] for key in risk["node_ids"]]; }
+        conn.execute("INSERT INTO planning_contexts VALUES (?,?)", (trip_id, json.dumps(facts, sort_keys=True)));
+        current = public_context(build_context(snapshot(conn, trip_id), facts, clock()));
+        conn.commit(); return current;
+    } except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
 }
 
 def _text(value: str, label: str, maximum: int, required: bool = False) -> str {

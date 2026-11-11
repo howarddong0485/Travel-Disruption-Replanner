@@ -1,6 +1,6 @@
 # Data Sources and Integration Plan
 
-All integrations are planned. Start with fixture-backed adapters that share the same contracts as future provider adapters. Provider access, fields, pricing, licensing, and partner approval must be confirmed before implementation. Documentation links below were reviewed on September 30, 2026.
+The mock MVP already uses fixture-backed inventory, policy and risk data through local adapters. The external provider integrations below are future options; none is required for the connected mock flow. Provider access, fields, pricing, licensing, and partner approval must be confirmed before implementation. Documentation links below were reviewed on September 30, 2026.
 
 ## Candidate providers
 
@@ -47,4 +47,4 @@ Keep provider-specific response parsing inside `tools/`. Agents consume normaliz
 5. Refresh volatile prices, availability, operating status, and policy evidence before a consequential decision.
 6. On timeout, quota exhaustion, or stale results, return a clear partial/unavailable state. Never silently substitute mock inventory into a live result.
 
-Before enabling each integration, review its current access requirements, attribution, storage and retention terms, regional availability, rate limits, and cost. No provider credentials or paid services are required for the planned fixture-based MVP.
+Before enabling each integration, review its current access requirements, attribution, storage and retention terms, regional availability, rate limits, and cost. No provider credentials or paid services are required for the current fixture-based MVP.

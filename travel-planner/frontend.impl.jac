@@ -113,8 +113,23 @@ impl app.createDemo -> None {
     if busy or loading { return; } busy = True; error = "";
     try {
         demo = await replan_demo(); selected = demo["trip_id"]; day = "";
-        trip_form = False; tab = "replan"; resetItem(); await refresh();
-        notice = "Mock trip created. Delay Flight arrival by 180 minutes to try the repair flow.";
+        trip_form = False; tab = "demo"; resetItem(); await refresh();
+        notice = "Demo ready. Generate backup plans, simulate a flight delay, then accept a revised itinerary.";
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
+}
+
+impl app.createIntegratedDemo(scenario: str = "rain") -> None {
+    if busy or loading { return; } busy = True; error = "";
+    try {
+        demo = await create_planning_demo(scenario=scenario); selected = demo["trip_id"]; day = "";
+        trip_form = False; tab = "backups"; resetItem(); await refresh();
+        notice = "Sample ready. Find different plans, compare the changes, then keep or accept one.";
+    } except Exception as exc { error = str(exc); }
+    finally { busy = False; }
+}
+
+impl app.backupApplied -> None {
+    await refresh();
+    notice = "Your selected backup plan is saved. No real bookings or payments were made.";
 }
