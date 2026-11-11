@@ -85,6 +85,8 @@ const apiUrl = process.env.TRAVEL_API_URL || 'http://localhost:8001/api/server';
     await page.keyboard.press('Escape');
     await flightPopup.waitFor({state: 'hidden'});
     await page.waitForFunction(id => document.activeElement.id === 'place-details-' + id, regularFlight.id);
+    await page.getByRole('group', {name: 'Itinerary view'}).getByRole('button', {name: 'Map', exact: true}).click();
+    await page.getByRole('region', {name: 'Trip map'}).waitFor();
     await page.getByRole('button', {name: 'Place details for Pike Place dinner'}).click();
     const dinnerPopup = page.getByRole('dialog', {name: 'Details for Pike Place dinner'});
     await dinnerPopup.getByRole('img', {name: dinner.title}).waitFor();
