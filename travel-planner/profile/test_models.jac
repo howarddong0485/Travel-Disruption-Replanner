@@ -3,7 +3,7 @@ import json;
 import from jaclang.data.serializer { Serializer }
 import from profile.models { TravelerProfile, ProfileRequirement, PetDetail, PROFILE_CONTRACT_VERSION }
 import from profile.fixtures { family_with_pet_vegetarian, solo_traveler, contradictory_constraints }
-import from profile.checks { hard_requirements, soft_preferences, profile_problems, require_valid_profile }
+import from profile.checks { hard_requirements, soft_preferences, profile_problems, require_valid_profile, with_pet_requirements }
 
 """Remove the random per-object id Jac adds, so two equal profiles compare equal."""
 def without_object_ids(value: any) -> any {
@@ -57,7 +57,7 @@ test "fixtures serialize to the same JSON every time" {
 
 test "hard requirements and soft preferences are separated" {
     family = family_with_pet_vegetarian();
-    assert codes(hard_requirements(family)) == ["vegetarian", "pet_friendly"];
+    assert codes(hard_requirements(family)) == ["vegetarian", "dog"];
     assert codes(soft_preferences(family)) == ["kids_menu"];
     solo = solo_traveler();
     assert hard_requirements(solo) == [];
@@ -185,4 +185,60 @@ test "helpers do not change the profile and fixtures are independent copies" {
     profile.child_ages.append(1);
     fresh = family_with_pet_vegetarian();
     assert len(fresh.requirements) == 3 and fresh.child_ages == [6];
+}
+
+def pet_codes(profile: TravelerProfile) -> list[str] {
+    result: list[str] = [];
+    for requirement in hard_requirements(profile) {
+        if requirement.category == "pet" {
+            result.append(requirement.code);
+        }
+    }
+    return result;
+}
+
+test "each travelling pet becomes a must-have named by its species" {
+    profile = solo_traveler();
+    profile.pets = [PetDetail(species="dog", size="small"), PetDetail(species="cat", size="unknown")];
+    result = with_pet_requirements(profile);
+    assert pet_codes(result) == ["dog", "cat"];
+    assert [r.id for r in result.requirements][-2:] == ["party-pet-dog", "party-pet-cat"];
+    assert profile_problems(result) == [], problems_text(result);
+
+    # The family already lists its dog, so nothing is added.
+    family = family_with_pet_vegetarian();
+    assert len(with_pet_requirements(family).requirements) == len(family.requirements);
+    assert pet_codes(with_pet_requirements(solo_traveler())) == [];
+}
+
+test "a pet listed only as a preference becomes a must-have" {
+    profile = family_with_pet_vegetarian();
+    profile.requirements[1].strength = "soft";
+    result = with_pet_requirements(profile);
+    assert result.requirements[1].id == "req-pet-dog" and result.requirements[1].strength == "hard";
+    assert len(result.requirements) == 3;
+}
+
+test "an added pet requirement never reuses an existing id" {
+    profile = solo_traveler();
+    profile.pets = [PetDetail(species="cat", size="small")];
+    profile.requirements.append(
+        ProfileRequirement(id="party-pet-cat", category="dietary", code="vegan", strength="soft"));
+    result = with_pet_requirements(profile);
+    assert result.requirements[-1].id == "_party-pet-cat" and result.requirements[-1].code == "cat";
+    assert profile_problems(result) == [], problems_text(result);
+}
+
+test "adding pet requirements does not change the original profile" {
+    profile = solo_traveler();
+    profile.pets = [PetDetail(species="dog", size="small")];
+    before = as_json(profile);
+    result = with_pet_requirements(profile);
+    assert as_json(profile) == before;
+    assert len(profile.requirements) == 2 and len(result.requirements) == 3;
+
+    family = family_with_pet_vegetarian();
+    family.requirements[1].strength = "soft";
+    with_pet_requirements(family);
+    assert family.requirements[1].strength == "soft";
 }

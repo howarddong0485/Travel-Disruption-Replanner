@@ -5,11 +5,11 @@ change its copy without affecting anyone else.
 """
 import from profile.models { TravelerProfile, ProfileRequirement, PetDetail, PROFILE_CONTRACT_VERSION }
 
-"""Two adults, a six-year-old and a dog. Vegetarian and pet-friendly are must-haves."""
+"""Two adults, a six-year-old and a dog. Vegetarian and dog-friendly are must-haves."""
 def family_with_pet_vegetarian -> TravelerProfile {
     requirements = [
         ProfileRequirement(id="req-vegetarian", category="dietary", code="vegetarian", strength="hard"),
-        ProfileRequirement(id="req-pet-friendly", category="pet", code="pet_friendly", strength="hard"),
+        ProfileRequirement(id="req-pet-dog", category="pet", code="dog", strength="hard"),
         ProfileRequirement(id="req-kids-menu", category="child", code="kids_menu", strength="soft",
             note="Nice to have at dinner")
     ];

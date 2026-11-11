@@ -1,7 +1,9 @@
 """Deterministic pass / fail / unknown checks for the mandatory filter."""
 import copy;
 import datetime;
+import from profile.models { PetDetail }
 import from profile.fixtures { family_with_pet_vegetarian, solo_traveler, contradictory_constraints }
+import from profile.checks { with_pet_requirements }
 import from filter.models { FilterResult, FILTER_CONTRACT_VERSION }
 import from filter.fixtures { fixture_clock, veggie_cafe, steakhouse, unverified_bistro, science_museum }
 import from filter.evaluate { evaluate_place }
@@ -27,20 +29,20 @@ test "a place with supporting evidence passes every must-have" {
     assert result.contract_version == FILTER_CONTRACT_VERSION;
     assert result.profile_id == "demo-family" and result.place_id == "veggie-cafe";
     assert result.source_ref == "mock://filter-v1/veggie-cafe";
-    assert statuses(result) == {"req-vegetarian": "pass", "req-pet-friendly": "pass", "party-child-ages": "pass"};
+    assert statuses(result) == {"req-vegetarian": "pass", "req-pet-dog": "pass", "party-child-ages": "pass"};
 }
 
 test "evidence against a must-have fails" {
     result = evaluate_place(family_with_pet_vegetarian(), steakhouse(), fixture_clock());
     assert result.status == "fail";
     assert statuses(result)["req-vegetarian"] == "fail";
-    assert statuses(result)["req-pet-friendly"] == "pass";
+    assert statuses(result)["req-pet-dog"] == "pass";
 }
 
 test "missing evidence is unknown and never pass" {
     result = evaluate_place(family_with_pet_vegetarian(), unverified_bistro(), fixture_clock());
     assert result.status == "unknown";
-    assert statuses(result) == {"req-vegetarian": "unknown", "req-pet-friendly": "unknown", "party-child-ages": "unknown"};
+    assert statuses(result) == {"req-vegetarian": "unknown", "req-pet-dog": "unknown", "party-child-ages": "unknown"};
 
     place = veggie_cafe();
     place.eligibility["dietary:vegetarian"] = None;
@@ -50,9 +52,9 @@ test "missing evidence is unknown and never pass" {
 
 test "fail outranks unknown in the overall status" {
     place = steakhouse();
-    place.eligibility.pop("pet:pet_friendly");
+    place.eligibility.pop("pet:dog");
     result = evaluate_place(family_with_pet_vegetarian(), place, fixture_clock());
-    assert statuses(result)["req-pet-friendly"] == "unknown";
+    assert statuses(result)["req-pet-dog"] == "unknown";
     assert result.status == "fail";
 }
 
@@ -88,7 +90,7 @@ test "expired future malformed or unsourced evidence cannot pass" {
     later = fixture_clock() + datetime.timedelta(minutes=15);
     result = evaluate_place(family_with_pet_vegetarian(), veggie_cafe(), later);
     assert result.status == "unknown";
-    assert statuses(result) == {"req-vegetarian": "unknown", "req-pet-friendly": "unknown", "party-child-ages": "unknown"};
+    assert statuses(result) == {"req-vegetarian": "unknown", "req-pet-dog": "unknown", "party-child-ages": "unknown"};
     assert result.checks[0].reason == "Evidence has expired";
 
     for change in ["future", "no-offset", "garbage", "no-source"] {
@@ -124,4 +126,14 @@ test "evaluation is repeatable and does not change its inputs" {
     assert place.eligibility == eligibility_before;
     assert place.child_min_age == 0 and place.checked_at == "2026-10-06T12:00:00+00:00";
     assert len(profile.requirements) == 3 and profile.child_ages == [6];
+}
+
+test "a pet with no recorded policy for its species stays unknown" {
+    profile = solo_traveler();
+    profile.pets = [PetDetail(species="cat", size="small")];
+    profile = with_pet_requirements(profile);
+    # The cafe records that it allows dogs, which says nothing about cats.
+    result = evaluate_place(profile, veggie_cafe(), fixture_clock());
+    assert statuses(result)["party-pet-cat"] == "unknown";
+    assert result.status == "unknown";
 }

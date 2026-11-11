@@ -4,8 +4,8 @@ A filter answers one question for one place: does it meet each of the
 traveler's must-haves? Every answer is "pass", "fail" or "unknown", with the
 evidence it was based on. Missing or expired evidence is "unknown", never "pass".
 
-Eligibility keys use the same "category:code" form as backup/validation.py,
-for example "dietary:vegetarian" or "pet:pet_friendly".
+Eligibility keys use the same "category:code" form as backup/validation.jac,
+for example "dietary:vegetarian" or "pet:dog". Pet codes name the species.
 """
 
 glob FILTER_CONTRACT_VERSION: str = "person1.mandatory-filter.v1";

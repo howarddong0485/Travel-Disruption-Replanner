@@ -20,16 +20,16 @@ def _place(id: str, category: str, eligibility: dict[str, bool | None],
         source_ref="mock://filter-v1/" + id, checked_at=FIXTURE_NOW, expires_at=FIXTURE_EXPIRES);
 }
 
-"""Serves vegetarian food, allows pets, admits all children."""
+"""Serves vegetarian food, allows dogs, admits all children."""
 def veggie_cafe -> PlaceFacts {
     return _place("veggie-cafe", "food",
-        {"dietary:vegetarian": True, "pet:pet_friendly": True}, 0, 17);
+        {"dietary:vegetarian": True, "pet:dog": True}, 0, 17);
 }
 
-"""Allows pets but has no vegetarian options."""
+"""Allows dogs but has no vegetarian options."""
 def steakhouse -> PlaceFacts {
     return _place("steakhouse", "food",
-        {"dietary:vegetarian": False, "pet:pet_friendly": True}, 0, 17);
+        {"dietary:vegetarian": False, "pet:dog": True}, 0, 17);
 }
 
 """A restaurant nobody has checked: no eligibility facts at all."""
@@ -37,8 +37,8 @@ def unverified_bistro -> PlaceFacts {
     return _place("unverified-bistro", "food", {}, None, None);
 }
 
-"""A museum that allows pets and admits children aged 4 and up."""
+"""A museum that allows dogs and admits children aged 4 and up."""
 def science_museum -> PlaceFacts {
     return _place("science-museum", "activity",
-        {"pet:pet_friendly": True, "child:adults_only": False}, 4, 17);
+        {"pet:dog": True, "child:adults_only": False}, 4, 17);
 }

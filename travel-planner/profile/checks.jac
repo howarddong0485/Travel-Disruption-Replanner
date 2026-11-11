@@ -3,6 +3,7 @@
 Pure functions: they read a profile and never change it. They check that a
 profile is well-formed data. They do not decide whether a trip is feasible.
 """
+import copy;
 import from profile.models {
     TravelerProfile, ProfileRequirement, PROFILE_CONTRACT_VERSION,
     REQUIREMENT_CATEGORIES, REQUIREMENT_STRENGTHS, PACE_VALUES, PET_SIZES
@@ -28,6 +29,48 @@ def soft_preferences(profile: TravelerProfile) -> list[ProfileRequirement] {
         if requirement.strength == "soft" {
             result.append(requirement);
         }
+    }
+    return result;
+}
+
+def _pet_requirement(profile: TravelerProfile, species: str) -> ProfileRequirement | None {
+    for requirement in profile.requirements {
+        if requirement.category == "pet" and requirement.code == species {
+            return requirement;
+        }
+    }
+    return None;
+}
+
+def _unused_requirement_id(profile: TravelerProfile, wanted: str) -> str {
+    taken: list[str] = [];
+    for requirement in profile.requirements {
+        taken.append(requirement.id);
+    }
+    result = wanted;
+    while result in taken {
+        result = "_" + result;
+    }
+    return result;
+}
+
+"""Return a copy of the profile where every travelling pet is a must-have.
+
+Each pet needs a place that accepts its species, so it becomes a hard "pet"
+requirement whose code is the species, for example pet:dog. A listed one is
+made hard; a missing one is added with id "party-pet-<species>". This is the
+rule planning/profile_io.jac applies. The original profile is not changed.
+"""
+def with_pet_requirements(profile: TravelerProfile) -> TravelerProfile {
+    result = copy.deepcopy(profile);
+    for pet in result.pets {
+        listed = _pet_requirement(result, pet.species);
+        if listed is not None {
+            listed.strength = "hard";
+            continue;
+        }
+        new_id = _unused_requirement_id(result, "party-pet-" + pet.species);
+        result.requirements.append(ProfileRequirement(id=new_id, category="pet", code=pet.species, strength="hard"));
     }
     return result;
 }
