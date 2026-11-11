@@ -1,5 +1,7 @@
 """Persistent trip conversation sidebar and the unified AI plan review workspace."""
+import from browser_ids { request_id }
 import from server.main { assistant_state, assistant_chat, assistant_review }
+import from journey.frontend { journeyLabel }
 
 def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int = 0,
     compose: int = 0, composeMode: str = "ask", composeText: str = "", externalBusy: bool = False) -> JsxElement {
@@ -35,7 +37,7 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         busy = True; failure = ""; pendingText = text.strip(); request = sequence.current;
         try {
             fresh = await assistant_chat(trip_id=trip_id, message=pendingText, mode=mode,
-                search=search, request_id=browser.crypto.randomUUID(), api_key=apiKey);
+                search=search, request_id=request_id(browser), api_key=apiKey);
             if alive.current and request == sequence.current {
                 previous = [draft["id"] for draft in data.get("drafts", [])];
                 created = len([draft for draft in fresh.get("drafts", []) if draft["id"] not in previous and draft["status"] == "pending"]) > 0;
@@ -161,6 +163,10 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
         <div className="ai-drafts">{[
             <article key={draft["id"]} className="card ai-draft"><div className="ai-draft-top"><span className="ai-mode-tag">{label(draft["mode"])}</span><span className="ai-estimate-tag">Estimated costs</span></div>
                 <h3>{draft["title"]}</h3><p>{draft["summary"]}</p>
+                {(<div className="ai-trip-edits" aria-label="Proposed journey route"><h4>{journeyLabel(draft["journey"])}</h4>
+                    <ul>{[<li key={stop["id"]}>{stop["city"] + " · " + stop["arrival_date"] + " – " + stop["departure_date"] + " · " + stop["zone"]}</li> for stop in draft["journey"]["stops"]]}</ul>
+                    <p>{str(len(draft["journey"]["legs"])) + " intercity transport legs, including departure and any return travel."}</p>
+                </div>) if draft.get("journey") else None}
                 {(<div className="ai-trip-edits" aria-label="Proposed trip details"><h4>Trip details</h4>{[
                     <div key={edit["field"]}><strong>{edit["label"]}</strong><span>{detail(edit["before"], edit["field"], draft["trip_before"]["currency"])}</span><span aria-hidden="true">→</span><span>{detail(edit["after"], edit["field"], draft["trip_after"]["currency"])}</span></div>
                     for edit in draft.get("trip_edits", [])
@@ -185,6 +191,7 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
                     <div key={str(index)} className="ai-change"><span className="change-type">{"EDIT" if change["item_id"] else "ADD"}</span><div>
                         {(<p className="ai-before">{change["before"]["title"] + " · " + change["before"]["date"] + " " + change["before"]["time"] + " · " + money(change["before"]["cost_cents"])}</p>) if change["before"] else None}
                         <h4>{change["after"]["title"]}</h4><p>{change["after"]["date"] + " · " + change["after"]["time"] + " · " + str(change["after"]["duration_minutes"]) + " min"}</p>
+                        {(<p>{change["after"]["journey"]["zone"] + " → " + change["after"]["journey"]["arrival_date"] + " " + change["after"]["journey"]["arrival_time"] + " " + change["after"]["journey"]["end_zone"]}</p>) if change["after"].get("journey") else None}
                         <p>{change["after"]["location"]}</p><strong>{"Unknown price" if change["price_unknown"] else money(change["after"]["cost_cents"], draft.get("trip_after", {}).get("currency", currency))}</strong>
                         {(<p className="ai-change-notes">{change["after"]["notes"]}</p>) if change["after"]["notes"] else None}
                     </div></div> for (index, change) in enumerate(draft["changes"])

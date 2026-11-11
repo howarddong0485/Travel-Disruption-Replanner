@@ -6,6 +6,7 @@ import sqlite3;
 import datetime;
 import json;
 import from decimal { Decimal }
+import from dataclasses { asdict }
 import from backup.models { BackupPreview }
 import from backup.planner { prepare as prepare_backup }
 import from replan.engine { install_schema, snapshot, save_rules, save_dependency,
@@ -16,12 +17,45 @@ import from backup.history { read_history, save_refresh }
 import from backup.history { append_snapshot, clock, identifier }
 import from backup.saved_inputs { trip_session, saved_inputs, saved_fingerprint }
 import from backup.workflow { run_workflow }
-import from planning.context { install_context_schema, read_facts, check_payload, build_context, public_context }
-import from planning.engine { generate_plans, VALIDATION_VERSION }
+import from backup.validation { instant }
+import from planning.context { CONTEXT_VERSION, install_context_schema, read_facts, check_payload, build_context, public_context }
+import from planning.engine { at_time, generate_plans, VALIDATION_VERSION }
 import from planning.fixtures { sample_state }
+import from itinerary.place_data { read_place_details, write_place_details }
+import from itinerary.map_data { install_map_schema, save_map_route, map_points, current_map_plans }
 import assistant.workflow as ai_workflow;
 import assistant.provider as ai_provider;
 import assistant.preferences as ai_preferences;
+import journey.model as journey_model;
+
+def:pub journey_state(trip_id: str) -> dict[str, any] {
+    conn = _connect();
+    try {
+        state = snapshot(conn, trip_id); journey = state["journey"];
+        issues = [];
+        if journey is not None {
+            try { issues = journey_model.validate(journey, state["trip"], state["items"], complete=False); }
+            except ValueError as error { issues = [str(error)]; }
+        }
+        return {"journey": journey, "version": state["version"], "issues": issues};
+    } finally { conn.close(); }
+}
+
+def:pub save_journey(trip_id: str, payload: dict[str, any], expected_version: any) -> dict[str, any] {
+    conn = _connect();
+    try {
+        conn.execute("BEGIN IMMEDIATE"); state = snapshot(conn, trip_id);
+        if type(expected_version) is not int or expected_version != state["version"] { raise ValueError("Your trip changed. Reload the route before saving."); }
+        journey = journey_model.normalize(payload, state["trip"]);
+        journey_model.validate(journey, state["trip"], state["items"], complete=False);
+        journey_model.write(conn, trip_id, journey);
+        conn.execute("UPDATE trips SET departure_location=?,return_location=?,destination=? WHERE id=?",
+            (journey["origin"]["city"], journey["return_to"]["city"] if journey["return_to"] else "", journey["stops"][0]["city"], trip_id));
+        conn.commit();
+    } except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+    return journey_state(trip_id);
+}
 
 def:pub assistant_save_preferences(trip_id: str, pet_friendly: any, pace: str, expected_version: any) -> dict[str, any] {
     conn = _connect();
@@ -229,10 +263,13 @@ def:pub refresh_backup_validation(scenario: str = "rain", profile_name: str = "f
 obj TripView {
     has id: str, title: str, destination: str, start_date: str, end_date: str,
         currency: str, budget_cents: int, notes: str;
+    has departure_location: str = "", return_location: str = "";
 }
 obj ItemView {
     has id: str, trip_id: str, title: str, category: str, date: str, time: str,
         location: str, reference: str, notes: str, cost_cents: int, done: bool, paid: bool;
+    has journey: dict[str, any] = {};
+    has duration_minutes: int = 60;
 }
 
 def _connect -> sqlite3.Connection {
@@ -244,13 +281,56 @@ def _connect -> sqlite3.Connection {
     conn.execute("PRAGMA foreign_keys = ON");
     conn.execute("PRAGMA journal_mode = WAL");
     conn.execute("CREATE TABLE IF NOT EXISTS trips (id TEXT PRIMARY KEY, title TEXT NOT NULL, destination TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, currency TEXT NOT NULL, budget_cents INTEGER NOT NULL, notes TEXT NOT NULL)");
+    # Add optional route endpoints to existing databases without touching saved trips.
+    conn.execute("BEGIN IMMEDIATE");
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(trips)")};
+    for field in ["departure_location", "return_location"] {
+        if field not in columns { conn.execute("ALTER TABLE trips ADD COLUMN " + field + " TEXT NOT NULL DEFAULT ''"); }
+    }
+    conn.commit();
     conn.execute("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE, title TEXT NOT NULL, category TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL, location TEXT NOT NULL, reference TEXT NOT NULL, notes TEXT NOT NULL, cost_cents INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, paid INTEGER NOT NULL DEFAULT 0)");
     conn.execute("CREATE INDEX IF NOT EXISTS items_trip ON items(trip_id)");
+    conn.execute("CREATE TABLE IF NOT EXISTS itinerary_place_details (item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE, location TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)");
+    install_map_schema(conn);
     conn.commit();
     install_schema(conn);
     install_context_schema(conn);
     ai_workflow.install(conn);
     return conn;
+}
+
+def:pub get_place_details(trip_id: str, item_id: str) -> dict[str, any] {
+    conn = _connect();
+    try { conn.execute("BEGIN"); return read_place_details(conn, trip_id, item_id); }
+    finally { conn.close(); }
+}
+
+def:pub save_place_details(trip_id: str, item_id: str, location: str,
+    expected_revision: any, payload: dict[str, any]) -> dict[str, any] {
+    conn = _connect();
+    try { return write_place_details(conn, trip_id, item_id, location, expected_revision, payload); }
+    finally { conn.close(); }
+}
+
+def:pub load_trip_map(trip_id: str) -> dict[str, any] {
+    conn = _connect();
+    try {
+        conn.execute("BEGIN");
+        state = snapshot(conn, trip_id);
+        now = clock();
+        context = build_context(state, read_facts(conn, trip_id), now);
+        (pins, routes) = map_points(conn, trip_id);
+        return {"trip_version": state["version"], "pins": pins, "routes": routes, "journey": state["journey"],
+            "dependencies": state["dependencies"], "risks": [risk for risk in context["risks"] if risk["node_ids"]],
+            "plans": current_map_plans(conn, trip_id, state["version"], VALIDATION_VERSION, now)};
+    } finally { conn.close(); }
+}
+
+def:pub save_trip_map_route(trip_id: str, item_id: str, title: str, location: str,
+    expected_revision: any, payload: any) -> dict[str, any] {
+    conn = _connect();
+    try { return save_map_route(conn, trip_id, item_id, title, location, expected_revision, payload); }
+    finally { conn.close(); }
 }
 
 def:pub planning_state(trip_id: str) -> dict[str, any] {
@@ -283,6 +363,46 @@ def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_ve
         conn.commit(); return result;
     } except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
+}
+
+def:pub report_itinerary_change(trip_id: str, item_id: str, reason: str, expected_version: any,
+    delay_minutes: any = 0) -> dict[str, any] {
+    if reason not in ("timing", "weather", "closure", "cancellation", "traveler_change") {
+        raise ValueError("Choose a supported disruption");
+    }
+    if reason == "timing" and (type(delay_minutes) is not int or not 1 <= delay_minutes <= 1440) {
+        raise ValueError("Enter a delay between 1 and 1440 minutes");
+    }
+    now = clock();
+    conn = _connect();
+    try {
+        conn.execute("BEGIN");
+        state = snapshot(conn, trip_id);
+        if state["version"] != expected_version { raise ValueError("Your trip changed. Reload before reporting a change."); }
+        context = build_context(state, read_facts(conn, trip_id), now);
+    } finally { conn.close(); }
+    matches = [item for item in context["trip"].items if item.id == item_id];
+    if not matches { raise ValueError("Choose an itinerary item in this trip"); }
+    item = matches[0];
+    risk_id = "itinerary-report:" + item_id + ":" + reason;
+    labels = {"timing": "Delay", "weather": "Weather disruption", "closure": "Closure", "cancellation": "Cancellation",
+        "traveler_change": "Alternative requested"};
+    risk: dict[str, any] = {"id": risk_id, "category": reason, "node_ids": [item_id],
+        "summary": labels[reason] + " reported for " + item.title,
+        "evidence": {"source": "user://trip/" + trip_id + "/reported-change", "checked_at": now.isoformat(),
+            "expires_at": (now + datetime.timedelta(minutes=15)).isoformat()}};
+    if reason == "timing" {
+        try {
+            risk["not_before"] = asdict(at_time(item.start, instant(item.start) + datetime.timedelta(minutes=delay_minutes)));
+        } except ValueError {
+            raise ValueError("A saved start time and timezone are required. Check the item's time and the trip facts in Backup plans.");
+        }
+    }
+    facts = context["facts"];
+    facts["contract_version"] = CONTEXT_VERSION;
+    facts["manual_risks"] = [r for r in facts.get("manual_risks", []) if r["id"] != risk_id] + [risk];
+    saved = save_planning_context(trip_id, facts, expected_version);
+    return {"risk_id": risk_id, "trip_version": saved["trip_version"], "not_before": risk.get("not_before")};
 }
 
 def _replay_planning_run(conn: any, payload: str, version: int, now: any) -> dict[str, any] {
@@ -359,16 +479,19 @@ def:pub review_backup_plan(trip_id: str, proposal_id: str, accept: any) -> dict[
 }
 
 def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
-    if scenario not in ("rain", "arrival_delay") { raise ValueError("Choose rain or arrival_delay"); }
-    (sample, facts) = sample_state(clock(), scenario);
+    if scenario not in ("rain", "arrival_delay", "map") { raise ValueError("Choose rain, arrival_delay or map"); }
+    now = clock(); map_demo = scenario == "map";
+    (sample, facts) = sample_state(now, "rain" if map_demo else scenario);
     trip_id = str(uuid.uuid4()); mapping = {i["id"]: str(uuid.uuid4()) for i in sample["items"]};
     conn = _connect();
     try {
         conn.execute("BEGIN IMMEDIATE");
         trip = sample["trip"];
-        conn.execute("INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)", (trip_id, "Integrated " + ("weather" if scenario == "rain" else "arrival delay") + " demo",
+        title = "Boston weekend map sample" if map_demo else "Integrated " + ("weather" if scenario == "rain" else "arrival delay") + " demo";
+        conn.execute("INSERT INTO trips (id,title,destination,start_date,end_date,currency,budget_cents,notes) VALUES (?,?,?,?,?,?,?,?)", (trip_id, title,
             "Boston", trip["start_date"], trip["end_date"], "USD", trip["budget_cents"], "Explicit synthetic profile, quotes, hours, routes and risk evidence"));
         for item in sample["items"] {
+            if map_demo and item["id"] == "arrival" { item["title"] = "Chicago to Boston flight"; item["fixed"] = False; }
             conn.execute("INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (mapping[item["id"]], trip_id, item["title"], item["category"],
                 item["date"], item["time"], item["location"], "", "Synthetic sample", item["cost_cents"], int(item["done"]), int(item["paid"])));
             conn.execute("INSERT INTO replan_rules VALUES (?,?,?,?)", (mapping[item["id"]], item["duration_minutes"], item["latest_start"], int(item["fixed"])));
@@ -380,6 +503,19 @@ def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
         for route in facts["transfers"] { route["from_id"] = mapping[route["from_id"]]; route["to_id"] = mapping[route["to_id"]]; }
         for hours in facts["place_hours"] { hours["node_id"] = mapping[hours["node_id"]]; }
         for risk in facts["manual_risks"] { risk["node_ids"] = [mapping[key] for key in risk["node_ids"]]; }
+        if map_demo {
+            arrival = next(item for item in sample["items"] if item["id"] == "arrival");
+            conn.execute("INSERT INTO itinerary_map_routes VALUES (?,?,?,?,1)", (mapping["arrival"], arrival["title"],
+                arrival["location"], json.dumps({"kind": "flight",
+                    "from": {"label": "Chicago", "lat": 41.88, "lon": -87.63},
+                    "to": {"label": "Boston", "lat": 42.36, "lon": -71.06}})));
+            conn.execute("INSERT INTO dependencies VALUES (?,?,?,?)", (trip_id, mapping["arrival"], mapping["activity"], 0));
+            facts["manual_risks"].append({"id": "itinerary-report:" + mapping["arrival"] + ":timing", "category": "timing",
+                "node_ids": [mapping["arrival"]], "summary": "Sample flight delay · 20 minutes",
+                "not_before": {"local": arrival["date"] + "T09:20", "zone": facts["zone"]},
+                "evidence": {"source": "fixture://map/flight-delay", "checked_at": now.isoformat(),
+                    "expires_at": (now + datetime.timedelta(minutes=30)).isoformat()}});
+        }
         conn.execute("INSERT INTO planning_contexts VALUES (?,?)", (trip_id, json.dumps(facts, sort_keys=True)));
         current = public_context(build_context(snapshot(conn, trip_id), facts, clock()));
         conn.commit(); return current;
@@ -413,13 +549,16 @@ def _money(value: str) -> int {
 def _trip(row: sqlite3.Row) -> TripView {
     return TripView(id=str(row["id"]), title=str(row["title"]), destination=str(row["destination"]),
         start_date=str(row["start_date"]), end_date=str(row["end_date"]),
-        currency=str(row["currency"]), budget_cents=int(row["budget_cents"]), notes=str(row["notes"]));
+        currency=str(row["currency"]), budget_cents=int(row["budget_cents"]), notes=str(row["notes"]),
+        departure_location=str(row["departure_location"]), return_location=str(row["return_location"]));
 }
-def _item(row: sqlite3.Row) -> ItemView {
+def _item(row: sqlite3.Row, conn: any = None) -> ItemView {
+    rule = conn.execute("SELECT duration_minutes FROM replan_rules WHERE item_id=?", (row["id"],)).fetchone() if conn is not None else None;
     return ItemView(id=str(row["id"]), trip_id=str(row["trip_id"]), title=str(row["title"]),
         category=str(row["category"]), date=str(row["date"]), time=str(row["time"]),
         location=str(row["location"]), reference=str(row["reference"]), notes=str(row["notes"]),
-        cost_cents=int(row["cost_cents"]), done=bool(row["done"]), paid=bool(row["paid"]));
+        cost_cents=int(row["cost_cents"]), done=bool(row["done"]), paid=bool(row["paid"]),
+        journey=journey_model.item_details(conn, str(row["id"])) if conn is not None else {}, duration_minutes=rule["duration_minutes"] if rule else 60);
 }
 def _require_trip(conn: sqlite3.Connection, trip_id: str) -> sqlite3.Row {
     row = conn.execute("SELECT * FROM trips WHERE id = ?", (trip_id,)).fetchone();
@@ -434,9 +573,12 @@ def:pub list_trips -> list[TripView] {
 }
 
 def:pub save_trip(title: str, destination: str, start_date: str, end_date: str,
-    currency: str = "USD", budget: str = "0", notes: str = "", trip_id: str = "") -> TripView {
+    currency: str = "USD", budget: str = "0", notes: str = "", trip_id: str = "",
+    departure_location: str | None = None, return_location: str | None = None) -> TripView {
     title = _text(title, "Trip name", 160, True);
     destination = _text(destination, "Destination", 160, True);
+    if departure_location is not None { departure_location = _text(departure_location, "Departure location", 160); }
+    if return_location is not None { return_location = _text(return_location, "Return location", 160); }
     start_date = _date(start_date);
     end_date = _date(end_date);
     if end_date < start_date { raise ValueError("Return date must be on or after departure"); }
@@ -456,10 +598,23 @@ def:pub save_trip(title: str, destination: str, start_date: str, end_date: str,
             if str(old["currency"]) != currency and conn.execute("SELECT id FROM items WHERE trip_id = ? AND cost_cents > 0 LIMIT 1", (trip_id,)).fetchone() is not None {
                 raise ValueError("Currency cannot change while the trip has costs; no exchange conversion is performed");
             }
-            conn.execute("UPDATE trips SET title=?, destination=?, start_date=?, end_date=?, currency=?, budget_cents=?, notes=? WHERE id=?", (title, destination, start_date, end_date, currency, cents, notes, trip_id));
+            conn.execute("UPDATE trips SET title=?, destination=?, start_date=?, end_date=?, currency=?, budget_cents=?, notes=?, departure_location=?, return_location=? WHERE id=?",
+                (title, destination, start_date, end_date, currency, cents, notes,
+                    str(old["departure_location"]) if departure_location is None else departure_location,
+                    str(old["return_location"]) if return_location is None else return_location, trip_id));
         } else {
             trip_id = str(uuid.uuid4());
-            conn.execute("INSERT INTO trips VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (trip_id, title, destination, start_date, end_date, currency, cents, notes));
+            conn.execute("INSERT INTO trips (id,title,destination,start_date,end_date,currency,budget_cents,notes,departure_location,return_location) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (trip_id, title, destination, start_date, end_date, currency, cents, notes, departure_location or "", return_location or ""));
+        }
+        route = journey_model.read(conn, trip_id);
+        if route is not None {
+            fresh_trip = dict(_require_trip(conn, trip_id));
+            journey_model.normalize(route, fresh_trip);
+            if fresh_trip["departure_location"] != route["origin"]["city"] or fresh_trip["return_location"] != (route["return_to"]["city"] if route["return_to"] else "") or fresh_trip["destination"] != route["stops"][0]["city"] {
+                raise ValueError("Edit the journey route to change its cities. Trip details must match the saved route.");
+            }
+            journey_model.validate(route, fresh_trip, snapshot(conn, trip_id)["items"], complete=False);
         }
         conn.commit();
         return _trip(_require_trip(conn, trip_id));
@@ -470,7 +625,7 @@ def:pub list_items(trip_id: str) -> list[ItemView] {
     conn = _connect();
     try {
         _require_trip(conn, trip_id);
-        return [_item(row) for row in conn.execute("SELECT * FROM items WHERE trip_id = ? ORDER BY date = '', date, time = '', time, title, id", (trip_id,))];
+        return [_item(row, conn) for row in conn.execute("SELECT * FROM items WHERE trip_id = ? ORDER BY date = '', date, time = '', time, title, id", (trip_id,))];
     } finally { conn.close(); }
 }
 
@@ -487,7 +642,7 @@ def:pub preview_backups(trip_id: str, item_id: str, trigger: str) -> BackupPrevi
 
 def:pub save_item(trip_id: str, title: str, category: str = "activity", date: str = "",
     time: str = "", location: str = "", reference: str = "", notes: str = "",
-    cost: str = "0", item_id: str = "") -> ItemView {
+    cost: str = "0", item_id: str = "", journey: any = None, duration_minutes: int = 60) -> ItemView {
     title = _text(title, "Item title", 160, True);
     if category not in ["activity", "transport", "stay", "food", "packing", "expense"] {
         raise ValueError("Unknown travel item category");
@@ -522,8 +677,21 @@ def:pub save_item(trip_id: str, title: str, category: str = "activity", date: st
             item_id = str(uuid.uuid4());
             conn.execute("INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)", (item_id, trip_id, title, category, date, time, location, reference, notes, cents));
         }
+        route = journey_model.read(conn, trip_id);
+        if route is not None and category not in ["packing", "expense"] {
+            state = snapshot(conn, trip_id); item = next(i for i in state["items"] if i["id"] == item_id);
+            if journey is not None {
+                if not isinstance(journey, dict) or type(duration_minutes) is not int or not 1 <= duration_minutes <= 1440 { raise ValueError("Provide city/leg details and a duration of 1–1440 minutes."); }
+                item["duration_minutes"] = duration_minutes;
+                conn.execute("INSERT INTO replan_rules(item_id,duration_minutes) VALUES (?,?) ON CONFLICT(item_id) DO UPDATE SET duration_minutes=excluded.duration_minutes", (item_id, duration_minutes));
+            }
+            detail = journey if journey is not None else item.get("journey", {});
+            item["journey"] = journey_model.bind(item, detail, route);
+            journey_model.write_item(conn, item_id, item["journey"]);
+            journey_model.validate(route, state["trip"], state["items"], complete=False);
+        } elif category in ["packing", "expense"] { journey_model.write_item(conn, item_id, {}); }
         conn.commit();
-        return _item(conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone());
+        return _item(conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone(), conn);
     } finally { conn.close(); }
 }
 
@@ -537,7 +705,7 @@ def:pub set_item_state(trip_id: str, item_id: str, done: bool, paid: bool) -> It
         if paid and not int(row["cost_cents"]) { raise ValueError("Only items with a cost can be marked paid"); }
         conn.execute("UPDATE items SET done=?, paid=? WHERE id=? AND trip_id=?", (done, paid, item_id, trip_id));
         conn.commit();
-        return _item(conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone());
+        return _item(conn.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone(), conn);
     } finally { conn.close(); }
 }
 

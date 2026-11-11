@@ -11,6 +11,7 @@ import from planning.validation { validate_plan }
 import from tools.alternatives.catalog { observe }
 import from backup.validation { instant }
 import from schema.alternative { alternative_from_dict }
+import journey.model as journey_model;
 
 def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now: datetime) -> None {
     alternative_from_dict(proposal);
@@ -48,6 +49,7 @@ def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now
     }
     checked = validate_plan(context["trip"], tuple(activations), tuple(candidates), now, context.get("connection_estimates", ()));
     if checked["status"] != "valid" { raise ValueError("Plan no longer passes all traveler, evidence, budget and timing checks"); }
+    route_items = journey_model.replacement_items(state, [asdict(c) for c in candidates]);
     facts = deepcopy(context["facts"]);
     for candidate in candidates {
         original = originals[candidate.replaces_id]; item = candidate.item;
@@ -62,6 +64,7 @@ def apply_backup(conn: any, state: dict[str, any], proposal: dict[str, any], now
                 "" if candidate.action == "replace" else before["reference"], item.cost_minor,
                 0 if candidate.action == "replace" else before["done"], 0 if candidate.action == "replace" else before["paid"], item.id, context["trip_id"]));
         duration = int((instant(item.end) - instant(item.start)).total_seconds() / 60);
+        if item.id in route_items { journey_model.write_item(conn, item.id, route_items[item.id]["journey"]); }
         conn.execute("INSERT INTO replan_rules VALUES (?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET duration_minutes=excluded.duration_minutes, latest_start=excluded.latest_start",
             (item.id, duration, before["latest_start"], int(before["fixed"])));
         prior_facts = deepcopy(facts["items"].get(item.id, {}));

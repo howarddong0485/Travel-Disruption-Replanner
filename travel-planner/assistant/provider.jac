@@ -93,9 +93,24 @@ def contents(response: dict[str, any]) -> tuple[str, list[dict[str, str]]] {
 }
 
 def trip_schema -> dict[str, any] {
-    fields: dict[str, any] = {key: {"type": ["string", "null"]} for key in ["title", "destination", "start_date", "end_date", "currency", "notes"]};
+    fields: dict[str, any] = {key: {"type": ["string", "null"]} for key in ["title", "destination", "departure_location", "return_location", "start_date", "end_date", "currency", "notes"]};
     fields["budget_cents"] = {"type": ["integer", "null"], "description": "Budget in hundredths of the trip currency, not whole currency units. null means unchanged."};
     return {"type": "object", "properties": fields, "required": `list(fields), "additionalProperties": False};
+}
+
+def journey_schema -> dict[str, any] {
+    point = {"city": {"type": "string"}, "zone": {"type": "string"},
+        "lat": {"type": ["number", "null"]}, "lon": {"type": ["number", "null"]}};
+    endpoint = {"type": "object", "properties": point, "required": list(point), "additionalProperties": False};
+    stop = {**point, "id": {"type": "string"}, "arrival_date": {"type": "string"}, "departure_date": {"type": "string"}};
+    leg = {"from_id": {"type": "string"}, "to_id": {"type": "string"},
+        "mode": {"type": "string", "enum": ["flight", "train", "drive", "bus", "ferry"]},
+        "before_minutes": {"type": "integer"}, "after_minutes": {"type": "integer"}};
+    fields = {"version": {"type": "integer", "enum": [1]}, "origin": endpoint,
+        "return_to": {"anyOf": [endpoint, {"type": "null"}]},
+        "stops": {"type": "array", "items": {"type": "object", "properties": stop, "required": list(stop), "additionalProperties": False}},
+        "legs": {"type": "array", "items": {"type": "object", "properties": leg, "required": list(leg), "additionalProperties": False}}};
+    return {"anyOf": [{"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}, {"type": "null"}]};
 }
 
 def plan_schema -> dict[str, any] {
@@ -103,10 +118,12 @@ def plan_schema -> dict[str, any] {
         "category": {"type": "string", "enum": ["activity", "food", "stay", "transport"]},
         "date": {"type": "string"}, "time": {"type": "string"},
         "duration_minutes": {"type": "integer"}, "location": {"type": "string"},
-        "cost_cents": {"type": "integer"}, "notes": {"type": "string"}};
+        "cost_cents": {"type": "integer"}, "notes": {"type": "string"},
+        "stop_id": {"type": "string"}, "leg_id": {"type": "string"},
+        "arrival_date": {"type": "string"}, "arrival_time": {"type": "string"}};
     change = {"type": "object", "properties": fields, "required": `list(fields), "additionalProperties": False};
     plan_fields = {"title": {"type": "string"}, "summary": {"type": "string"}, "trip_changes": trip_schema(),
-        "changes": {"type": "array", "items": change}};
+        "journey": journey_schema(), "changes": {"type": "array", "items": change}};
     return {"type": "object", "additionalProperties": False, "required": ["answer", "plans"],
         "properties": {"answer": {"type": "string"}, "plans": {"type": "array", "items": {
             "type": "object", "properties": plan_fields, "required": `list(plan_fields), "additionalProperties": False}}}};
@@ -122,6 +139,20 @@ def preference_instructions(context: dict[str, any]) -> str {
     return "\nSaved trip preferences: " + pet + " " + guidance.get(pace, guidance["balanced"]) + " Count major sightseeing/activity stops, not meals, lodging check-in or transfer entries. Scale activity counts down for arrival/departure days, short stays, or hard constraints. These counts are pacing targets, not permission to break time or budget limits. Apply these preferences to initial plans, backups and replanning; preserve locked arrangements. Explain material conflicts rather than silently ignoring preferences.";
 }
 
+def journey_instructions -> str {
+    return " For a trip with a departure location, plan the entire journey, including outbound transport, all requested cities/regions in order, and return transport when return_location is set. "
+        + "Use the saved journey when present. Propose a complete journey object when creating or changing its route; otherwise use journey=null. "
+        + "A journey has version=1, origin and optional return_to (city, IANA zone, optional lat/lon), ordered stops (stable unique id, city, zone, arrival_date, departure_date, lat/lon), and legs connecting origin to the first stop, adjacent stops, and the last stop to return if provided. "
+        + "Preserve saved stop IDs. A leg uses from_id/to_id, mode flight/train/drive/bus/ferry and before_minutes/after_minutes for access, check-in, baggage and onward transfers. "
+        + "Plan transport first, then city activities. Each required leg must have exactly one transport item using leg_id=from_id + ':' + to_id, stop_id='', departure date/time local to its origin, arrival_date/arrival_time local to its destination, and duration_minutes equal to elapsed UTC minutes (1..1440). "
+        + "Group connections within a leg, including connection time, and explain them in notes. Outbound departure date equals trip.start_date; return arrival date equals trip.end_date. Other arrivals/departures equal the relevant city dates. "
+        + "All other scheduled items, including local transport and hotel check-in, must name a saved stop_id and use leg_id=''. Use blank arrival_date/arrival_time for these; code derives their end. "
+        + "Every city activity must fit its city dates, occur after incoming arrival plus after_minutes, and finish before outgoing departure minus before_minutes. Compare times across zones, including overnight flights and date-line crossings. "
+        + "When adopting a journey for an existing itinerary, assign every scheduled item in the same draft using exact item IDs; do not duplicate it. Never change locked arrangements. "
+        + "For a single-city legacy trip without a known origin, journey may remain null and the new item fields may be blank. Do not invent an origin. "
+        + "Transport schedules and costs remain explicit planning estimates unless supported by current sources. Do not invent verified flight numbers. Coordinates are optional: use null when uncertain.";
+}
+
 def generate(context: dict[str, any], history: list[dict[str, any]], message: str,
     mode: str, search: bool, api_key: str = "") -> dict[str, any] {
     config = configuration();
@@ -131,9 +162,11 @@ def generate(context: dict[str, any], history: list[dict[str, any]], message: st
         + "Distinguish sourced information from estimates, cite sources, and explain important uncertainty. Do not expose secrets. "
         + "For plan/backup/replan requests research actionable options, preserve fixed, paid and confirmed items, and consider downstream dependencies. "
         + "For ordinary questions, answer directly. The current task mode is " + mode + ".";
-    instructions += " You can propose edits to the active trip's name, destination, departure/return dates, currency, budget and notes. "
+    instructions += " You can propose edits to the active trip's name, destination, departure and return locations, departure/return dates, currency, budget and notes. "
         + "When an ordinary chat message requests such an edit, call prepare_trip_edit. This only prepares a reviewable draft; never claim an edit is saved. "
         + "Questions that do not request an edit can be answered directly. Ask a clarification if a date or requested field is ambiguous.";
+    instructions += " Use departure_location for the outbound journey and return_location for the journey after the trip. They may differ. Include realistic transfers in plans; when either is blank, keep it unknown and ask when needed to plan transport. Never assume the destination is the departure or return location.";
+    instructions += journey_instructions();
     instructions += preference_instructions(context);
     # Keep the conversation text, not repeated research/source/review payloads.
     recent_history = [{"role": m["role"], "text": m["text"][:5000]} for m in history[-12:]];
@@ -176,7 +209,7 @@ def generate(context: dict[str, any], history: list[dict[str, any]], message: st
         + "Preserve dependencies and locked bookings; if a requested shift conflicts with locked arrangements, explain the conflict instead of pretending they moved. "
         + "Currency can only change on trips with no existing costs or reserve: never relabel amounts as another currency or invent exchange conversions. "
         + "Preserve unaffected items. Never edit locked/fixed/protected/paid/done items. Never overwrite booking references. "
-        + "Use YYYY-MM-DD, HH:MM destination-local times, and duration_minutes (1..1440). Schedule check-in/transport duration, not the full hotel stay. "
+        + "Use YYYY-MM-DD, HH:MM times local to each item's city or transport departure, and elapsed duration_minutes (1..1440). Schedule hotel check-in duration, not an overnight block. "
         + "All dates must fit the trip. Include realistic transfer gaps; avoid overlap with unchanged items and respect dependencies/latest_start. "
         + "Every item MUST have an integer cost_cents: a reasonable whole-party planning estimate in the trip currency's hundredths, including likely fees. "
         + "If no verified quote is available, provide a realistic approximate allowance and label it as an estimate in notes. Reserve zero for genuinely free items; never use zero for unknown paid services. "
@@ -214,7 +247,7 @@ def repair(context: dict[str, any], result: dict[str, any], failures: list[str],
             "trip_context": context, "drafts": result, "validation_failures": failures});
     model = configuration()["planning_model"];
     (raw, _) = contents(request({"model": model, "store": False,
-        "instructions": preference_instructions(context), "input": prompt, "max_output_tokens": 11000, "reasoning": reasoning_options(model, True),
+        "instructions": preference_instructions(context) + journey_instructions(), "input": prompt, "max_output_tokens": 11000, "reasoning": reasoning_options(model, True),
         "text": {"format": {"type": "json_schema", "name": "repaired_travel_drafts", "strict": True, "schema": plan_schema()}}}, api_key));
     try { fixed = json.loads(raw); }
     except ValueError { raise ValueError("The assistant could not repair this plan. Please try a more focused request.") from None; }

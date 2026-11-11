@@ -14,6 +14,7 @@ import from planning.connections { connection_boundaries }
 import from planning.comparison { compare_plan, comparison_expiry }
 import from planning.agent { select_backup_plans }
 import from tools.alternatives.catalog { search }
+import journey.model as journey_model;
 import from schema.alternative { ALTERNATIVE_CONTRACT_VERSION as PLAN_CONTRACT, alternative_from_dict }
 import from schema.common { to_plain }
 
@@ -103,8 +104,14 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
                         if boundary > instant(earliest) { earliest = at_time(earliest, boundary); }
                     }
                 }
-                options.extend(search(context["trip"], item, earliest, context["state"]["trip"]["destination"], now,
-                    context["facts"].get("inventory_change", "unchanged")));
+                # The itinerary report has no evidence that a ground transport
+                # quote can replace a flight or another booked transport mode.
+                reported_transport = item.category == "transport" and any(
+                    r.id.startswith("itinerary-report:") for r in active_risks);
+                if not reported_transport {
+                    options.extend(search(context["trip"], item, earliest, context["state"]["trip"]["destination"], now,
+                        context["facts"].get("inventory_change", "unchanged")));
+                }
                 if any(r.trigger in ("timing", "opening_hours", "traveler_change", "budget_change") for r in active_risks) {
                     for minutes in (30, 60) {
                         starts = [max(instant(earliest), instant(item.start) + timedelta(minutes=minutes))];
@@ -117,6 +124,9 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
                             options.append(Replacement("reschedule:" + key + ":" + str(minutes) + ":" + str(index), key, shifted, (), "", "reschedule"));
                         }
                     }
+                }
+                if reported_transport and not any(option is not None for option in options) {
+                    warnings.append("No verified replacement transport is available for " + item.title);
                 }
             } except ValueError { warnings.append("Missing or ambiguous timing prevents searching for " + item.title); }
         } else { warnings.append(item.title + " is fixed or completed and cannot be changed"); }
@@ -148,6 +158,13 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
         }
         activations = tuple(risk_context(context, risk, c.replaces_id) for c in candidates for risk in targets[c.replaces_id]);
         checked = validate_plan(context["trip"], activations, candidates, now, estimates);
+        if context["state"].get("journey") {
+            try { journey_model.replacement_items(context["state"], [asdict(c) for c in candidates]); }
+            except ValueError as error {
+                checked["status"] = "invalid";
+                checked["checks"].append({"code": "journey_route", "status": "fail", "message": str(error), "item_ids": [c.replaces_id for c in candidates]});
+            }
+        }
         checked["expires_at"] = min(datetime.fromisoformat(checked["expires_at"]), comparison_expiry(context, candidates, now)).isoformat();
         identity: list[dict[str, any]] = [{"item": asdict(c.item), "action": c.action, "provider_id": c.provider_id} for c in candidates];
         # Observation timestamps are excluded from plan identity.

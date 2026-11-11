@@ -12,7 +12,7 @@ The **AI planner** combines initial planning, backup preparation and disruption
 replanning. A persistent conversation sidebar stays beside your itinerary,
 bookings, packing and budget. Chat history is stored separately for each trip.
 
-1. Create or select a trip with dates, destination, currency and budget.
+1. Create or select a trip with dates, departure/return locations, destination, currency and budget. For a complete route, use **Route** to set ordered city stays, time zones and transport buffers, then choose **Plan this journey with AI**. See [journey planning](../docs/JOURNEY_PLANNING.md).
 2. Choose **Plan my trip**, **Find alternatives**, or **Something changed**.
 3. Edit the prompt in the conversation sidebar and send it. **Ask a question**
    answers without generating a draft. Web search can be switched off.
@@ -40,7 +40,7 @@ stale, so generate a new plan after changing preferences. Turning the pet toggle
 off does not erase separately recorded pet requirements in your traveler facts.
 
 You can also ask the assistant to edit the active trip's name, destination,
-departure/return dates, budget, currency or notes, either in ordinary chat or
+departure/return locations and dates, budget, currency or notes, either in ordinary chat or
 **Edit trip details** mode. For example: “Move my trip to April 10–14, 2027 and
 raise my budget to USD 2,000.” A proposal shows each trip field before and after.
 Date changes must also move any affected flexible itinerary items into the new
@@ -318,3 +318,7 @@ jac test backup/test_changes.jac
 ```
 
 Tests use temporary SQLite databases. They do not read or modify your saved trips.
+
+Departure and return locations are optional cities or airports and may differ. Set them in Create/Edit trip or with CLI `new --depart-from "Detroit, MI" --return-to "Chicago, IL"`. They appear in the trip overview and assistant context. Existing databases migrate automatically with blank locations; older API clients that omit these fields preserve saved locations when editing.
+
+The trip overview animates the route from departure through destination to return, with a pause/play control. Reduced-motion settings show a static route. This is a route illustration, not a geographic map or live flight tracker.

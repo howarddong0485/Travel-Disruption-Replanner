@@ -160,6 +160,11 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
     for item in state["items"] {
         if item["category"] in ("packing", "expense") { continue; }
         detail = facts.get("items", {}).get(item["id"], {});
+        if item.get("journey") {
+            route_detail = item["journey"];
+            detail = {**detail, "zone": route_detail["zone"], "end": {
+                "local": route_detail["arrival_date"] + "T" + route_detail["arrival_time"], "zone": route_detail["end_zone"]}};
+        }
         zone = detail.get("zone", facts.get("zone", ""));
         start = Moment(item["date"] + "T" + item["time"] if item["date"] and item["time"] else "", zone, detail.get("start_fold"));
         end = parse_moment(detail["end"]) if detail.get("end") else Moment("", zone);
