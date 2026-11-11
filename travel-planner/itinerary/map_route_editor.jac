@@ -17,13 +17,15 @@ def:pub MapRouteEditor(trip_id: str, item: any, data: any, onSaved: any, onCance
         toLat: str = str(saved["to"]["lat"]) if saved is not None else "",
         toLon: str = str(saved["to"]["lon"]) if saved is not None else "",
         kind: str = saved["kind"] if saved is not None else "flight",
-        busy: bool = False, failure: str = "";
+        busy: bool = False, failure: str = "",
+        initialRevision: int = data.get("revision", 0), initialTrip: str = trip_id,
+        initialId: str = item.id, initialTitle: str = item.title, initialLocation: str = item.location;
     async def persist(payload: any) -> None {
         if busy { return; }
         busy = True; failure = "";
         try {
-            await save_trip_map_route(trip_id=trip_id, item_id=item.id, title=item.title, location=item.location,
-                expected_revision=data.get("revision", 0), payload=payload);
+            await save_trip_map_route(trip_id=initialTrip, item_id=initialId, title=initialTitle, location=initialLocation,
+                expected_revision=initialRevision, payload=payload);
             await onSaved();
         } except Exception as exc { failure = str(exc); }
         finally { busy = False; }
