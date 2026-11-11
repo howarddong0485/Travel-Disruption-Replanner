@@ -309,6 +309,7 @@ jac test server/test_backup.jac
 jac test backup/test_validation.jac
 jac test server/test_validation.jac
 jac test profile/test_models.jac
+jac test filter/test_evaluate.jac
 jac test backup/test_refresh.jac server/test_refresh.jac
 jac build travel --as client
 jac test backup/test_history.jac server/test_history.jac
