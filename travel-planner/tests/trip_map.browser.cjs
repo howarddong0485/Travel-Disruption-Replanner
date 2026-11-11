@@ -152,6 +152,7 @@ const screenshots = process.env.TRAVEL_MAP_SCREENSHOTS;
     await edit.getByRole('button', {name: 'Save route', exact: true}).click();
     await edit.getByRole('alert').waitFor();
     assert.equal((await api('load_trip_map', {trip_id: regular.id})).routes[item.id].route.from.label, 'Detroit');
+    await edit.getByRole('button', {name: 'Cancel', exact: true}).click();
     await api('save_trip_map_route', {trip_id: regular.id, item_id: item.id, title: item.title,
       location: item.location, expected_revision: 0, payload: null}, true);
     await api('save_trip_map_route', {trip_id: regular.id, item_id: item.id, title: item.title,
