@@ -18,8 +18,8 @@ sem DraftTier = "Terms for cancelling before one deadline, or after the last dea
 sem DraftTier.excerpt = "The exact sentence or clause from the terms that states this tier, copied character for character.";
 sem DraftTier.deadline_local = "Absolute deadline as YYYY-MM-DDTHH:MM in the booking's local time, only if the terms state a date. Empty otherwise.";
 sem DraftTier.hours_before_start = "Deadline stated relative to the service start, in hours (2 days = 48). None if not stated that way.";
-sem DraftTier.refund_percent = "Percentage of the amount paid that is refunded before this deadline: 100 for free or full refund, 0 for non-refundable. None if the terms do not say.";
-sem DraftTier.fee_amount = "Cancellation fee exactly as written as a number, e.g. 260.00. Use 0 when the terms say free or no fee. Empty when no amount is stated.";
+sem DraftTier.refund_percent = "Percentage of the amount paid that is refunded before this deadline: 100 for free or full refund, 0 for non-refundable. None if the terms do not say, or if they say a refund is not available without stating what is refunded instead.";
+sem DraftTier.fee_amount = "Cancellation fee exactly as written as a number, e.g. 260.00. Include processing or service fees deducted from a refund (\"less a $25 processing fee\" is 25). Use 0 only when the terms say free or no fee and state no deduction. Empty when no amount is stated.";
 sem DraftTier.fee_currency = "ISO currency code of the fee if stated or clearly implied by a symbol, e.g. USD for $. Empty otherwise.";
 sem DraftTier.refund_form = "How the refund is returned: cash (original payment method), credit (voucher or travel credit), none, or unknown.";
 
