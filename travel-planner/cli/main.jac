@@ -73,7 +73,7 @@ async def dispatch(args: argparse.Namespace) -> int {
     if args.command == "add" {
         item = await save_item(trip_id=trip_id, title=args.title, category=args.category,
             date=args.date, time=args.time, location=args.location, reference=args.reference,
-            notes=args.notes, cost=args.cost, item_id="");
+            notes=args.notes, cost=args.cost, item_id="", journey=None, duration_minutes=60);
         print_item(item, trip.currency); return 0;
     }
     items = await list_items(trip_id=trip_id);
