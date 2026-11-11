@@ -22,6 +22,7 @@ import from planning.context { CONTEXT_VERSION, install_context_schema, read_fac
 import from planning.engine { at_time, generate_plans, VALIDATION_VERSION }
 import from planning.fixtures { sample_state }
 import from itinerary.place_data { read_place_details, write_place_details }
+import from itinerary.map_data { install_map_schema, save_map_route, map_points, current_map_plans }
 
 def _backup_source(trip_id: str) -> tuple[dict[str, any], list[dict[str, any]]] {
     conn = _connect();
@@ -132,6 +133,7 @@ def _connect -> sqlite3.Connection {
     conn.execute("CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE, title TEXT NOT NULL, category TEXT NOT NULL, date TEXT NOT NULL, time TEXT NOT NULL, location TEXT NOT NULL, reference TEXT NOT NULL, notes TEXT NOT NULL, cost_cents INTEGER NOT NULL, done INTEGER NOT NULL DEFAULT 0, paid INTEGER NOT NULL DEFAULT 0)");
     conn.execute("CREATE INDEX IF NOT EXISTS items_trip ON items(trip_id)");
     conn.execute("CREATE TABLE IF NOT EXISTS itinerary_place_details (item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE, location TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)");
+    install_map_schema(conn);
     conn.commit();
     install_schema(conn);
     install_context_schema(conn);
@@ -148,6 +150,27 @@ def:pub save_place_details(trip_id: str, item_id: str, location: str,
     expected_revision: any, payload: dict[str, any]) -> dict[str, any] {
     conn = _connect();
     try { return write_place_details(conn, trip_id, item_id, location, expected_revision, payload); }
+    finally { conn.close(); }
+}
+
+def:pub load_trip_map(trip_id: str) -> dict[str, any] {
+    conn = _connect();
+    try {
+        conn.execute("BEGIN");
+        state = snapshot(conn, trip_id);
+        now = clock();
+        context = build_context(state, read_facts(conn, trip_id), now);
+        (pins, routes) = map_points(conn, trip_id);
+        return {"trip_version": state["version"], "pins": pins, "routes": routes,
+            "dependencies": state["dependencies"], "risks": [risk for risk in context["risks"] if risk["node_ids"]],
+            "plans": current_map_plans(conn, trip_id, state["version"], VALIDATION_VERSION, now)};
+    } finally { conn.close(); }
+}
+
+def:pub save_trip_map_route(trip_id: str, item_id: str, title: str, location: str,
+    expected_revision: any, payload: any) -> dict[str, any] {
+    conn = _connect();
+    try { return save_map_route(conn, trip_id, item_id, title, location, expected_revision, payload); }
     finally { conn.close(); }
 }
 
@@ -297,16 +320,19 @@ def:pub review_backup_plan(trip_id: str, proposal_id: str, accept: any) -> dict[
 }
 
 def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
-    if scenario not in ("rain", "arrival_delay") { raise ValueError("Choose rain or arrival_delay"); }
-    (sample, facts) = sample_state(clock(), scenario);
+    if scenario not in ("rain", "arrival_delay", "map") { raise ValueError("Choose rain, arrival_delay or map"); }
+    now = clock(); map_demo = scenario == "map";
+    (sample, facts) = sample_state(now, "rain" if map_demo else scenario);
     trip_id = str(uuid.uuid4()); mapping = {i["id"]: str(uuid.uuid4()) for i in sample["items"]};
     conn = _connect();
     try {
         conn.execute("BEGIN IMMEDIATE");
         trip = sample["trip"];
-        conn.execute("INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)", (trip_id, "Integrated " + ("weather" if scenario == "rain" else "arrival delay") + " demo",
+        title = "Boston weekend map sample" if map_demo else "Integrated " + ("weather" if scenario == "rain" else "arrival delay") + " demo";
+        conn.execute("INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)", (trip_id, title,
             "Boston", trip["start_date"], trip["end_date"], "USD", trip["budget_cents"], "Explicit synthetic profile, quotes, hours, routes and risk evidence"));
         for item in sample["items"] {
+            if map_demo and item["id"] == "arrival" { item["title"] = "Chicago to Boston flight"; item["fixed"] = False; }
             conn.execute("INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (mapping[item["id"]], trip_id, item["title"], item["category"],
                 item["date"], item["time"], item["location"], "", "Synthetic sample", item["cost_cents"], int(item["done"]), int(item["paid"])));
             conn.execute("INSERT INTO replan_rules VALUES (?,?,?,?)", (mapping[item["id"]], item["duration_minutes"], item["latest_start"], int(item["fixed"])));
@@ -318,6 +344,19 @@ def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
         for route in facts["transfers"] { route["from_id"] = mapping[route["from_id"]]; route["to_id"] = mapping[route["to_id"]]; }
         for hours in facts["place_hours"] { hours["node_id"] = mapping[hours["node_id"]]; }
         for risk in facts["manual_risks"] { risk["node_ids"] = [mapping[key] for key in risk["node_ids"]]; }
+        if map_demo {
+            arrival = next(item for item in sample["items"] if item["id"] == "arrival");
+            conn.execute("INSERT INTO itinerary_map_routes VALUES (?,?,?,?,1)", (mapping["arrival"], arrival["title"],
+                arrival["location"], json.dumps({"kind": "flight",
+                    "from": {"label": "Chicago", "lat": 41.88, "lon": -87.63},
+                    "to": {"label": "Boston", "lat": 42.36, "lon": -71.06}})));
+            conn.execute("INSERT INTO dependencies VALUES (?,?,?,?)", (trip_id, mapping["arrival"], mapping["activity"], 0));
+            facts["manual_risks"].append({"id": "itinerary-report:" + mapping["arrival"] + ":timing", "category": "timing",
+                "node_ids": [mapping["arrival"]], "summary": "Sample flight delay · 20 minutes",
+                "not_before": {"local": arrival["date"] + "T09:20", "zone": facts["zone"]},
+                "evidence": {"source": "fixture://map/flight-delay", "checked_at": now.isoformat(),
+                    "expires_at": (now + datetime.timedelta(minutes=30)).isoformat()}});
+        }
         conn.execute("INSERT INTO planning_contexts VALUES (?,?)", (trip_id, json.dumps(facts, sort_keys=True)));
         current = public_context(build_context(snapshot(conn, trip_id), facts, clock()));
         conn.commit(); return current;

@@ -131,8 +131,8 @@ impl app.createIntegratedDemo(scenario: str = "rain") -> None {
     if busy or loading { return; } busy = True; error = "";
     try {
         demo = await create_planning_demo(scenario=scenario); resetReview(); selected = demo["trip_id"]; day = "";
-        trip_form = False; tab = "backups"; resetItem(); await refresh();
-        notice = "Sample ready. Find different plans, compare the changes, then keep or accept one.";
+        trip_form = False; tab = "itinerary" if scenario == "map" else "backups"; resetItem(); await refresh();
+        if scenario != "map" { notice = "Sample ready. Find different plans, compare the changes, then keep or accept one."; }
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
 }

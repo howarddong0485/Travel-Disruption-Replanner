@@ -1,5 +1,6 @@
 """Roam travel planner web entry."""
 import "./styles.css";
+import "./itinerary/map.css";
 import from .frontend { app as ClientApp }
 
 # The sealed loader requires executable bytecode for the root entry as well as

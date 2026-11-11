@@ -1,6 +1,5 @@
 """Read impact from saved dependencies and review connected plans in the itinerary."""
 import from server.main { replan_state, planning_state, report_itinerary_change, generate_backup_plans, review_backup_plan }
-import from itinerary.actions { focusItineraryControl }
 import from itinerary.presentation { affectedItemIds, planTitle, shiftLabel, differenceLabel }
 import from itinerary.evidence { EvidencePopover, planSources }
 
@@ -9,8 +8,10 @@ def:pub itinerarySchedule(date: str, time: str) -> str {
 }
 
 def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
-    onPreview: any, onClose: any, onApplied: any, onFacts: any) -> JsxElement {
+    onPreview: any, onClose: any, onApplied: any, onFacts: any, onMapUpdate: any) -> JsxElement {
     browser: any = window;
+    recordedRisks = request.get("risks", []);
+    recordedMode = len(recordedRisks) > 0;
     has target: str = request["item"], reason: str = request["reason"], delay: str = request.get("delay", ""),
         snapshot: any = None, result: any = None, choice: str = "", earliest: str = "",
         failure: str = "", notice: str = "", loading: bool = True, busy: bool = False, checking: bool = False,
@@ -22,6 +23,16 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
 
     def money(value: any) -> str {
         return "Needs confirmation" if value is None else currency + " " + (value / 100).toFixed(2);
+    }
+    def focusWithinReview(id: str, reveal: bool = False) -> None {
+        control: any = document.getElementById(id);
+        if control {
+            control.focus({"preventScroll": True});
+            pane: any = control.closest(".review-scroll");
+            if reveal and pane {
+                pane.scrollTop += control.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12;
+            }
+        }
     }
     def sheetHeight(size: str) -> float {
         ratio = 0.30 if size == "peek" else 0.60 if size == "half" else 0.92;
@@ -65,7 +76,21 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
         reset(); loading = True;
         try {
             fresh = await replan_state(trip_id=trip_id);
-            if alive.current { snapshot = fresh; }
+            if not alive.current { return; }
+            snapshot = fresh;
+            prior = request.get("options", []);
+            if len(prior) > 0 {
+                state = await planning_state(trip_id=trip_id);
+                if not alive.current { return; }
+                current = [p for p in prior if p["base_version"] == state["trip_version"] and
+                    state["review_statuses"].get(p["id"]) == "proposed" and Date.parse(p["expires_at"]) > Date.now()];
+                if len(current) > 0 {
+                    requested = request.get("option", "");
+                    result = {"plans": current, "base_version": state["trip_version"], "warnings": [], "rejections": [],
+                        "message": "Review your saved alternatives.", "input_snapshot": {"facts": state["facts"]}};
+                    choice = requested if any(p["id"] == requested for p in current) else current[0]["id"];
+                } else { notice = "These options changed or expired. Find fresh alternatives."; }
+            }
         } except Exception {
             if alive.current { snapshot = None; failure = "Could not load the trip. Try reloading the review."; }
         } finally { if alive.current { loading = False; } }
@@ -89,7 +114,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
     closeHandler.current = lambda { if not (busy and result) { onClose(); } };
     can with entry {
         alive.current = True;
-        focusItineraryControl("itinerary-review-title");
+        focusWithinReview("itinerary-review-title");
         load();
         listener.current = lambda { focusHandler.current(); };
         keyListener.current = lambda (e: any) { if e.key == "Escape" { closeHandler.current(); } };
@@ -109,7 +134,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
         if expiry.current { window.clearTimeout(expiry.current); expiry.current = 0; }
         if result and len(result["plans"]) > 0 {
             if sheetSize == "peek" { resizeSheet("half"); }
-            focusItineraryControl("itinerary-review-options");
+            focusWithinReview("itinerary-review-options", True);
             expiry.current = window.setTimeout(lambda {
                 clear(); notice = "These options expired. Reload the impact and find fresh options.";
             }, max(0.0, min(Date.parse(p["expires_at"]) for p in result["plans"]) - Date.now()));
@@ -139,24 +164,28 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
     delay_valid = browser.RegExp("^[0-9]+$").test(delay) and int(delay) >= 1 and int(delay) <= 1440;
     async def generate(e: FormEvent) -> None {
         e.preventDefault();
-        if busy or checking or loading or not selected_item or not reason or (reason == "timing" and not delay_valid) { return; }
+        if busy or checking or loading or not selected_item { return; }
+        if not recordedMode and (not reason or (reason == "timing" and not delay_valid)) { return; }
         reset(); busy = True;
         try {
-            recorded = await report_itinerary_change(trip_id=trip_id, item_id=target, reason=reason,
-                expected_version=snapshot["version"], delay_minutes=int(delay) if reason == "timing" else 0);
-            if not alive.current { return; }
-            # The report changes planning facts, not any saved itinerary item.
-            snapshot = browser.Object.assign({}, snapshot, {"version": recorded["trip_version"]});
-            moment = recorded.get("not_before");
-            if moment { earliest = moment["local"].replace("T", " ") + " · " + moment["zone"]; }
-            generated = await generate_backup_plans(trip_id=trip_id, expected_version=recorded["trip_version"],
-                risk_ids=[recorded["risk_id"]], max_plans=4);
+            version = snapshot["version"]; risks = recordedRisks;
+            if not recordedMode {
+                recorded = await report_itinerary_change(trip_id=trip_id, item_id=target, reason=reason,
+                    expected_version=version, delay_minutes=int(delay) if reason == "timing" else 0);
+                if not alive.current { return; }
+                version = recorded["trip_version"]; risks = [recorded["risk_id"]];
+                snapshot = browser.Object.assign({}, snapshot, {"version": version});
+                moment = recorded.get("not_before");
+                if moment { earliest = moment["local"].replace("T", " ") + " · " + moment["zone"]; }
+            }
+            generated = await generate_backup_plans(trip_id=trip_id, expected_version=version,
+                risk_ids=risks, max_plans=4);
             if not alive.current { return; }
             result = generated;
             choice = generated["plans"][0]["id"] if len(generated["plans"]) > 0 else "";
         } except Exception as exc {
             if alive.current { failure = str(exc); }
-        } finally { if alive.current { busy = False; } }
+        } finally { if alive.current { busy = False; onMapUpdate(); } }
     }
     async def apply -> None {
         if busy or checking or plan is None or not plan["selectable"] { return; }
@@ -230,9 +259,16 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
             <button type="button" className="itinerary-chip" aria-expanded={showReport} aria-controls="itinerary-review-report"
                 disabled={busy} onClick={lambda {
                     opening = not showReport; showReport = opening;
-                    if opening { window.requestAnimationFrame(lambda { focusItineraryControl("itinerary-disruption-item"); }); }
-                }}>{"Hide report" if showReport else "Edit report"}</button>
+                    if opening { window.requestAnimationFrame(lambda { focusWithinReview("itinerary-disruption-item", True); }); }
+                }}>{"Hide controls" if showReport and recordedMode else "Find fresh alternatives" if recordedMode else "Hide report" if showReport else "Edit report"}</button>
         </div>) if len(options) > 0 and selected_item else None}
+        {(<form id="itinerary-review-report" onSubmit={generate} className="itinerary-review-form" hidden={len(options) > 0 and not showReport}>
+            <p className="section-caption">Find options for the recorded alert using your saved trip facts.</p>
+            {(<section className="review-impact"><h3>Arrangements to check</h3>
+                <ol>{[<li key={item["id"]}>{item["title"]}</li> for item in affected_items]}</ol></section>) if len(affected_items) > 0 else None}
+            <button type="submit" className="primary" disabled={busy or checking or not selected_item}>
+                {"Finding alternatives…" if busy else "Find alternatives"}</button>
+        </form>) if snapshot and not loading and recordedMode else None}
         {(<form id="itinerary-review-report" onSubmit={generate} className="itinerary-review-form" hidden={len(options) > 0 and not showReport}>
             <label htmlFor="itinerary-disruption-item">Affected itinerary item</label>
             <select id="itinerary-disruption-item" value={target if selected_item else ""} disabled={busy} required={True}
@@ -261,7 +297,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
                     (not delay_valid or not selected_item["date"] or not selected_item["time"]))}>
                 {"Finding alternatives…" if busy and not result else "Report change and find alternatives"}
             </button>
-        </form>) if snapshot and not loading else None}
+        </form>) if snapshot and not loading and not recordedMode else None}
         {(<p className="section-caption">{"Reported earliest start: " + earliest}</p>) if earliest else None}
         {(<section className="review-results" aria-label="Plan options">
             <div aria-live="polite"><p>{result["message"]}</p></div>
