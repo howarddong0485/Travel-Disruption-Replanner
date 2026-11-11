@@ -166,6 +166,21 @@ const screenshots = process.env.TRAVEL_MAP_SCREENSHOTS;
       date: item.date, time: item.time, location: item.location});
     const changed = await api('load_trip_map', {trip_id: regular.id});
     assert.equal(changed.routes[item.id].route, null);
+    // A pin close on screen but outside geographic city grouping must stay reachable.
+    const remote = await api('save_item', {trip_id: activeTrip.id, title: 'Regional stop outside Boston',
+      category: 'activity', date: flight.date, time: '20:00', location: 'Regional stop'});
+    await api('save_place_details', {trip_id: activeTrip.id, item_id: remote.id, location: remote.location,
+      expected_revision: 0, payload: {latitude: 42.36, longitude: -72.26, photo_url: '', photo_source: ''}});
+    await page.locator('.trip-card').filter({hasText: 'Boston weekend map sample'}).click();
+    await map.evaluate(el => { el.style.width = '800px'; el.style.height = '530px'; });
+    await map.getByRole('button', {name: 'Fit all trip points', exact: true}).click();
+    const remotePin = map.getByRole('button', {name: 'Explore stop Regional stop outside Boston'});
+    await remotePin.waitFor();
+    const cityPoint = await map.getByRole('button', {name: 'Explore Boston', exact: true}).evaluate(el => [parseFloat(el.style.left), parseFloat(el.style.top)]);
+    const pinPoint = await remotePin.evaluate(el => [parseFloat(el.style.left), parseFloat(el.style.top)]);
+    assert(Math.abs(cityPoint[0] - pinPoint[0]) + Math.abs(cityPoint[1] - pinPoint[1]) < 38);
+    await remotePin.click();
+    await map.getByRole('dialog', {name: remote.title}).waitFor();
     assert.deepEqual(errors, []);
     console.log('PASS: interactive city/route popovers, red disruptions, saved Plan B preview and acceptance, mobile sheet and route editing');
   } catch (error) {

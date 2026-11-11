@@ -115,7 +115,8 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
         for item in items if item.id in pins and savedLocationApplies(item, preview) and
             not any(record["id"] == item.id for record in mappedRoutes)];
     visiblePlaces = [record for record in placeMarkers if inside(record["screen"], width, height) and
-        not any(abs(city["screen"]["x"] - record["screen"]["x"]) + abs(city["screen"]["y"] - record["screen"]["y"]) < 38
+        not any(record["item"].id in city["data"]["items"] and
+            abs(city["screen"]["x"] - record["screen"]["x"]) + abs(city["screen"]["y"] - record["screen"]["y"]) < 38
             for city in cityMarkers)];
     activeId = popup["id"] if popup else "";
     activeKind = popup["kind"] if popup else "";
