@@ -171,7 +171,10 @@ const screenshots = process.env.TRAVEL_MAP_SCREENSHOTS;
       category: 'activity', date: flight.date, time: '20:00', location: 'Regional stop'});
     await api('save_place_details', {trip_id: activeTrip.id, item_id: remote.id, location: remote.location,
       expected_revision: 0, payload: {latitude: 42.36, longitude: -72.26, photo_url: '', photo_source: ''}});
-    await page.locator('.trip-card').filter({hasText: 'Boston weekend map sample'}).click();
+    await api('save_trip', {trip_id: activeTrip.id, title: 'Map pin clustering regression', destination: 'Boston',
+      start_date: flight.date, end_date: flight.date, budget: '600'});
+    await page.getByRole('button', {name: '↻ Refresh', exact: true}).click();
+    await page.locator('.trip-card').filter({hasText: 'Map pin clustering regression'}).click();
     await map.evaluate(el => { el.style.width = '800px'; el.style.height = '530px'; });
     await map.getByRole('button', {name: 'Fit all trip points', exact: true}).click();
     const remotePin = map.getByRole('button', {name: 'Explore stop Regional stop outside Boston'});
