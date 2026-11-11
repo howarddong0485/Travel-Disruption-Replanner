@@ -15,6 +15,8 @@ def parser -> argparse.ArgumentParser {
     trip.add_argument("--start", required=True); trip.add_argument("--end", required=True);
     trip.add_argument("--currency", `default="USD"); trip.add_argument("--budget", `default="0");
     trip.add_argument("--notes", `default="");
+    trip.add_argument("--depart-from", `default="", help="Departure city or airport");
+    trip.add_argument("--return-to", `default="", help="City or airport to return to after the trip");
     show = commands.add_parser("show", help="Show a trip's items and budget"); show.add_argument("trip_id");
     add = commands.add_parser("add", help="Add an itinerary, booking, packing, or cost item");
     add.add_argument("trip_id"); add.add_argument("title");
@@ -50,7 +52,8 @@ def print_item(item: ItemView, unit: str) -> None {
 async def dispatch(args: argparse.Namespace) -> int {
     if args.command == "new" {
         trip = await save_trip(title=args.title, destination=args.destination, start_date=args.start,
-            end_date=args.end, currency=args.currency, budget=args.budget, notes=args.notes, trip_id="");
+            end_date=args.end, currency=args.currency, budget=args.budget, notes=args.notes, trip_id="",
+            departure_location=args.depart_from, return_location=args.return_to);
         print("Created " + trip.title + " | " + trip.id); return 0;
     }
     trips = await list_trips();
@@ -76,6 +79,7 @@ async def dispatch(args: argparse.Namespace) -> int {
     items = await list_items(trip_id=trip_id);
     if args.command == "show" {
         print(trip.title + " — " + trip.destination + f" ({trip.start_date} to {trip.end_date})");
+        print("Departing from: " + (trip.departure_location or "Not set") + " | Return to: " + (trip.return_location or "Not set"));
         if trip.notes { print("Notes: " + trip.notes); }
         for item in items { print_item(item, trip.currency); }
         total = sum(item.cost_cents for item in items);

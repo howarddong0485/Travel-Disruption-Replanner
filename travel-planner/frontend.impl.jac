@@ -2,6 +2,7 @@
 impl app.resetItem -> None {
     editing_item = ""; item_title = ""; item_date = day; item_time = "";
     location = ""; reference = ""; item_notes = ""; cost = "";
+    item_stop = ""; item_leg = ""; arrival_date = ""; arrival_time = ""; item_duration = "60";
     category = "packing" if tab == "packing" else "transport" if tab == "bookings" else "expense" if tab == "budget" else "activity";
 }
 impl app.chooseTab(value: str) -> None {
@@ -13,6 +14,8 @@ impl app.openTrip(trip: TripView | None = None) -> None {
     editing_trip = trip.id if trip else "";
     trip_title = trip.title if trip else "";
     destination = trip.destination if trip else "";
+    departure_location = trip.departure_location if trip else "";
+    return_location = trip.return_location if trip else "";
     start_date = trip.start_date if trip else today();
     end_date = trip.end_date if trip else today();
     currency = trip.currency if trip else "USD";
@@ -26,6 +29,9 @@ impl app.editItem(item: ItemView) -> None {
     editing_item = item.id; item_title = item.title; category = item.category;
     item_date = item.date; item_time = item.time; location = item.location;
     reference = item.reference; item_notes = item.notes; cost = str(item.cost_cents / 100);
+    item_stop = item.journey.get("stop_id", ""); item_leg = item.journey.get("leg_id", "");
+    arrival_date = item.journey.get("arrival_date", ""); arrival_time = item.journey.get("arrival_time", "");
+    item_duration = str(item.duration_minutes);
     notice = "";
     window.requestAnimationFrame(lambda { focusItineraryControl("item-title"); });
 }
@@ -40,9 +46,11 @@ impl app.refresh -> None {
             target = fresh_trips[0].id if fresh_trips else "";
         }
         fresh_items: list[ItemView] = [];
-        if target { fresh_items = await list_items(trip_id=target); }
+        fresh_journey: any = {};
+        if target { fresh_items = await list_items(trip_id=target); fresh_journey = await journey_state(trip_id=target); }
         if requestRef.current == token {
-            trips = fresh_trips; selected = target; items = fresh_items; error = "";
+            trips = fresh_trips; selected = target; items = fresh_items; journeyData = fresh_journey; mapRevision += 1; error = "";
+            aiReload += 1;
         }
     } except Exception as exc {
         if requestRef.current == token { error = str(exc); }
@@ -55,6 +63,7 @@ impl app.chooseTrip(trip_id: str) -> None {
     resetReview(); selected = trip_id; items = []; day = ""; tab = "itinerary";
     railView = "auto"; placeId = "";
     trip_form = False; notice = ""; revisionNotice = ""; resetItem();
+    aiData = {}; aiCompose = 0; aiText = "";
     await refresh();
 }
 impl app.submitTrip(e: FormEvent) -> None {
@@ -67,8 +76,9 @@ impl app.submitTrip(e: FormEvent) -> None {
     busy = True; notice = "";
     try {
         saved = await save_trip(title=trip_title, destination=destination, start_date=start_date,
-            end_date=end_date, currency=currency, budget=budget, notes=trip_notes, trip_id=editing_trip);
-        if not editing_trip { tab = "itinerary"; }
+            end_date=end_date, currency=currency, budget=budget, notes=trip_notes, trip_id=editing_trip,
+            departure_location=departure_location, return_location=return_location);
+        if selected != saved.id { aiData = {}; aiCompose = 0; tab = "planner"; }
         resetReview(); selected = saved.id; trip_form = False; day = ""; resetItem();
         await refresh(); notice = "Trip saved. Let the planning begin.";
     } except Exception as exc { error = str(exc); }
@@ -81,7 +91,9 @@ impl app.submitItem(e: FormEvent) -> None {
             date="" if category == "packing" else item_date, time="" if category == "packing" else item_time,
             location="" if category == "packing" else location,
             reference=reference if category in ["transport", "stay"] else "",
-            notes=item_notes, cost="0" if category == "packing" else cost, item_id=editing_item);
+            notes=item_notes, cost="0" if category == "packing" else cost, item_id=editing_item,
+            journey={"stop_id": item_stop, "leg_id": item_leg, "arrival_date": arrival_date, "arrival_time": arrival_time} if journeyData.get("journey") and category not in ["packing", "expense"] else None,
+            duration_minutes=int(item_duration or "60"));
         # Switch to the matching view so every saved item is immediately visible.
         tab = "packing" if category == "packing" else "budget" if category == "expense" else "bookings" if category in ["transport", "stay"] else "itinerary";
         day = ""; resetItem(); await refresh(); notice = "Saved to your trip.";
@@ -93,6 +105,17 @@ impl app.toggle(item: ItemView, payment: bool = False) -> None {
     try {
         await set_item_state(trip_id=selected, item_id=item.id,
             done=item.done if payment else not item.done, paid=not item.paid if payment else item.paid);
+        await refresh();
+    } except Exception as exc { error = str(exc); }
+    finally { busy = False; }
+}
+impl app.togglePacking(title: str) -> None {
+    if busy or loading or not selected { return; }
+    busy = True; error = ""; notice = "";
+    try {
+        saved = [item for item in items if item.category == "packing" and item.title == title];
+        packing_item = saved[0] if saved else await save_item(trip_id=selected, title=title, category="packing", cost="0");
+        await set_item_state(trip_id=selected, item_id=packing_item.id, done=not packing_item.done, paid=packing_item.paid);
         await refresh();
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }

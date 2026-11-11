@@ -10,6 +10,7 @@ import from uuid { uuid4 }
 import from events.simulator { simulated_event }
 import from replan.backups { backups_for }
 import from planning.application { apply_backup }
+import journey.model as journey_model;
 def install_schema(conn: sqlite3.Connection) -> None {
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS trip_versions (
@@ -59,6 +60,7 @@ def install_schema(conn: sqlite3.Connection) -> None {
         }
     }
     conn.commit();
+    journey_model.install(conn);
 }
 def snapshot(conn: any, trip_id: any) -> dict[str, any] {
     trip = conn.execute('SELECT * FROM trips WHERE id=?', (trip_id, )).fetchone();
@@ -82,6 +84,7 @@ def snapshot(conn: any, trip_id: any) -> dict[str, any] {
                 item['id'], {'duration_minutes': 60, 'latest_start': '', 'fixed': 0}
             )
         );
+        item['journey'] = journey_model.item_details(conn, item['id']);
         # Roam marks transport/stays done when confirmed, not completed.
         item['protected'] = bool(
             (
@@ -101,6 +104,7 @@ def snapshot(conn: any, trip_id: any) -> dict[str, any] {
     ).fetchone()[0];
     return {
         'trip': `dict(trip),
+        'journey': journey_model.read(conn, trip_id),
         'items': items,
         'dependencies': edges,
         'version': version
@@ -112,13 +116,22 @@ def start(item: dict[str, any]) -> datetime {
             'Set a date and time for {} before replanning'.format(item['title'])
         );
     }
+    if item.get('journey') { return journey_model.instant(item['date'] + 'T' + item['time'], item['journey']['zone']); }
     return datetime.fromisoformat((item['date'] + 'T' + item['time']));
 }
 def end(item: dict[str, any]) -> datetime {
     return (start(item) + timedelta(minutes=item['duration_minutes']));
 }
 def set_start(item: dict[str, any], value: datetime) -> None {
-    (item['date'], item['time']) = (value.date().isoformat(), value.strftime('%H:%M'));
+    local = journey_model.local_time(value, item['journey']['zone']) if item.get('journey') else value;
+    (item['date'], item['time']) = (local.date().isoformat(), local.strftime('%H:%M'));
+    if item.get('journey') {
+        arrival = journey_model.local_time(value + timedelta(minutes=item['duration_minutes']), item['journey']['end_zone']);
+        item['journey'].update(arrival_date=arrival.date().isoformat(), arrival_time=arrival.strftime('%H:%M'));
+    }
+}
+def latest(item: dict[str, any]) -> datetime {
+    return journey_model.instant(item["latest_start"], item["journey"]["zone"]) if item.get("journey") else datetime.fromisoformat(item["latest_start"]);
 }
 def topological(items: list[dict[str, any]], edges: list[dict[str, any]]) -> tuple[list[str], dict[str, list[str]]] {
     ids = {item['id'] for item in items};
@@ -216,9 +229,16 @@ def save_rules(
                     'Latest start must use destination-local YYYY-MM-DDTHH:MM'
                 );
             }
-            if (parsed < start(item)) {
+            checked_latest = journey_model.instant(latest_start, item['journey']['zone']) if item.get('journey') else parsed;
+            if (checked_latest < start(item)) {
                 raise ValueError('Latest start cannot precede the current start');
             }
+        }
+        if state.get('journey') and item.get('journey') {
+            item['duration_minutes'] = duration_minutes;
+            item['journey'] = journey_model.bind(item, item['journey'], state['journey']);
+            journey_model.validate(state['journey'], state['trip'], state['items'], complete=False);
+            journey_model.write_item(conn, item_id, item['journey']);
         }
         conn.execute(
             'INSERT INTO replan_rules VALUES (?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET duration_minutes=excluded.duration_minutes, latest_start=excluded.latest_start, fixed=excluded.fixed',
@@ -294,6 +314,7 @@ def save_dependency(
     return snapshot(conn, trip_id);
 }
 def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
+    if state.get("journey") { journey_model.validate(state["journey"], state["trip"], list(nodes.values())); }
     topological(`list(nodes.values()), state['dependencies']);
     original = {i['id']: i for i in state['items']};
     for change in changes {
@@ -311,12 +332,12 @@ def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
                 'Repair moves {} outside trip dates'.format(item['title'])
             );
         }
-        if (end(item).date().isoformat() > state['trip']['end_date']) {
+        if ((item['journey']['arrival_date'] if item.get('journey') else end(item).date().isoformat()) > state['trip']['end_date']) {
             raise ValueError('Repair ends {} after the trip'.format(item['title']));
         }
         if (
             item['latest_start']
-            and (start(item) > datetime.fromisoformat(item['latest_start']))
+            and (start(item) > latest(item))
         ) {
             raise ValueError('Latest-start window missed for {}'.format(item['title']));
         }
@@ -345,7 +366,7 @@ def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
     for item in scheduled {
         if (
             item['latest_start']
-            and (start(item) > datetime.fromisoformat(item['latest_start']))
+            and (start(item) > latest(item))
         ) {
             raise ValueError('Latest-start window missed for {}'.format(item['title']));
         }
@@ -366,7 +387,8 @@ def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
     return total;
 }
 def build_combination(
-    state: any, event: any, affected: any, choices: any, manual: any = False
+    state: any, event: any, affected: any, choices: any, manual: any = False,
+    inventory: any = None
 ) -> any {
     nodes = {i['id']: copy.deepcopy(i) for i in state['items']};
     original = {i['id']: i for i in state['items']};
@@ -395,17 +417,18 @@ def build_combination(
         missed = bool(
             (
                 before['latest_start']
-                and (earliest > datetime.fromisoformat(before['latest_start']))
+                and (earliest > latest(before))
             )
         );
         backup = None;
         if (forced_replace or missed or (manual and choices.get(item_id))) {
+            if state.get('journey') { raise ValueError('Use the journey planner for replacements; this backup source cannot verify city and transport-leg assignments.'); }
             if before['protected'] {
                 raise ValueError(
                     'Fixed or completed item conflicts: {}'.format(before['title'])
                 );
             }
-            options = backups_for(before);
+            options = backups_for(before) if inventory is None else [b for b in inventory if b['item_id'] == item_id];
             backup = next(
                 (
                     b
@@ -425,7 +448,7 @@ def build_combination(
                 reference='',
                 done=False,
                 paid=False,
-                location=before['location']
+                location=backup.get('location', before['location'])
             );
             earliest += timedelta(minutes=backup['offset_minutes']);
             retained += before['cost_cents'] if before['paid'] else 0;
@@ -781,6 +804,7 @@ def decide(conn: any, trip_id: any, proposal_id: any, accept: any) -> dict[str, 
                     trip_id
                 )
             );
+            journey_model.write_item(conn, after['id'], after.get('journey', {}));
             conn.execute(
                 'INSERT INTO replan_rules VALUES (?,?,?,?) ON CONFLICT(item_id) DO UPDATE SET duration_minutes=excluded.duration_minutes, latest_start=excluded.latest_start',
                 (
@@ -814,7 +838,7 @@ def seed_demo(conn: any) -> dict[str, any] {
     conn.execute('BEGIN IMMEDIATE');
     try {
         conn.execute(
-            'INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)',
+            'INSERT INTO trips (id,title,destination,start_date,end_date,currency,budget_cents,notes) VALUES (?,?,?,?,?,?,?,?)',
             (
                 trip_id,
                 'Backup & replan demo',

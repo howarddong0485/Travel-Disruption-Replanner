@@ -10,9 +10,29 @@ def:pub mapScene(destination: str, items: any, data: any, preview: any) -> any {
     home = cityPoint(destination);
     cities: any = {};
     if home is not None { cities[cityId(home)] = home; }
-    routes: any = data.get("routes", {});
+    routes: any = {**data.get("routes", {})};
     pins: any = data.get("pins", {});
     groups: any = {};
+    journey = data.get("journey");
+    if journey {
+        points: any = {};
+        locations = [{**journey["origin"], "id": "origin"}] + journey["stops"];
+        if journey["return_to"] { locations.append({**journey["return_to"], "id": "return"}); }
+        for location in locations {
+            point = {"label": location["city"], "lat": location["lat"], "lon": location["lon"]}
+                if location.get("lat") is not None else cityPoint(location["city"]);
+            if point is not None { points[location["id"]] = point; cities[cityId(point)] = point; }
+        }
+        for item in items {
+            detail = item.journey;
+            if not detail { continue; }
+            leg = [leg for leg in journey["legs"] if leg["id"] == detail.get("leg_id")];
+            if len(leg) > 0 and leg[0]["from_id"] in points and leg[0]["to_id"] in points {
+                routes[item.id] = {"revision": routes.get(item.id, {}).get("revision", 0), "route": {
+                    "from": points[leg[0]["from_id"]], "to": points[leg[0]["to_id"]], "kind": "flight" if leg[0]["mode"] == "flight" else "ground"}};
+            } elif detail.get("stop_id") in points { groups[item.id] = [cityId(points[detail["stop_id"]])]; }
+        }
+    }
     for item in items {
         route = routes.get(item.id, {}).get("route");
         if route is not None {

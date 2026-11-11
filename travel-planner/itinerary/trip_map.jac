@@ -243,7 +243,8 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
                     {(<div className="map-endpoints"><strong>{selectedRoute["route"]["from"]["label"]}</strong>
                         <span aria-hidden="true">{ "✈" if selectedRoute["route"]["kind"] == "flight" else "→"}</span>
                         <strong>{selectedRoute["route"]["to"]["label"]}</strong></div>) if selectedRoute is not None else None}
-                    <p>{itinerarySchedule(selectedItem.date, selectedItem.time) + " · Saved local time"}</p>
+                    <p>{itinerarySchedule(selectedItem.date, selectedItem.time) + " · " + selectedItem.journey.get("zone", "Saved local time")}</p>
+                    {(<p>{"Arrives " + selectedItem.journey["arrival_date"] + " " + selectedItem.journey["arrival_time"] + " · " + selectedItem.journey["end_zone"]}</p>) if selectedItem.journey.get("leg_id") else None}
                     {(<p className="map-proposed-time">{"Proposed " + preview["changes"][activeId]["start"]["local"].replace("T", " ")}</p>)
                         if preview and activeId in preview["changes"] else None}
                     {(<p>{ "Booking reference " + selectedItem.reference}</p>) if selectedItem.reference else None}
@@ -252,8 +253,8 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
                     {(<p className="map-risk-copy">{relatedAlerts[0]["risk"]["summary"]}</p>) if len(relatedAlerts) > 0 else None}
                     <div className="map-popup-actions">
                         <button type="button" className="map-primary" disabled={disabled} onClick={lambda { reviewStop(activeId, "timing"); }}>Report a delay</button>
-                        <button type="button" className="map-secondary" disabled={disabled} onClick={lambda { editing = True; }}>
-                            { "Edit route" if selectedRoute is not None else "Add route"}</button>
+                        {(<button type="button" className="map-secondary" disabled={disabled} onClick={lambda { editing = True; }}>
+                            { "Edit route" if selectedRoute is not None else "Add route"}</button>) if not selectedItem.journey.get("leg_id") else <p className="map-muted">Edit cities in the Route tab and transport times in the itinerary.</p>}
                     </div>
                 </div>) if activeKind == "route" and selectedItem is not None and popupTab == "plan" and not editing else None}
                 {(<div className="map-popup-stack">

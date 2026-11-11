@@ -25,7 +25,7 @@ For your own trip, enter dates and times, expand **Schedule rules and dependenci
 
 The implementation follows Jac's [byLLM documentation](https://docs.jaseci.org/reference/plugins/byllm/). `agent.jac` declares a typed `ReplanSelection` and delegates selection with `by replan_model(...)`. Its `sem` annotations describe allowed selections and explanations. The model receives up to twelve prevalidated combinations of mock backup IDs, dates/times, and deterministic cost metrics. Booking references, traveler notes, and payment credentials are excluded.
 
-`jac install` resolves the LLM capability declared by `[byllm.model]` in `jac.toml`. The default is `gpt-4o-mini`; to enable it, set a provider key in the **server** environment before launching and check **Use LLM to choose backup combinations**:
+`jac install` resolves the LLM capability declared by `[byllm.model]` in `jac.toml`. The default is `gpt-6.1-sol`; to enable it, set a provider key in the **server** environment before launching and check **Use LLM to choose backup combinations**:
 
 ```sh
 export OPENAI_API_KEY="your-key"
