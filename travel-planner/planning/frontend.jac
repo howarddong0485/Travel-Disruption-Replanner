@@ -1,5 +1,6 @@
 """Risk selection, traveler facts, plan comparison and explicit P4 review in Roam."""
 import from server.main { ItemView, planning_state, save_planning_context, generate_backup_plans, review_backup_plan }
+import from itinerary.cancellation { CancellationTerms }
 
 def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = None, onApplied: any = None) -> JsxElement {
     browser: any = window;
@@ -313,6 +314,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                         <div><dt>Potential cash not refunded</dt><dd>{money(plan["comparison"]["refund_loss_minor"])}</dd></div>
                         <div><dt>Potential credit</dt><dd>{money(plan["comparison"]["eligible_credit_minor"])}</dd></div></dl>
                     <p className="muted">No refunds assumed. Quotes are not amounts due now.</p>
+                    {(<CancellationTerms entries={plan["comparison"]["cancellation"]}/>) if len(plan["comparison"].get("cancellation", [])) > 0 else None}
                     {(<ul>{[<li key={message}>{message}</li> for message in missingReasons(plan)]}</ul>) if not plan["selectable"] else None}
                     <button type="button" className="primary" disabled={busy or not plan["selectable"]} onClick={lambda { review(plan["id"], True); }}>Accept this plan</button>
                     <button type="button" className="secondary" disabled={busy} onClick={lambda { review(plan["id"], False); }}>Keep current plan</button>

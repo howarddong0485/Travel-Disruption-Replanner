@@ -7,9 +7,46 @@ import from schema.common { local_to_instant }
 import from schema.common { to_plain }
 import from backup.changes { quote_problem }
 
+glob STATE_NAMES: dict[str, str] = {"free_cancel_open": "free", "partial_refund": "fee", "no_refund": "no_refund",
+    "unknown": "unknown", "service_started": "started"};
+
+"""What cancelling one replaced booking means now, for display beside an alternative.
+
+Keeps free cancellation, a fee-qualified refund and an explicit no-refund term
+distinct. Missing terms, unknown fields or an expired source stay visible as
+open questions; nothing here is read as free or refundable by default.
+"""
+def cancellation_terms(context: dict[str, any], old: any, booking: any, policy: any, now: datetime) -> dict[str, any] {
+    result: dict[str, any] = {"item_id": old.id, "title": old.title, "currency": context["trip"].currency, "paid_minor": old.paid_minor,
+        "state": "", "refund_minor": None, "fee_minor": None, "refund_form": "unknown", "deadline_local": "",
+        "zone": "", "scope": "", "current": False, "excerpts": [], "unknowns": []};
+    if policy is None {
+        result["state"] = "nothing_paid" if old.paid_minor == 0 else "no_terms";
+        result["unknowns"] = [] if old.paid_minor == 0 else ["cancellation terms"];
+        return result;
+    }
+    cancel = evaluate_cancellation(policy, booking, now);
+    questions: list[str] = list(cancel.unknowns);
+    cited = [e for e in context["bundle"].evidence if e.id in cancel.evidence_ids];
+    current = len(cited) > 0 and len(cited) == len(set(cancel.evidence_ids));
+    for source in cited {
+        proof = Evidence(source.source_ref, source.retrieved_at, context["facts"].get("evidence_deadlines", {}).get(source.id, ""));
+        if evidence_problem(proof, now) { current = False; }
+    }
+    result.update({"state": STATE_NAMES.get(cancel.state.value, "unknown"), "currency": cancel.currency,
+        "paid_minor": cancel.paid_minor, "refund_minor": cancel.refund_if_cancel_now_minor,
+        "fee_minor": cancel.fee_if_cancel_now_minor, "refund_form": cancel.refund_form.value,
+        "deadline_local": cancel.next_deadline_local, "zone": policy.tz, "scope": policy.scope, "current": current,
+        "excerpts": [{"source": e.source_ref, "text": e.excerpt, "retrieved_at": e.retrieved_at} for e in cited if e.excerpt]});
+    if not current { questions.append("a current source for these terms"); }
+    if cancel.currency != context["trip"].currency { questions.append("conversion to " + context["trip"].currency); }
+    result["unknowns"] = questions;
+    return result;
+}
+
 def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...], checked: dict[str, any], now: datetime) -> dict[str, any] {
     originals = {item.id: item for item in context["trip"].items};
-    new_quotes = []; retained = 0; refunds = []; credits = []; unknowns = []; times = [];
+    new_quotes = []; retained = 0; refunds = []; credits = []; unknowns = []; times = []; terms = [];
     for candidate in replacements {
         old = originals[candidate.replaces_id]; new = candidate.item;
         if candidate.action == "replace" {
@@ -19,6 +56,7 @@ def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...],
             else { retained += old.paid_minor; }
             booking = context["bundle"].itinerary.find_node(old.id);
             policy = context["bundle"].policy(booking.policy_id) if booking and booking.policy_id else None;
+            if booking is not None { terms.append(cancellation_terms(context, old, booking, policy, now)); }
             if policy is not None {
                 cancel = evaluate_cancellation(policy, booking, now);
                 cited = [e for e in context["bundle"].evidence if e.id in cancel.evidence_ids];
@@ -55,7 +93,7 @@ def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...],
         "retained_paid_minor": None if any("payment" in reason for reason in unknowns) else retained,
         "eligible_refund_minor": eligible, "eligible_cash_refund_minor": eligible, "eligible_credit_minor": sum(credits) if refund_known else None, "confirmed_refund_minor": 0,
         "refund_loss_minor": retained - eligible if eligible is not None else None,
-        "time_changes": times, "changed_item_count": len(replacements), "unknowns": unknowns + ["Payment timing is not supplied; new purchase quotes are not an amount due now"],
+        "time_changes": times, "changed_item_count": len(replacements), "cancellation": terms, "unknowns": unknowns + ["Payment timing is not supplied; new purchase quotes are not an amount due now"],
         "notice": "Synthetic quotes only. Eligible refunds have not been received and are not deducted from total cost or cash needs."};
 }
 

@@ -20,7 +20,12 @@ obj ComparisonResult {
         eligible_cash_refund_minor: int | None, eligible_credit_minor: int | None,
         confirmed_refund_minor: int, refund_loss_minor: int | None,
         time_changes: list[dict[str, any]], changed_item_count: int, unknowns: list[str], notice: str;
+    # One entry per replaced booking: its cancellation terms as evaluated now, with the
+    # cited policy excerpts. Optional so plans recorded before this field still load.
+    has cancellation: list[dict[str, any]] = [];
 }
+
+glob CANCELLATION_STATES: tuple[str, ...] = ("free", "fee", "no_refund", "unknown", "no_terms", "nothing_paid", "started");
 
 obj AlternativePlan {
     has plan_contract: str, validator_version: str, id: str, trip_id: str, base_version: int,
@@ -44,6 +49,13 @@ def alternative_from_dict(data: dict[str, any]) -> AlternativePlan {
         "eligible_cash_refund_minor", "eligible_credit_minor", "confirmed_refund_minor", "refund_loss_minor") {
         value = data["comparison"].get(field);
         if value is not None and (type(value) is not int or value < 0) { raise ValueError("Invalid alternative money: " + field); }
+    }
+    for record in data["comparison"].get("cancellation", []) {
+        if record.get("state") not in CANCELLATION_STATES { raise ValueError("Invalid cancellation state"); }
+        for field in ("paid_minor", "refund_minor", "fee_minor") {
+            value = record.get(field);
+            if value is not None and (type(value) is not int or value < 0) { raise ValueError("Invalid cancellation money: " + field); }
+        }
     }
     ids = [candidate["replaces_id"] for candidate in data["replacements"]];
     if not ids or len(set(ids)) != len(ids) { raise ValueError("Alternative must change distinct nodes"); }

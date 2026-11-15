@@ -502,6 +502,7 @@ def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
         facts["items"] = {mapping[key]: value for (key, value) in facts["items"].items()};
         for route in facts["transfers"] { route["from_id"] = mapping[route["from_id"]]; route["to_id"] = mapping[route["to_id"]]; }
         for hours in facts["place_hours"] { hours["node_id"] = mapping[hours["node_id"]]; }
+        for policy in facts.get("policies", []) { policy["booking_node_id"] = mapping[policy["booking_node_id"]]; }
         for risk in facts["manual_risks"] { risk["node_ids"] = [mapping[key] for key in risk["node_ids"]]; }
         if map_demo {
             arrival = next(item for item in sample["items"] if item["id"] == "arrival");

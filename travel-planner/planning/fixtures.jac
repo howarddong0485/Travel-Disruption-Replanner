@@ -36,6 +36,19 @@ def sample_state(now: datetime, scenario: str = "rain") -> tuple[dict[str, any],
             "tags": ["outdoor"] if item.id == "activity" else ["indoor"]};
         facts["place_hours"].append({"node_id": item.id, "date": trip.start_date, "evidence_id": "forecast", "open_local": "00:00", "close_local": "23:59"});
     }
+    # Ticket terms for the paid garden visit, so alternatives that replace it can
+    # show what cancelling costs: free until 24 hours before entry, then a fee.
+    terms = ("Tickets can be cancelled for a full refund up to 24 hours before entry. "
+        + "Later cancellations are refunded minus a USD 5.00 fee. Missed entries are not refunded.");
+    facts["items"]["activity"]["policy_id"] = "garden-ticket-terms";
+    facts["evidence"].append({"id": "garden-ticket-terms", "source_ref": "fixture://boston/garden-ticket-terms",
+        "excerpt": terms, "retrieved_at": now.isoformat(), "origin": "mock"});
+    facts["evidence_deadlines"]["garden-ticket-terms"] = (now + timedelta(minutes=15)).isoformat();
+    facts["policies"] = [{"id": "garden-ticket-terms", "booking_node_id": "activity", "scope": "Garden entry tickets, whole party",
+        "tz": trip.zone, "currency": "USD", "retrieved_at": now.isoformat(), "source_text": terms, "origin": "mock",
+        "tiers": [{"evidence_id": "garden-ticket-terms", "hours_before_start": 24, "refund_percent": 100, "fee_minor": 0, "refund_form": "cash"},
+            {"evidence_id": "garden-ticket-terms", "refund_percent": 100, "fee_minor": 500, "refund_form": "cash"}],
+        "no_show_refund_percent": 0, "no_show_evidence_id": "garden-ticket-terms"}];
     if scenario == "arrival_delay" {
         facts["manual_risks"] = [{"id": "reported-arrival-delay", "category": "timing", "node_ids": ["dinner"],
             "summary": "Traveler-reported delayed arrival", "evidence": asdict(risk.evidence), "not_before": asdict(risk.not_before)}];

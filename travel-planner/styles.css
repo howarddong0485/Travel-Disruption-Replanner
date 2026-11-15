@@ -676,3 +676,21 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
   .with-assistant[data-reviewing="true"] .detail-grid[data-reviewing="true"] { grid-template-columns: minmax(0, 1fr) minmax(310px, 390px); }
 }
 @media (max-width: 650px) { .route-editor .form-pair { grid-template-columns: minmax(0,1fr); } }
+
+/* Cancellation terms beside each alternative */
+.cancel-terms { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.cancel-terms h4 { margin: 0 0 10px; font-size: 13px; }
+.cancel-term { border: 1px solid var(--line); border-radius: 9px; padding: 12px 13px; margin-bottom: 10px; background: white; }
+.cancel-term > p { font-size: 12px; margin: 6px 0 0; }
+.cancel-term-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.cancel-term-head strong { font-size: 13px; overflow-wrap: anywhere; }
+.cancel-badge { font-size: 10px; font-weight: 700; border-radius: 20px; padding: 3px 9px; white-space: nowrap;
+  background: var(--warning-bg); color: var(--text); border: 1px solid var(--line); }
+.cancel-badge[data-state="free"] { background: var(--success-bg); color: var(--success); border-color: var(--success-line); }
+.cancel-badge[data-state="no_refund"] { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-line); }
+.cancel-badge[data-state="nothing_paid"] { background: var(--surface-muted); color: var(--muted); }
+.cancel-excerpt { margin: 9px 0 0; padding: 8px 11px; border-left: 3px solid var(--line); background: var(--surface-muted); border-radius: 0 6px 6px 0; }
+.cancel-excerpt p { font-size: 11px; margin: 0; overflow-wrap: anywhere; }
+.cancel-excerpt cite { display: block; font-size: 10px; color: var(--muted); font-style: normal; margin-top: 4px; overflow-wrap: anywhere; }
+.cancel-open { color: var(--danger); font-size: 11px !important; }
+.option-cancel { color: var(--muted); }
