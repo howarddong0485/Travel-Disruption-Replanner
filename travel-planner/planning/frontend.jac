@@ -1,5 +1,5 @@
 """Risk selection, traveler facts, plan comparison and explicit P4 review in Roam."""
-import from server.main { ItemView, planning_state, save_planning_context, generate_backup_plans, review_backup_plan }
+import from server.main { ItemView, planning_state, save_planning_context, generate_backup_plans, review_backup_plan, save_cancellation_terms }
 import from itinerary.cancellation { CancellationTerms }
 
 def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = None, onApplied: any = None) -> JsxElement {
@@ -9,6 +9,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         adults: str = "", children: str = "", pets: str = "", dietary: str = "", wheelchair: bool = False,
         zone: str = "", reserve: str = "0", details: dict[str, any] = {}, routes: dict[str, str] = {},
         confirmed: dict[str, bool] = {}, selectedRisks: list[str] = [], reason: str = "detected", target: str = "", notBefore: str = "",
+        termsText: dict[str, str] = {}, factsOpen: bool = False, termsOpen: bool = False,
         useAI: bool = False, limit: str = "4", sequence: Ref[int] = Ref(0), expiryTimer: Ref[int] = Ref(0), listener: Ref[any] = Ref(None), alive: Ref[bool] = Ref(True), checkQueued: Ref[bool] = Ref(False), versionCallback: Ref[any] = Ref(None), seenCandidates: Ref[any] = Ref([]);
     def split(value: str) -> list[str] { parts: any = value.split(","); return [s.trim() for s in parts if s.trim()]; }
     def joined(values: any) -> str { return values.join(", "); }
@@ -191,6 +192,24 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         } except Exception { failure = "Could not save these facts. Check the traveler counts, ages, timezone and amounts, then reload if the trip changed."; }
         finally { if alive.current { busy = False; if checkQueued.current { checkVersion(); } } }
     }
+    async def saveTerms(item_id: str, remove: bool = False) -> None {
+        if busy or state is None { return; }
+        text = "" if remove else termsText.get(item_id, "");
+        if not remove and not text.strip() { failure = "Paste the booking's cancellation terms first."; return; }
+        busy = True; failure = ""; notice = ""; clear();
+        request = sequence.current;
+        try {
+            updated = await save_cancellation_terms(trip_id=trip_id, item_id=item_id, terms=text, expected_version=state["trip_version"]);
+            if request != sequence.current { return; }
+            fill(updated); notifyTabs();
+            cleared = browser.Object.assign({}, termsText); cleared[item_id] = ""; termsText = cleared;
+            outcome = updated["terms_saved"];
+            notice = "Cancellation terms removed." if outcome["removed"] else
+                "Terms saved, but some parts couldn't be checked against the text. They're marked unknown." if outcome["needs_review"] else
+                "Cancellation terms saved. Find plans again to see them on each option.";
+        } except Exception as exc { failure = "Could not save these terms. " + str(exc); }
+        finally { if alive.current { busy = False; if checkQueued.current { checkVersion(); } } }
+    }
     async def findPlans(other: bool = False) -> None {
         if busy or state is None { return; }
         excluded: list[str] = [key for key in seenCandidates.current] if other else [];
@@ -244,7 +263,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         {(<p role="status">{notice}</p>) if notice else None}
         <button className="text-button" type="button" disabled={busy} onClick={reload}>Reload trip facts</button>
         {(<div>
-            <details className="planning-facts"><summary>Traveler details and requirements</summary>
+            <details className="planning-facts" open={factsOpen} onToggle={lambda (e: any) { factsOpen = e.currentTarget.open; }}><summary>Traveler details and requirements</summary>
                 <form onSubmit={saveFacts}><fieldset disabled={busy}>
                     <div className="validation-controls">
                         <label>Adults<input type="number" min="1" required={True} value={adults} onChange={lambda (e: ChangeEvent) { adults = e.target.value; clear(); }}/></label>
@@ -283,6 +302,24 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                         }}/></label> for (index, item) in enumerate(scheduled) if index + 1 < len(scheduled)]}</div>
                     <button type="submit" className="secondary" disabled={busy}>Save requirements and facts</button></fieldset>
                 </form>
+            </details>
+            <details className="planning-facts planning-terms" open={termsOpen} onToggle={lambda (e: any) { termsOpen = e.currentTarget.open; }}><summary>Cancellation terms</summary>
+                <p>Paste each booking's cancellation terms from its confirmation. Alternatives then show what cancelling it would cost. Anything the text doesn't clearly state stays unknown.</p>
+                {[<div className="planning-terms-item" key={item.id}>
+                    {(<CancellationTerms entries={[state["cancellation"][item.id]]} heading="" caption=""/>)
+                        if state.get("cancellation", {}).get(item.id) else (<p className="cancel-term-head"><strong>{item.title}</strong><span className="cancel-badge" data-state="nothing_paid">No terms saved</span></p>)}
+                    <label htmlFor={"terms-" + item.id}>{"Cancellation terms for " + item.title}</label>
+                    <textarea id={"terms-" + item.id} rows={3} maxLength={20000} disabled={busy} value={termsText.get(item.id, "")}
+                        placeholder="e.g. Free cancellation until 24 hours before. After that, a USD 20 fee applies."
+                        onChange={lambda (e: ChangeEvent) { termsText = {**termsText, item.id: e.target.value}; }}/>
+                    <div className="route-row-actions">
+                        <button type="button" className="secondary" disabled={busy or not termsText.get(item.id, "").strip()}
+                            onClick={lambda { saveTerms(item.id); }}>Save terms</button>
+                        {(<button type="button" className="text-button delete" disabled={busy}
+                            onClick={lambda { saveTerms(item.id, True); }}>Remove saved terms</button>)
+                            if state.get("cancellation", {}).get(item.id, {}).get("traveler_supplied", False) else None}
+                    </div>
+                </div> for item in scheduled]}
             </details>
             <div className="validation-controls">
                 <label>What should the plans address?<select value={reason} disabled={busy} onChange={lambda (e: ChangeEvent) { reason = e.target.value; clear(); }}>

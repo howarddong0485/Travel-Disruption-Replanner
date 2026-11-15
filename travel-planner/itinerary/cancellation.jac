@@ -22,6 +22,19 @@ def deadlineText(terms: any) -> str {
     except Exception { return terms["deadline_local"]; }
 }
 
+"""Where the quoted terms came from, without internal identifiers."""
+def sourceText(excerpt: any) -> str {
+    source = excerpt["source"];
+    if source.startswith("user://") {
+        saved = Date.parse(excerpt.get("retrieved_at", ""));
+        browser: any = window;
+        when = "" if browser.Number.isNaN(saved) else " on " + new(Date, saved).toLocaleDateString("en-US", {"month": "short", "day": "numeric", "year": "numeric"});
+        return "Pasted by you" + when;
+    }
+    if source.startswith("fixture://") or source.startswith("mock://") { return "Sample data"; }
+    return "Source: " + source;
+}
+
 """One plain sentence describing what cancelling now means."""
 def termsSentence(terms: any) -> str {
     state = terms["state"]; currency = terms["currency"];
@@ -56,17 +69,18 @@ def:pub cancellationSummary(entries: any) -> str {
     return "";
 }
 
-def:pub CancellationTerms(entries: any) -> JsxElement {
-    return <section className="cancel-terms" aria-label="Cancellation terms for replaced bookings">
-        <h4>Cancelling the original booking</h4>
+def:pub CancellationTerms(entries: any, heading: str = "Cancelling the original booking",
+    caption: str = "Applying a plan doesn't cancel or book anything. Cancel with the provider yourself.") -> JsxElement {
+    return <section className="cancel-terms" aria-label={heading}>
+        {(<h4>{heading}</h4>) if heading else None}
         {[<div className="cancel-term" key={terms["item_id"]} data-state={terms["state"]}>
             <div className="cancel-term-head"><strong>{terms["title"]}</strong>
                 <span className="cancel-badge" data-state={terms["state"]}>{BADGES.get(terms["state"], "Terms unclear")}</span></div>
             <p>{termsSentence(terms)}</p>
             {[<blockquote className="cancel-excerpt" key={str(index)}><p>{"“" + excerpt["text"] + "”"}</p>
-                <cite>{"Source: " + excerpt["source"]}</cite></blockquote> for (index, excerpt) in enumerate(terms["excerpts"])]}
+                <cite>{sourceText(excerpt)}</cite></blockquote> for (index, excerpt) in enumerate(terms["excerpts"])]}
             {(<p className="cancel-open">{"Still unknown: " + ", ".join(terms["unknowns"]) + "."}</p>) if len(terms["unknowns"]) > 0 else None}
         </div> for terms in entries]}
-        <p className="section-caption">Applying a plan doesn't cancel or book anything. Cancel with the provider yourself.</p>
+        {(<p className="section-caption">{caption}</p>) if caption else None}
     </section>;
 }
