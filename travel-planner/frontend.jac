@@ -16,12 +16,13 @@ import from journey.display { itineraryOrder, journeyCity }
 import from server.main { journey_state }
 import from assistant.frontend { ChatSidebar, AIPlanner }
 import from server.main { assistant_review, assistant_update_prices, assistant_save_preferences }
+import from theme { preferredTheme, showTheme }
 
 def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
         tab: str = "planner", aiData: dict[str, any] = {}, aiReload: int = 0, aiCompose: int = 0,
         aiMode: str = "ask", aiText: str = "", day: str = "", loading: bool = True, busy: bool = False,
-        error: str = "", notice: str = "", requestRef: Ref[int] = Ref(0),
+        error: str = "", notice: str = "", requestRef: Ref[int] = Ref(0), theme: str = preferredTheme(),
         trip_form: bool = False, trip_review: bool = False, editing_trip: str = "", trip_title: str = "",
         departure_location: str = "", return_location: str = "",
         destination: str = "", start_date: str = "", end_date: str = "",
@@ -200,8 +201,10 @@ def:pub app -> JsxElement {
         } except Exception as exc { error = str(exc); aiReload += 1; }
         finally { busy = False; }
     }
+    def toggleTheme -> None { theme = showTheme("light" if theme == "dark" else "dark", True); }
     async can with entry {
         document.title = "Jacplan";
+        showTheme(theme);
         try {
             if browser.localStorage.getItem("roam.itinerary-view") == "list" { itineraryView = "list"; }
             saved_workspace: any = browser.JSON.parse(browser.localStorage.getItem("roam.workspace") or "null");
@@ -250,6 +253,8 @@ def:pub app -> JsxElement {
     placesOpen = tab == "itinerary" and (railView == "places" or (railView == "auto" and bool(places)));
 
     <div className={"app-shell" + (" with-assistant" if current else "")} data-reviewing={bool(reviewRequest)}>
+        <button type="button" className="theme-toggle" onClick={toggleTheme} aria-pressed={theme == "dark"}
+            aria-label="Dark mode" title={"Switch to light mode" if theme == "dark" else "Switch to dark mode"}><span className="theme-icon" aria-hidden="true"/></button>
         <aside className="sidebar">
             <a className="brand" href="#"><span className="brand-icon">↗</span>Jacplan</a>
             <p className="brand-caption">Plan trips and handle disruptions.</p>
