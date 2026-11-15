@@ -698,3 +698,28 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .planning-terms-item { border-top: 1px solid var(--line); padding: 14px 0 6px; }
 .planning-terms-item .cancel-terms { margin-top: 0; padding-top: 0; border-top: 0; }
 .planning-terms-item > .cancel-term-head { margin: 0; }
+
+/* Risk panel in Backup plans */
+.risk-panel { margin: 18px 0 8px; }
+.risk-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.risk-panel-heading h4 { margin: 0; font-size: 14px; }
+.risk-panel .section-caption { margin: 6px 0 10px; }
+.risk-empty { font-size: 12px; color: var(--muted); }
+.risk-row { display: flex; gap: 11px; align-items: flex-start; border: 1px solid var(--line); border-left-width: 4px;
+  border-radius: 9px; padding: 11px 13px; margin: 0 0 9px; background: white; color: var(--text); cursor: pointer; }
+.risk-row input { width: auto; margin-top: 3px; flex-shrink: 0; }
+.risk-row[data-severity="high"][data-confirmed="true"] { border-left-color: var(--danger); }
+.risk-row[data-severity="medium"][data-confirmed="true"] { border-left-color: #c98a16; }
+.risk-row[data-severity="low"][data-confirmed="true"] { border-left-color: var(--link); }
+.risk-row[data-confirmed="false"] { border-left-color: var(--line); background: var(--surface-muted); }
+.risk-body { display: grid; gap: 4px; min-width: 0; }
+.risk-body strong { font-size: 13px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.risk-body small { font-size: 12px; color: var(--muted); }
+.risk-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.risk-severity, .risk-category { font-size: 11px; font-weight: 700; border-radius: 20px; padding: 2px 8px;
+  background: var(--surface-muted); color: var(--muted); }
+.risk-severity[data-severity="high"] { background: var(--danger-bg); color: var(--danger); }
+.risk-severity[data-severity="medium"] { background: var(--warning-bg); color: #8a5a00; }
+.risk-fix { font-size: 12px; color: var(--text); }
+.risk-why { font-size: 12px; color: var(--muted); }
+.risk-pending summary { font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 0; }

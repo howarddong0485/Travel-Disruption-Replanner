@@ -1,6 +1,7 @@
 """Risk selection, traveler facts, plan comparison and explicit P4 review in Roam."""
 import from server.main { ItemView, planning_state, save_planning_context, generate_backup_plans, review_backup_plan, save_cancellation_terms }
 import from itinerary.cancellation { CancellationTerms }
+import from planning.risk_panel { RiskPanel }
 
 def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = None, onApplied: any = None) -> JsxElement {
     browser: any = window;
@@ -304,13 +305,13 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                 </form>
             </details>
             <details className="planning-facts planning-terms" open={termsOpen} onToggle={lambda (e: any) { termsOpen = e.currentTarget.open; }}><summary>Cancellation terms</summary>
-                <p>Paste each booking's cancellation terms from its confirmation. Alternatives then show what cancelling it would cost. Anything the text doesn't clearly state stays unknown.</p>
+                <p>Paste each booking's cancellation terms from its confirmation. Alternatives then show what cancelling it would cost. Anything the text doesn't clearly state stays unknown. Write amounts with a currency symbol, like $20.00.</p>
                 {[<div className="planning-terms-item" key={item.id}>
                     {(<CancellationTerms entries={[state["cancellation"][item.id]]} heading="" caption=""/>)
                         if state.get("cancellation", {}).get(item.id) else (<p className="cancel-term-head"><strong>{item.title}</strong><span className="cancel-badge" data-state="nothing_paid">No terms saved</span></p>)}
                     <label htmlFor={"terms-" + item.id}>{"Cancellation terms for " + item.title}</label>
                     <textarea id={"terms-" + item.id} rows={3} maxLength={20000} disabled={busy} value={termsText.get(item.id, "")}
-                        placeholder="e.g. Free cancellation until 24 hours before. After that, a USD 20 fee applies."
+                        placeholder="e.g. Free cancellation up to 24 hours before. After that time, a $20.00 fee is charged and the remainder is refunded."
                         onChange={lambda (e: ChangeEvent) { termsText = {**termsText, item.id: e.target.value}; }}/>
                     <div className="route-row-actions">
                         <button type="button" className="secondary" disabled={busy or not termsText.get(item.id, "").strip()}
@@ -331,12 +332,11 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
             </div>
             {(<p className="muted">Uses your saved budget. To change it, edit the trip.</p>) if reason == "budget_change" else None}
             {(<p className="muted">Save the updated traveler details above before finding plans.</p>) if reason == "traveler_change" else None}
-            {(<div className="planning-risk-list">{[<label className="replan-check" key={risk["id"]}><input type="checkbox" checked={risk["id"] in selectedRisks} disabled={busy}
-                onChange={lambda (e: ChangeEvent) { selectedRisks = selectedRisks + [risk["id"]] if e.target.checked else [key for key in selectedRisks if key != risk["id"]]; clear(); }}/>
-                {risk["summary"] + (" · Not confirmed" if risk["status"] != "flagged" else "")}</label> for risk in state["risks"]]}
-                {(<p>No risks found yet. Add traveler details or report a change.</p>) if len(state["risks"]) == 0 else None}</div>) if reason == "detected" else None}
+            {(<RiskPanel risks={state["risks"]} items={currentItems} selected={selectedRisks} disabled={busy}
+                onToggle={lambda (key: str, on: bool) { selectedRisks = selectedRisks + [key] if on else [k for k in selectedRisks if k != key]; clear(); }}/>) if reason == "detected" else None}
             <label className="replan-check"><input type="checkbox" checked={useAI} disabled={busy} onChange={lambda (e: ChangeEvent) { useAI = e.target.checked; clear(); }}/>Let AI choose among plans that pass the checks</label>
             <button type="button" className="primary" disabled={busy or (reason == "detected" and len(selectedRisks) == 0)} onClick={lambda { findPlans(); }}>{"Preparing plans…" if busy else "Find alternative plans"}</button>
+            {(<p className="section-caption" role="status">Select at least one risk above, or choose a specific change, to find alternatives.</p>) if reason == "detected" and len(selectedRisks) == 0 and not busy else None}
             {(<section className="planning-results" aria-live="polite"><p>{result["message"]}</p>
                 <div className="backup-grid">{[<article className="backup-option" key={plan["id"]}>
                     <h4>{"Alternative " + str(index + 1)}</h4><p>{"Ready for review" if plan["selectable"] else "Needs confirmation"}</p>
