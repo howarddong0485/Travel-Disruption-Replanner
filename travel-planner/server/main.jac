@@ -1,5 +1,7 @@
 """Trip records and travel items persisted in an independent SQLite database."""
 import os;
+import tools.map_providers as map_providers;
+import itinerary.map_enrichment as map_enrichment;
 import re;
 import uuid;
 import sqlite3;
@@ -292,6 +294,7 @@ def _connect -> sqlite3.Connection {
     conn.execute("CREATE INDEX IF NOT EXISTS items_trip ON items(trip_id)");
     conn.execute("CREATE TABLE IF NOT EXISTS itinerary_place_details (item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE, location TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)");
     install_map_schema(conn);
+    map_enrichment.install(conn);
     conn.commit();
     install_schema(conn);
     install_context_schema(conn);
@@ -321,6 +324,7 @@ def:pub load_trip_map(trip_id: str) -> dict[str, any] {
         context = build_context(state, read_facts(conn, trip_id), now);
         (pins, routes) = map_points(conn, trip_id);
         return {"trip_version": state["version"], "pins": pins, "routes": routes, "journey": state["journey"],
+            "lookups": map_enrichment.lookup_states(conn, trip_id), "tracks": map_enrichment.flight_tracks(conn, trip_id),
             "dependencies": state["dependencies"], "risks": [risk for risk in context["risks"] if risk["node_ids"]],
             "plans": current_map_plans(conn, trip_id, state["version"], VALIDATION_VERSION, now)};
     } finally { conn.close(); }
@@ -785,5 +789,32 @@ def:pub review_replan(trip_id: str, proposal_id: str, accept: bool) -> dict[str,
 def:pub combine_replan(trip_id: str, event_id: str, choices: dict[str, str]) -> dict[str, any] {
     conn = _connect();
     try { return custom_proposal(conn, trip_id, event_id, choices); }
+    finally { conn.close(); }
+}
+
+
+def:pub search_map_places(query: str) -> list[dict[str, any]] {
+    return map_providers.search_places(query);
+}
+
+def:pub search_map_flight(ident: str, departure_date: str, api_key: str = "") -> dict[str, any] {
+    return map_providers.search_flight(ident, departure_date, api_key);
+}
+
+
+def:pub load_recorded_flight_tracks(callsign: str, day: str) -> dict[str, any] {
+    return map_providers.recorded_tracks(callsign, day);
+}
+
+def:pub resolve_trip_map_places(trip_id: str, retry: bool = False) -> dict[str, any] {
+    conn = _connect();
+    try { return map_enrichment.resolve_places(conn, trip_id, retry); }
+    finally { conn.close(); }
+}
+
+def:pub save_trip_flight_track(trip_id: str, item_id: str, title: str, location: str, departure_date: str,
+    callsign: str, day: str, track_id: str, expected_revision: int = 0) -> dict[str, any] {
+    conn = _connect();
+    try { return map_enrichment.save_flight_track(conn, trip_id, item_id, title, location, departure_date, callsign, day, track_id, expected_revision); }
     finally { conn.close(); }
 }

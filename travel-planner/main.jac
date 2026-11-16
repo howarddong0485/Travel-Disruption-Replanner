@@ -1,4 +1,5 @@
 """Roam travel planner web entry."""
+import "leaflet/dist/leaflet.css";
 import "./styles.css";
 import "./itinerary/map.css";
 import from .frontend { app as ClientApp }

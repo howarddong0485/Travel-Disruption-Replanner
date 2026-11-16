@@ -4,7 +4,7 @@ import from server.main { assistant_state, assistant_chat, assistant_review }
 import from journey.frontend { journeyLabel }
 
 def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int = 0,
-    compose: int = 0, composeMode: str = "ask", composeText: str = "", externalBusy: bool = False) -> JsxElement {
+    compose: int = 0, composeMode: str = "ask", composeText: str = "", externalBusy: bool = False, onKeyChange: any = None) -> JsxElement {
     browser: any = window;
     has data: dict[str, any] = {}, text: str = "", mode: str = "ask", search: bool = True,
         apiKey: str = "", keyInput: str = "", keyError: str = "",
@@ -21,7 +21,7 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
     }
     can with entry { alive.current = True; }
     can with [trip_id, reload] entry { load(); }
-    can with exit { alive.current = False; sequence.current += 1; }
+    can with exit { if onKeyChange { onKeyChange(""); } alive.current = False; sequence.current += 1; }
     can with [compose] entry {
         if compose > 0 {
             mode = composeMode; text = composeText;
@@ -53,7 +53,7 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         if not value.startswith("sk-") or len(value) > 512 or not browser.RegExp("^sk-[!-~]+$").test(value) {
             keyError = "Enter an OpenAI API key beginning with sk- and without spaces."; return;
         }
-        apiKey = value; keyInput = ""; keyError = ""; failure = "";
+        apiKey = value; if onKeyChange { onKeyChange(value); } keyInput = ""; keyError = ""; failure = "";
     }
     <aside className="chat-sidebar" aria-label="Travel assistant">
         <header className="chat-heading"><div className="ai-monogram" aria-hidden="true">✦</div><div><h2>Travel assistant</h2>
@@ -67,7 +67,7 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                     maxLength={512} placeholder="sk-…" disabled={busy} required={True}
                     onChange={lambda (e: ChangeEvent) { keyInput = e.target.value; keyError = ""; }}/>
                 <div className="ai-key-actions"><button type="submit" className="secondary" disabled={busy or not keyInput.strip()}>Use key</button>
-                    {(<button type="button" className="text-button" disabled={busy} onClick={lambda { apiKey = ""; keyInput = ""; keyError = ""; failure = ""; }}>Clear key</button>) if apiKey else None}</div>
+                    {(<button type="button" className="text-button" disabled={busy} onClick={lambda { apiKey = ""; if onKeyChange { onKeyChange(""); } keyInput = ""; keyError = ""; failure = ""; }}>Clear key</button>) if apiKey else None}</div>
                 {(<p className="chat-error" role="alert">{keyError}</p>) if keyError else None}
             </form>
             <small>Your key stays in this tab's memory and is cleared when you refresh. Usage is billed to your OpenAI account.</small>
@@ -79,7 +79,7 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                 <small>Answers use this trip's details and your recent messages.</small></div>) if len(data.get("messages", [])) == 0 else None}
             {[
                 <article key={message["id"]} className={"chat-message " + message["role"]}>
-                    <p className="message-author">{"YOU" if message["role"] == "user" else "JACPLAN ASSISTANT"}
+                    <p className="message-author">{"YOU" if message["role"] == "user" else "JACROAM ASSISTANT"}
                         <span>{message.get("mode", "ask")}</span></p>
                     <div className="message-text">{message["text"]}</div>
                     {(<p className="chat-caution">The trip changed during this request. Ask for a fresh plan before saving.</p>) if message.get("stale", False) else None}

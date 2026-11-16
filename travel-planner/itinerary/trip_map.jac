@@ -1,9 +1,10 @@
 """The map workspace for saved itineraries, transport and disruptions."""
-import from server.main { load_trip_map }
+import from server.main { load_trip_map, search_map_places, resolve_trip_map_places }
 import from itinerary.actions { focusItineraryControl }
-import from itinerary.map_land { landPolygons }
-import from itinerary.map_geometry { mapViewport, screenPoint, screenRoute, drawTripMap }
+import from itinerary.map_tiles { createStreetMap, fitStreetMap, streetPoint, streetRoute, drawRecordedTrack }
+import from itinerary.map_search { MapPlaceSearch, FlightSearch }
 import from itinerary.map_scene { mapScene }
+import from itinerary.map_geometry { cityPoint }
 import from itinerary.map_route_editor { MapRouteEditor }
 import from itinerary.presentation { planTitle, moneyLabel, shiftLabel }
 import from itinerary.review { itinerarySchedule }
@@ -31,13 +32,15 @@ def savedLocationApplies(item: any, preview: any) -> bool {
 }
 
 def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bool,
-    onReview: any, onPlanB: any, onStop: any, onTimeline: any, onSample: any) -> JsxElement {
+    onReview: any, onPlanB: any, onStop: any, onTimeline: any, onSample: any, apiKey: str = "") -> JsxElement {
     has data: any = {}, loadError: str = "", width: int = 800, height: int = 530,
-        zoom: float = 1.0, panX: float = 0.0, panY: float = 0.0, popup: any = None,
+        popup: any = None, cityId: str = "", dayFilter: str = "", categoryFilter: str = "",
+        track: any = None, trackItem: Ref[str] = Ref(""), trackLayer: Ref[any] = Ref(None), viewRevision: int = 0, tilesFailed: bool = False, locating: bool = False, locateNotice: str = "",
+        street: Ref[any] = Ref(None), fitted: Ref[bool] = Ref(False),
         popupTab: str = "plan", editing: bool = False,
-        land: Ref[any] = Ref(None), observer: Ref[any] = Ref(None), interval: Ref[int] = Ref(0),
-        alive: Ref[bool] = Ref(False), sequence: Ref[int] = Ref(0), drag: Ref[any] = Ref(None),
-        onWindowFocus: Ref[any] = Ref(None);
+        observer: Ref[any] = Ref(None), interval: Ref[int] = Ref(0),
+        alive: Ref[bool] = Ref(False), sequence: Ref[int] = Ref(0),
+        onWindowFocus: Ref[any] = Ref(None), cityCache: Ref[any] = Ref({}), savedTrackLayers: Ref[any] = Ref([]);
     browser: any = window;
     stageId = "trip-map-" + trip.id;
     closeId = stageId + "-close";
@@ -45,6 +48,28 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
         sequence.current += 1; token = sequence.current;
         try {
             fresh = await load_trip_map(trip_id=trip.id);
+            names = [trip.destination, trip.departure_location, trip.return_location];
+            journey = fresh.get("journey");
+            if journey {
+                names = [journey["origin"]["city"]] + [stop["city"] for stop in journey["stops"]];
+                if journey["return_to"] { names.append(journey["return_to"]["city"]); }
+            }
+            resolved: any = {};
+            for name in names {
+                if not name { continue; }
+                point = cityPoint(name);
+                if point is None {
+                    if name not in cityCache.current {
+                        try {
+                            found = await search_map_places(query=name);
+                            cityCache.current[name] = {"label": name, "lat": found[0]["lat"], "lon": found[0]["lon"]} if len(found) == 1 else None;
+                        } except Exception { continue; }
+                    }
+                    point = cityCache.current[name];
+                }
+                if point is not None { resolved[name.strip().lower()] = point; }
+            }
+            fresh["city_points"] = resolved;
             if alive.current and sequence.current == token { data = fresh; loadError = ""; }
         } except Exception {
             if alive.current and sequence.current == token {
@@ -52,11 +77,42 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             }
         }
     }
+    async def locateStops(retry: bool = True) -> None {
+        if locating { return; }
+        locating = True; locateNotice = "Finding locations…";
+        saved = 0;
+        try {
+            more = True;
+            while more and alive.current {
+                result = await resolve_trip_map_places(trip_id=trip.id, retry=retry);
+                retry = False; saved += result["located"]; more = result["remaining"] > 0;
+                if not alive.current { return; }
+                if result["located"] { fitted.current = False; }
+                await reload();
+            }
+            locateNotice = str(saved) + " places added to your map" if saved else "";
+        } except Exception as exc { locateNotice = str(exc); }
+        finally { if alive.current { locating = False; await reload(); } }
+    }
     def resize -> None {
         stage: any = document.getElementById(stageId);
         if stage { width = stage.clientWidth; height = stage.clientHeight; }
+        if street.current { street.current.invalidateSize(); }
     }
-    def resetView -> None { zoom = 1.0; panX = 0.0; panY = 0.0; }
+    def clearTrack -> None {
+        if trackLayer.current { trackLayer.current.remove(); trackLayer.current = None; }
+        track = None; trackItem.current = "";
+    }
+    def showTrack(value: any) -> None {
+        clearTrack(); trackItem.current = popup["id"] if popup else ""; track = value; cityId = ""; closePopup(False);
+        trackLayer.current = drawRecordedTrack(street.current, value);
+    }
+    def resetView -> None { clearTrack(); cityId = ""; dayFilter = ""; categoryFilter = ""; closePopup(False); fitStreetMap(street.current, pointList); }
+    def enterCity(city: any) -> None {
+        clearTrack(); cityId = city["id"]; dayFilter = ""; categoryFilter = ""; closePopup(False);
+        points = [pins[id] for id in city["items"] if id in pins];
+        fitStreetMap(street.current, points if points else [city["point"]], True);
+    }
     def closePopup(restore: bool = True) -> None {
         if popup is None { return; }
         control = popup["control"]; popup = None; editing = False;
@@ -65,40 +121,25 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     def openPopup(kind: str, id: str, control: str) -> None {
         popup = {"kind": kind, "id": id, "control": control}; popupTab = "plan"; editing = False;
     }
-    def startPan(e: any) -> None {
-        if e.button != 0 { return; }
-        drag.current = {"x": e.clientX, "y": e.clientY, "left": panX, "top": panY, "moved": False};
-        e.currentTarget.setPointerCapture(e.pointerId);
-    }
-    def movePan(e: any) -> None {
-        if drag.current is None { return; }
-        dx = e.clientX - drag.current["x"]; dy = e.clientY - drag.current["y"];
-        if abs(dx) + abs(dy) < 4 and not drag.current["moved"] { return; }
-        drag.current["moved"] = True;
-        panX = min(width * 3.0, max(-width * 3.0, drag.current["left"] + dx));
-        panY = min(height * 3.0, max(-height * 3.0, drag.current["top"] + dy));
-    }
-    def endPan -> None {
-        if drag.current is not None and not drag.current["moved"] { closePopup(False); }
-        drag.current = None;
-    }
-
     can with entry {
-        alive.current = True; land.current = browser.JSON.parse(landPolygons());
+        alive.current = True;
+        street.current = createStreetMap(document.getElementById(stageId + "-tiles"),
+            lambda { viewRevision += 1; }, lambda (failed: bool) { tilesFailed = failed; });
         resize();
         observer.current = new(browser.ResizeObserver, resize);
         observer.current.observe(document.getElementById(stageId));
-        onWindowFocus.current = lambda { reload(); };
+        onWindowFocus.current = lambda { reload(); locateStops(False); };
         window.addEventListener("focus", onWindowFocus.current);
-        interval.current = window.setInterval(lambda { if not browser.document.hidden { reload(); } }, 45000);
+        interval.current = window.setInterval(lambda { if not browser.document.hidden { reload(); locateStops(False); } }, 45000);
     }
     can with exit {
         alive.current = False; sequence.current += 1;
         if observer.current { observer.current.disconnect(); }
+        if street.current { street.current.remove(); street.current = None; }
         browser.clearInterval(interval.current);
         window.removeEventListener("focus", onWindowFocus.current);
     }
-    can with [items, revision] entry { reload(); }
+    can with [items, revision] entry { reload(); locateStops(False); }
     can with [popup] entry { if popup is not None { focusItineraryControl(closeId); } }
 
     scene = mapScene(trip.destination, items, data, preview);
@@ -107,23 +148,49 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
         for item in items if item.id in routeData and routeData[item.id]["route"] is not None and
             savedLocationApplies(item, preview) and (not preview or item.id not in preview["changes"] or
                 preview["changes"][item.id]["title"] == item.title)];
-    pointList = [city["point"] for city in cities] + [pins[item.id] for item in items if item.id in pins];
-    view = mapViewport(pointList, width, height, zoom, panX, panY);
-    cityMarkers = [{"data": city, "screen": screenPoint(city["point"], view)} for city in cities];
-    routeMarkers = [{**record, "curve": screenRoute(record["route"], view)} for record in mappedRoutes];
-    placeMarkers = [{"item": item, "screen": screenPoint(pins[item.id], view), "tone": scene["tones"][item.id]}
-        for item in items if item.id in pins and savedLocationApplies(item, preview) and
+    savedTracks = data.get("tracks", {});
+    routeCount = len([item for item in items if any(record["id"] == item.id for record in mappedRoutes) or savedTracks.get(item.id, {}).get("track")]);
+    trackPoints = [{"lat": p[1], "lon": p[0]} for item in items if savedTracks.get(item.id, {}).get("track")
+        for segment in savedTracks[item.id]["track"]["segments"] for p in segment];
+    pointList = [city["point"] for city in cities] + [pins[item.id] for item in items if item.id in pins] + trackPoints;
+    currentCity = firstOrNone([city for city in cities if city["id"] == cityId]);
+    cityItems = [item for item in items if currentCity is None or item.id in currentCity["items"]];
+    filteredItems = [item for item in cityItems if (not dayFilter or item.date == dayFilter) and (not categoryFilter or item.category == categoryFilter)];
+    can with [data, width, height] entry {
+        if not fitted.current and data.get("trip_version") and len(pointList) > 0 {
+            if currentCity { fitStreetMap(street.current, [pins[id] for id in currentCity["items"] if id in pins] or [currentCity["point"]], True); }
+            else { fitStreetMap(street.current, pointList); }
+            fitted.current = True;
+        }
+    }
+    can with [data, cityId, track, dayFilter, categoryFilter, preview] entry {
+        if track and trackItem.current {
+            currentTrack = savedTracks.get(trackItem.current, {}).get("track");
+            if not currentTrack or currentTrack["id"] != track["id"] { clearTrack(); }
+        }
+        layers: any = savedTrackLayers.current or [];
+        for layer in layers { layer.remove(); }
+        savedTrackLayers.current = [];
+        if street.current and not cityId and not track {
+            for item in filteredItems {
+                savedTrack = savedTracks.get(item.id, {}).get("track");
+                if savedTrack and (not preview or item.id not in preview["changes"]) {
+                    savedTrackLayers.current.append(drawRecordedTrack(street.current, savedTrack, False));
+                }
+            }
+        }
+    }
+    cityMarkers = [{"data": city, "screen": streetPoint(street.current, city["point"])} for city in cities];
+    routeMarkers = [{**record, "curve": streetRoute(street.current, record["route"])} for record in mappedRoutes];
+    placeMarkers = [{"item": item, "screen": streetPoint(street.current, pins[item.id]), "tone": scene["tones"][item.id]}
+        for item in filteredItems if item.id in pins and savedLocationApplies(item, preview) and
             not any(record["id"] == item.id for record in mappedRoutes)];
     visiblePlaces = [record for record in placeMarkers if inside(record["screen"], width, height) and
-        not any(record["item"].id in city["data"]["items"] and
+        (bool(cityId) or not any(record["item"].id in city["data"]["items"] and
             abs(city["screen"]["x"] - record["screen"]["x"]) + abs(city["screen"]["y"] - record["screen"]["y"]) < 38
-            for city in cityMarkers)];
+            for city in cityMarkers))];
     activeId = popup["id"] if popup else "";
     activeKind = popup["kind"] if popup else "";
-    can with [width, height, zoom, panX, panY, data, items, preview, activeId] entry {
-        canvas: any = document.getElementById(stageId + "-canvas");
-        if canvas and land.current is not None { drawTripMap(canvas, land.current, view, routeMarkers, width, height, activeId); }
-    }
     selectedCity = firstOrNone([city for city in cityMarkers if city["data"]["id"] == activeId and activeKind == "city"]);
     selectedRoute = firstOrNone([route for route in routeMarkers if route["id"] == activeId and activeKind == "route"]);
     selectedItem = firstOrNone([item for item in items if item.id == activeId and activeKind in ["route", "place"]]);
@@ -166,16 +233,49 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     }
     async def routeSaved -> None { await reload(); resetView(); closeEditor(); }
 
+    <div className="map-explorer">
+    <aside className="map-stop-list" aria-label="Map itinerary">
+        <div className="map-explorer-heading"><h2>{currentCity["point"]["label"] if currentCity else "Explore your trip"}</h2>
+            <p>{str(len(cityItems)) + " itinerary stops"}</p></div>
+        <nav className="map-city-switcher" aria-label="Choose a city">
+            <button type="button" aria-pressed={not cityId} onClick={resetView}>All cities</button>
+            {[<button type="button" key={city["id"]} aria-pressed={cityId == city["id"]} onClick={lambda { enterCity(city); }}>{city["point"]["label"]}</button> for city in cities]}
+        </nav>
+        <div className="map-filters">
+            <label>Day<select value={dayFilter} onChange={lambda (e: ChangeEvent) { dayFilter = e.target.value; }}>
+                <option value="">All days</option>{[<option key={day} value={day}>{day}</option> for day in sorted(list(set([item.date for item in cityItems if item.date])))]}</select></label>
+            <label>Show<select value={categoryFilter} onChange={lambda (e: ChangeEvent) { categoryFilter = e.target.value; }}>
+                <option value="">All places</option><option value="activity">Things to do</option><option value="food">Food & drink</option><option value="stay">Stays</option><option value="transport">Transport</option>
+            </select></label>
+        </div>
+        <button type="button" className="map-locate-all" disabled={locating or disabled} onClick={lambda { locateStops(True); }}>{"Finding locations…" if locating else "Retry missing locations"}</button>
+        {(<p className="map-locate-notice" role="status">{locateNotice}</p>) if locateNotice else None}
+        <div className="map-stop-scroll">
+            {[<button type="button" className="map-stop-card" data-selected={activeId == item.id} key={item.id}
+                onClick={lambda {
+                    openPopup("route" if item.category == "transport" else "place", item.id, stageId + "-details");
+                    if item.id in pins and street.current { street.current.setView([pins[item.id]["lat"], pins[item.id]["lon"]], 15); }
+                }}>
+                <span className="map-category-icon">{ "✈" if item.category == "transport" else "⌂" if item.category == "stay" else "♧" if item.category == "activity" else "♨"}</span>
+                <span><strong>{item.title}</strong><small>{itinerarySchedule(item.date, item.time)}</small><small>{item.location}</small>
+                    {(<small className="map-pin-needed">{ "Choose a location ↗" if data.get("lookups", {}).get(item.id, {}).get("status") == "needs_confirmation" else "Locate on map ↗"}</small>) if item.id not in pins and item.category != "transport" else None}
+                    {(<small className="map-track-saved">Recorded flight track saved ✓</small>) if savedTracks.get(item.id, {}).get("track") else None}</span>
+            </button> for item in filteredItems]}
+            {(<p className="map-muted">No stops match these filters.</p>) if not filteredItems else None}
+        </div>
+    </aside>
     <section className="trip-map" id={stageId} aria-label="Trip map" data-preview={bool(preview and preview["choice"])}
         onKeyDown={lambda (e: any) { if e.key == "Escape" and popup { e.stopPropagation(); closePopup(); } }}>
-        <canvas className="map-canvas" id={stageId + "-canvas"} aria-hidden="true"
-            onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan}
-            onPointerCancel={lambda { drag.current = None; }}/>
+        <div className="map-tiles" id={stageId + "-tiles"} aria-label="Interactive street map"/>
+        {(<div className="map-recorded-track" role="status"><strong>{track["callsign"] + " · " + track["registration"]}</strong>
+            <span>{track["start"] + " — " + track["end"]}</span><a href={track["source"]} target="_blank" rel="noopener noreferrer">Recorded ADS-B · adsb.aero</a>
+            <small>Observed path with coverage gaps · {track["checked_at"]}</small><button type="button" onClick={resetView}>Back to itinerary</button></div>) if track else None}
         <header className="map-top">
-            <div className="map-heading"><span aria-hidden="true">⌖</span><div><h2>Trip map</h2>
+            <div className="map-heading"><span aria-hidden="true">⌖</span><div><h2>{currentCity["point"]["label"] if currentCity else "Trip map"}</h2>
                 <p>{str(len(cities)) + (" city" if len(cities) == 1 else " cities") + " · " +
-                    str(len(mappedRoutes)) + (" route" if len(mappedRoutes) == 1 else " routes")}</p></div></div>
+                    str(routeCount) + (" route" if routeCount == 1 else " routes")}</p></div></div>
             <div className="map-tools">
+                {(<button type="button" onClick={lambda { openPopup("city", cityId, stageId + "-details"); }}>City options</button>) if currentCity else None}
                 {(<button type="button" id={stageId + "-alerts"} className="map-alert-button" data-active={len(activeAlerts) > 0}
                     aria-expanded={activeKind == "alerts"}
                     onClick={lambda { openPopup("alerts", "", stageId + "-alerts"); }}>
@@ -188,9 +288,9 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             id={stageId + "-city-" + record["data"]["id"]} data-tone={record["data"]["tone"]}
             aria-label={"Explore " + record["data"]["point"]["label"]}
             aria-expanded={activeKind == "city" and activeId == record["data"]["id"]}
-            onClick={lambda { openPopup("city", record["data"]["id"], stageId + "-city-" + record["data"]["id"]); }}>
+            onClick={lambda { enterCity(record["data"]); }}>
             <span className="map-pin-core" aria-hidden="true"/><span className="map-city-label">{record["data"]["point"]["label"]}</span>
-        </button> for record in cityMarkers if inside(record["screen"], width, height)]}
+        </button> for record in cityMarkers if not cityId and not track and inside(record["screen"], width, height)]}
         {[<button type="button" className="map-route-pin" key={record["id"]} style={markerStyle(record["curve"]["marker"])}
             id={stageId + "-route-" + record["id"]} data-tone={record["tone"]}
             aria-label={("Flight route: " if record["route"]["kind"] == "flight" else "Ground route: ") + record["item"].title}
@@ -199,13 +299,13 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             <span className="map-route-symbol" aria-hidden="true">{ "✈" if record["route"]["kind"] == "flight" else "↗"}</span>
             {(<span className="map-route-shift">{shiftLabel(preview["time_changes"][record["id"]])}</span>)
                 if preview and record["id"] in preview["time_changes"] else None}
-        </button> for record in routeMarkers if inside(record["curve"]["marker"], width, height)]}
+        </button> for record in routeMarkers if not cityId and not track and inside(record["curve"]["marker"], width, height)]}
         {[<button type="button" className="map-place-pin" key={record["item"].id} style={markerStyle(record["screen"])}
             id={stageId + "-place-" + record["item"].id} data-tone={record["tone"]}
             aria-label={"Explore stop " + record["item"].title} aria-expanded={activeKind == "place" and activeId == record["item"].id}
             onClick={lambda { openPopup("place", record["item"].id, stageId + "-place-" + record["item"].id); }}>
-            <span aria-hidden="true">•</span>
-        </button> for record in visiblePlaces]}
+            <span aria-hidden="true">{ "⌂" if record["item"].category == "stay" else "♨" if record["item"].category == "food" else "♧"}</span><span className="map-pin-check" aria-hidden="true">✓</span><span className="map-place-label">{record["item"].title}</span>
+        </button> for record in visiblePlaces if not track]}
         {(<div className="map-empty"><strong>{trip.destination}</strong>
             <p>Add route endpoints or coordinates to put this trip on the map.</p>
             <button type="button" className="map-primary" onClick={lambda { openPopup("details", "", stageId + "-details"); }}>Add map details</button>
@@ -214,17 +314,19 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             <button type="button" onClick={reload}>Retry</button></div>) if loadError else None}
         {(<div className="map-preview-tag" role="status">Plan B preview · Saved itinerary unchanged</div>) if preview and preview["choice"] else None}
         <div className="map-zoom" role="group" aria-label="Map view controls">
-            <button type="button" aria-label="Zoom in" disabled={zoom >= 4} onClick={lambda { zoom = min(4.0, zoom * 1.35); }}>+</button>
-            <button type="button" aria-label="Zoom out" disabled={zoom <= 0.55} onClick={lambda { zoom = max(0.55, zoom / 1.35); }}>−</button>
+            <button type="button" aria-label="Zoom in" onClick={lambda { if street.current { street.current.zoomIn(); } }}>+</button>
+            <button type="button" aria-label="Zoom out" onClick={lambda { if street.current { street.current.zoomOut(); } }}>−</button>
             <button type="button" aria-label="Fit all trip points" onClick={resetView}>⤢</button>
         </div>
+        {(<div className="map-load-error" role="status">Street map tiles could not load. Check your connection.<button type="button" onClick={lambda { if street.current { street.current.eachLayer(lambda (layer: any) { if layer.redraw { layer.redraw(); } }); } }}>Retry</button></div>) if tilesFailed else None}
         <footer className="map-footer">
             <div className="map-legend"><span data-tone="planned">Planned</span>
                 {(<span data-tone="disruption">Disruption</span>) if len(activeAlerts) > 0 else None}
                 {(<span data-tone="check">Needs confirmation</span>) if len(alerts) > len(activeAlerts) else None}
                 {(<span data-tone="preview">Plan B preview</span>) if preview and preview["choice"] else None}
             </div>
-            <div className="map-footer-links"><small>Natural Earth</small><button type="button" onClick={onTimeline}>Timeline ↓</button></div>
+            <div className="map-footer-links"><button type="button" onClick={onTimeline}>Timeline ↓</button></div>
+            {(<a className="map-track-credit" href="https://adsb.aero" target="_blank" rel="noopener noreferrer">Recorded flight tracks · ADS-B</a>) if trackPoints and not cityId else None}
         </footer>
         {(<section className="map-popup" style={panelStyle} role="dialog" aria-label={dialogTitle} data-kind={activeKind}>
             <header className="map-popup-heading">
@@ -249,7 +351,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
                     {(<p className="map-proposed-time">{"Proposed " + preview["changes"][activeId]["start"]["local"].replace("T", " ")}</p>)
                         if preview and activeId in preview["changes"] else None}
                     {(<p>{ "Booking reference " + selectedItem.reference}</p>) if selectedItem.reference else None}
-                    <p className="map-muted">{ "Planned path · approximate" if selectedRoute is not None else "Add endpoints to draw this route."}</p>
+                    <p className="map-muted">{ "Recorded flight track saved" if savedTracks.get(activeId, {}).get("track") else "Route endpoints · actual track pending" if selectedRoute is not None else "Add route endpoints or find this flight below."}</p>
                     {(<div className="map-state-pill" data-tone={scene["tones"][activeId]}>{toneLabel(scene["tones"][activeId])}</div>)}
                     {(<p className="map-risk-copy">{relatedAlerts[0]["risk"]["summary"]}</p>) if len(relatedAlerts) > 0 else None}
                     <div className="map-popup-actions">
@@ -258,6 +360,10 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
                             { "Edit route" if selectedRoute is not None else "Add route"}</button>) if not selectedItem.journey.get("leg_id") else <p className="map-muted">Edit cities in the Route tab and transport times in the itinerary.</p>}
                     </div>
                 </div>) if activeKind == "route" and selectedItem is not None and popupTab == "plan" and not editing else None}
+                {(<MapPlaceSearch key={selectedItem.id + selectedItem.location} trip_id={trip.id} item={selectedItem}
+                    destination={selectedItem.journey.get("city", "") or (currentCity["point"]["label"] if currentCity else trip.destination)} lookup={data.get("lookups", {}).get(selectedItem.id, {})} onSaved={reload}/>) if activeKind == "place" and selectedItem and popupTab == "plan" else None}
+                {(<FlightSearch key={selectedItem.id} trip_id={trip.id} item={selectedItem} apiKey={apiKey} onTrack={showTrack}
+                    saved={savedTracks.get(selectedItem.id, {})} onSaved={reload}/>) if activeKind == "route" and selectedItem and popupTab == "plan" and not editing and (selectedRoute is None or selectedRoute["route"]["kind"] == "flight") else None}
                 {(<div className="map-popup-stack">
                     {(<p className="map-risk-copy">{str(len(relatedAlerts)) + (" alert on this plan" if len(relatedAlerts) == 1 else " alerts on this plan")}</p>) if len(relatedAlerts) > 0 else None}
                     {(<p className="map-muted">No stops are associated with this city yet.</p>) if len(selectedStops) == 0 else None}
@@ -296,4 +402,5 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             </div>
         </section>) if popup is not None else None}
     </section>
+    </div>
 }

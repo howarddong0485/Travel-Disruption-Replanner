@@ -1,12 +1,13 @@
 [project]
 name = "travel-planner"
 version = "0.1.0"
-description = "Jacplan: trips, itineraries, reservations, packing, and budgets"
+description = "JacRoam: trips, itineraries, reservations, packing, and budgets"
 jac-version = "==0.37.23"
 default-app = "travel"
 
 [dependencies]
 [dependencies.npm]
+leaflet = "1.9.4"
 react = "^19.2.0"
 react-dom = "^19.2.0"
 react-error-boundary = "^5.0.0"
@@ -52,3 +53,8 @@ default_model = "gpt-6-luna"
 "assistant.provider" = "server"
 "assistant.workflow" = "server"
 "assistant.preferences" = "server"
+
+"tools.map_providers" = "server"
+"itinerary.map_enrichment" = "server"
+
+"itinerary.map_tiles" = "client"

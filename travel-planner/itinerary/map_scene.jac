@@ -7,11 +7,20 @@ def cityId(point: any) -> str {
 }
 
 def:pub mapScene(destination: str, items: any, data: any, preview: any) -> any {
-    home = cityPoint(destination);
     cities: any = {};
-    if home is not None { cities[cityId(home)] = home; }
+    for point in data.get("city_points", {}).values() { cities[cityId(point)] = point; }
     routes: any = {**data.get("routes", {})};
     pins: any = data.get("pins", {});
+    # A verified itinerary place can anchor cities outside the small offline city catalog.
+    for item in items {
+        name = item.journey.get("city", "") or data.get("lookups", {}).get(item.id, {}).get("city", "") or destination;
+        if item.id in pins {
+            point = data.get("city_points", {}).get(name.strip().lower()) or cityPoint(name) or {"label": name, **pins[item.id]};
+            if cityId(point) not in cities { cities[cityId(point)] = point; }
+        }
+    }
+    home = data.get("city_points", {}).get(destination.strip().lower()) or cityPoint(destination) or cities.get(destination.strip().lower());
+    if home is not None { cities[cityId(home)] = home; }
     groups: any = {};
     journey = data.get("journey");
     if journey {
@@ -20,7 +29,7 @@ def:pub mapScene(destination: str, items: any, data: any, preview: any) -> any {
         if journey["return_to"] { locations.append({**journey["return_to"], "id": "return"}); }
         for location in locations {
             point = {"label": location["city"], "lat": location["lat"], "lon": location["lon"]}
-                if location.get("lat") is not None else cityPoint(location["city"]);
+                if location.get("lat") is not None else cities.get(location["city"].strip().lower()) or cityPoint(location["city"]);
             if point is not None { points[location["id"]] = point; cities[cityId(point)] = point; }
         }
         for item in items {
