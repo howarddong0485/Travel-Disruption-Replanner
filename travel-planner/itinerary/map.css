@@ -8,15 +8,16 @@
 }
 .itinerary-view-controls button {
   min-width:68px; min-height:34px; padding:4px 12px; border:1px solid transparent;
-  border-radius:7px; background:transparent; color:var(--muted); font-size:13px; font-weight:650;
+  border-radius:7px; background:transparent; color:var(--button-label); font-size:13px; font-weight:650;
 }
 .itinerary-view-controls button[aria-pressed="true"] {
-  color:var(--accent); background:var(--surface); border-color:var(--line); box-shadow:0 1px 3px #18355315;
+  background:var(--button-tint); border-color:var(--button);
 }
 .detail-grid[data-view="map"] { --trip-map-height:clamp(470px,65vh,670px); }
 .map-workspace { min-width:0; grid-column:1/-1; }
 .trip-map {
   --map-ink:#eef7fb; --map-muted:#afc5d1; --map-border:#6e9aac46; --map-panel:#102536f7;
+  --button:#0078d4; --button-hover:#026ec1; --on-button:#ffffff; --button-label:#4daafc; --button-tint:#04345a;
   position:relative; isolation:isolate; min-width:0; height:var(--trip-map-height); overflow:hidden;
   border:1px solid #34596c; border-radius:19px; background:#0c1b2b; color:var(--map-ink);
   box-shadow:0 14px 34px #13374e26;
@@ -34,9 +35,9 @@
 .map-heading p { margin-top:3px; font-size:11px; color:var(--map-muted); }
 .map-tools { display:flex; gap:6px; flex-wrap:wrap; justify-content:end; pointer-events:auto; }
 .map-tools button,.map-zoom button,.map-footer-links button {
-  border:1px solid var(--map-border); border-radius:8px; color:var(--map-ink); background:#102638e8; padding:7px 10px; font-size:11px; font-weight:650;
+  border:1px solid var(--map-border); border-radius:8px; color:var(--button-label); background:#102638e8; padding:7px 10px; font-size:11px; font-weight:650;
 }
-.map-tools button:hover,.map-zoom button:hover,.map-footer-links button:hover { background:#245068; }
+.map-tools button:hover,.map-zoom button:hover,.map-footer-links button:hover { background:#1a3649; }
 .map-tools .map-alert-button[data-active="true"] { background:#542d3d; color:#ffd6dd; border-color:#ea82957a; }
 .map-zoom { position:absolute; z-index:2; right:13px; bottom:64px; display:grid; gap:3px; }
 .map-zoom button { width:35px; height:35px; padding:0; font-size:20px; }
@@ -101,10 +102,10 @@
 .map-popup-heading p { font-size:9px; font-weight:720; letter-spacing:.12em; color:#90cde3; }
 .map-popup-heading h3 { font-size:18px; line-height:1.17; margin-top:3px; overflow-wrap:anywhere; }
 .map-popup-heading > button { flex:none; width:31px; height:31px; border:1px solid var(--map-border); border-radius:8px;
-  background:#1a3649; color:var(--map-ink); font-size:20px; }
+  background:#1a3649; color:var(--button-label); font-size:20px; }
 .map-popup-tabs { display:flex; gap:5px; padding:0 13px 8px; border-bottom:1px solid var(--map-border); }
 .map-popup-tabs button { border:1px solid transparent; background:transparent; color:var(--map-muted); border-radius:7px; font-size:11px; padding:6px 9px; }
-.map-popup-tabs button[aria-pressed="true"] { border-color:var(--map-border); color:var(--map-ink); background:#24495f; font-weight:700; }
+.map-popup-tabs button[aria-pressed="true"] { border-color:var(--button); color:var(--button-label); background:var(--button-tint); font-weight:700; }
 .map-popup-content { overflow:auto; overscroll-behavior:contain; padding:11px 13px; font-size:12px; line-height:1.5; }
 .map-popup-stack { display:grid; gap:8px; }
 .map-endpoints { display:flex; align-items:center; gap:8px; justify-content:space-between; padding:9px 10px; border:1px solid var(--map-border);
@@ -118,10 +119,10 @@
 .map-primary,.map-secondary {
   border:1px solid #80c4e15d; border-radius:8px; padding:7px 9px; font-size:11px; font-weight:700;
 }
-.map-primary { color:#0d2334; background:#9ae7fa; }
-.map-primary:hover { background:#c4f2fd; }
-.map-secondary { color:#d7edf7; background:#224356; }
-.map-secondary:hover { background:#2d566d; }
+.map-primary { color:var(--on-button); background:var(--button); border-color:var(--button); }
+.map-primary:hover { background:var(--button-hover); }
+.map-secondary { color:var(--button-label); background:#102638; }
+.map-secondary:hover { background:#1a3649; }
 .map-list-row {
   text-align:left; width:100%; display:flex; align-items:center; gap:8px; color:var(--map-ink); background:#1b374b;
   border:1px solid var(--map-border); border-radius:9px; padding:8px; overflow-wrap:anywhere;
