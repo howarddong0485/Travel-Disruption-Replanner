@@ -391,6 +391,9 @@ def:pub save_cancellation_terms(trip_id: str, item_id: str, terms: str, expected
         (updated, outcome) = attach_terms(build_context(state, facts, now), facts, item_id, terms, now);
         updated = check_payload(updated, state);
         build_context(state, updated, now);
+        # `facts` came from read_facts, so edited items' stale facts are already cleared in
+        # `updated`. Consume those invalidations, or the next read would also drop these terms.
+        conn.execute("DELETE FROM planning_fact_invalidations WHERE trip_id=?", (trip_id,));
         conn.execute("INSERT INTO planning_contexts VALUES (?,?) ON CONFLICT(trip_id) DO UPDATE SET payload=excluded.payload",
             (trip_id, json.dumps(updated, sort_keys=True, allow_nan=False)));
         context = build_context(snapshot(conn, trip_id), updated, now);

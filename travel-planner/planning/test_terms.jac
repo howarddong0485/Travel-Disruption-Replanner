@@ -99,3 +99,23 @@ test "the service saves terms, shows them in planning state and rejects stale ve
         assert removed["terms_saved"]["removed"] and dinner["id"] not in removed["cancellation"];
     }
 }
+
+test "terms pasted after editing a booking survive a reload" {
+    with integrated_client() as client {
+        demo = api(client, "create_planning_demo", scenario="arrival_delay");
+        trip_id = demo["trip_id"];
+        dinner = next(i for i in api(client, "list_items", trip_id=trip_id) if i["category"] == "food");
+        kwargs = {key: dinner[key] for key in ("title", "category", "date", "time", "location", "reference", "notes")};
+        kwargs.update({"trip_id": trip_id, "item_id": dinner["id"], "cost": str(dinner["cost_cents"] / 100)});
+        api(client, "save_item", **{**kwargs, "reference": "CHANGED-REF"});
+        edited = api(client, "planning_state", trip_id=trip_id);
+        result = api(client, "save_cancellation_terms", trip_id=trip_id, item_id=dinner["id"],
+            terms=DINNER_TERMS, expected_version=edited["trip_version"]);
+        assert result["cancellation"][dinner["id"]]["traveler_supplied"];
+        reloaded = api(client, "planning_state", trip_id=trip_id);
+        assert reloaded["facts"]["items"][dinner["id"]]["policy_id"] == terms_policy_id(dinner["id"]);
+        assert reloaded["cancellation"][dinner["id"]]["traveler_supplied"];
+        # The edit's invalidation is consumed, not undone: the item's old proof stays cleared.
+        assert reloaded["facts"]["items"][dinner["id"]]["evidence"] is None;
+    }
+}
