@@ -99,7 +99,7 @@ test "removed or excluded scheduled nodes do not leave supplemental references" 
 test "reschedules preserve saved policy kind tags and quote evidence" {
     (state, facts) = sample_state(REVIEW_CLOCK, "arrival_delay");
     facts["items"]["dinner"].update({"policy_id": "dinner-policy", "kind": "food", "tags": ["indoor", "saved-booking"]});
-    facts["policies"] = [{"id": "dinner-policy", "booking_node_id": "dinner", "scope": "Saved dinner", "tz": "America/New_York", "currency": "USD", "retrieved_at": REVIEW_CLOCK.isoformat()}];
+    facts["policies"] = facts.get("policies", []) + [{"id": "dinner-policy", "booking_node_id": "dinner", "scope": "Saved dinner", "tz": "America/New_York", "currency": "USD", "retrieved_at": REVIEW_CLOCK.isoformat()}];
     context = build_context(state, facts, REVIEW_CLOCK);
     plan = next(p for p in generate_plans(context, REVIEW_CLOCK, ["reported-arrival-delay"], max_plans=5)["plans"] if p["strategy"] == "reschedule" and p["selectable"]);
     conn = Mock();

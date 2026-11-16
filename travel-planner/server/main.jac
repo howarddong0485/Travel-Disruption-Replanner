@@ -19,6 +19,7 @@ import from backup.saved_inputs { trip_session, saved_inputs, saved_fingerprint 
 import from backup.workflow { run_workflow }
 import from backup.validation { instant }
 import from planning.context { CONTEXT_VERSION, install_context_schema, read_facts, check_payload, build_context, public_context }
+import from planning.terms { booking_terms, attach_terms }
 import from planning.engine { at_time, generate_plans, VALIDATION_VERSION }
 import from planning.fixtures { sample_state }
 import from itinerary.place_data { read_place_details, write_place_details }
@@ -337,7 +338,10 @@ def:pub planning_state(trip_id: str) -> dict[str, any] {
     conn = _connect();
     try {
         conn.execute("BEGIN");
-        result = public_context(build_context(snapshot(conn, trip_id), read_facts(conn, trip_id), clock()));
+        now = clock();
+        context = build_context(snapshot(conn, trip_id), read_facts(conn, trip_id), now);
+        result = public_context(context);
+        result["cancellation"] = booking_terms(context, now);
         result["review_statuses"] = {};
         for row in conn.execute("SELECT id,status,payload FROM replan_proposals WHERE trip_id=? ORDER BY rowid DESC LIMIT 100", (trip_id,)) {
             proposal = json.loads(row["payload"]);
@@ -359,7 +363,43 @@ def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_ve
         conn.execute("DELETE FROM planning_fact_invalidations WHERE trip_id=?", (trip_id,));
         conn.execute("INSERT INTO planning_contexts VALUES (?,?) ON CONFLICT(trip_id) DO UPDATE SET payload=excluded.payload",
             (trip_id, json.dumps(facts, sort_keys=True, allow_nan=False)));
-        result = public_context(build_context(snapshot(conn, trip_id), facts, clock()));
+        now = clock();
+        context = build_context(snapshot(conn, trip_id), facts, now);
+        result = public_context(context);
+        result["cancellation"] = booking_terms(context, now);
+        conn.commit(); return result;
+    } except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
+
+"""Save a booking's pasted cancellation terms, or remove them when the text is empty.
+
+The rule-based extractor verifies every excerpt against the pasted text; whatever it
+cannot verify stays unknown. Nothing is booked, cancelled or sent to a provider.
+"""
+def:pub save_cancellation_terms(trip_id: str, item_id: str, terms: str, expected_version: any) -> dict[str, any] {
+    if type(expected_version) is not int or expected_version < 1 { raise ValueError("Expected trip version must be a positive integer"); }
+    if not isinstance(terms, str) { raise ValueError("Cancellation terms must be text"); }
+    conn = _connect();
+    try {
+        conn.execute("BEGIN IMMEDIATE");
+        state = snapshot(conn, trip_id);
+        if state["version"] != expected_version { raise ValueError("Trip changed; reload before saving cancellation terms"); }
+        now = clock();
+        facts = read_facts(conn, trip_id);
+        facts.setdefault("contract_version", CONTEXT_VERSION);
+        (updated, outcome) = attach_terms(build_context(state, facts, now), facts, item_id, terms, now);
+        updated = check_payload(updated, state);
+        build_context(state, updated, now);
+        # `facts` came from read_facts, so edited items' stale facts are already cleared in
+        # `updated`. Consume those invalidations, or the next read would also drop these terms.
+        conn.execute("DELETE FROM planning_fact_invalidations WHERE trip_id=?", (trip_id,));
+        conn.execute("INSERT INTO planning_contexts VALUES (?,?) ON CONFLICT(trip_id) DO UPDATE SET payload=excluded.payload",
+            (trip_id, json.dumps(updated, sort_keys=True, allow_nan=False)));
+        context = build_context(snapshot(conn, trip_id), updated, now);
+        result = public_context(context);
+        result["cancellation"] = booking_terms(context, now);
+        result["terms_saved"] = outcome;
         conn.commit(); return result;
     } except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
@@ -502,6 +542,7 @@ def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
         facts["items"] = {mapping[key]: value for (key, value) in facts["items"].items()};
         for route in facts["transfers"] { route["from_id"] = mapping[route["from_id"]]; route["to_id"] = mapping[route["to_id"]]; }
         for hours in facts["place_hours"] { hours["node_id"] = mapping[hours["node_id"]]; }
+        for policy in facts.get("policies", []) { policy["booking_node_id"] = mapping[policy["booking_node_id"]]; }
         for risk in facts["manual_risks"] { risk["node_ids"] = [mapping[key] for key in risk["node_ids"]]; }
         if map_demo {
             arrival = next(item for item in sample["items"] if item["id"] == "arrival");

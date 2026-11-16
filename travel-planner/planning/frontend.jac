@@ -1,5 +1,7 @@
 """Risk selection, traveler facts, plan comparison and explicit P4 review in Roam."""
-import from server.main { ItemView, planning_state, save_planning_context, generate_backup_plans, review_backup_plan }
+import from server.main { ItemView, planning_state, save_planning_context, generate_backup_plans, review_backup_plan, save_cancellation_terms }
+import from itinerary.cancellation { CancellationTerms }
+import from planning.risk_panel { RiskPanel }
 
 def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = None, onApplied: any = None) -> JsxElement {
     browser: any = window;
@@ -8,6 +10,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         adults: str = "", children: str = "", pets: str = "", dietary: str = "", wheelchair: bool = False,
         zone: str = "", reserve: str = "0", details: dict[str, any] = {}, routes: dict[str, str] = {},
         confirmed: dict[str, bool] = {}, selectedRisks: list[str] = [], reason: str = "detected", target: str = "", notBefore: str = "",
+        termsText: dict[str, str] = {}, factsOpen: bool = False, termsOpen: bool = False,
         useAI: bool = False, limit: str = "4", sequence: Ref[int] = Ref(0), expiryTimer: Ref[int] = Ref(0), listener: Ref[any] = Ref(None), alive: Ref[bool] = Ref(True), checkQueued: Ref[bool] = Ref(False), versionCallback: Ref[any] = Ref(None), seenCandidates: Ref[any] = Ref([]);
     def split(value: str) -> list[str] { parts: any = value.split(","); return [s.trim() for s in parts if s.trim()]; }
     def joined(values: any) -> str { return values.join(", "); }
@@ -19,6 +22,19 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         if value is None { return "Needs confirmation"; }
         if value == 0 { return "No change"; }
         return money(abs(value)) + (" more" if value > 0 else " less");
+    }
+    """A saved local time ("2026-11-22T11:00" or "2026-11-22 11:00") as "Sun, Nov 22, 11:00 AM", without time-zone conversion."""
+    def whenText(value: str, timeOnly: bool = False) -> str {
+        found = browser.RegExp("^(\\d{4})-(\\d{2})-(\\d{2})[T ](\\d{2}):(\\d{2})").exec(value or "");
+        if not found { return "time not set"; }
+        moment = new(Date, int(found[1]), int(found[2]) - 1, int(found[3]), int(found[4]), int(found[5]));
+        if timeOnly { return moment.toLocaleTimeString("en-US", {"hour": "numeric", "minute": "2-digit"}); }
+        return moment.toLocaleString("en-US", {"weekday": "short", "month": "short", "day": "numeric", "hour": "numeric", "minute": "2-digit"});
+    }
+    """A start and end on the same day as "Sun, Nov 22, 11:00 AM – 12:00 PM"."""
+    def spanText(start: str, end: str) -> str {
+        if not end { return whenText(start); }
+        return whenText(start) + " – " + whenText(end, start[:10] == end[:10]);
     }
     def originalTime(id: str) -> str {
         matches = [i for i in (state.get("items", items) if state else items) if i.id == id];
@@ -190,6 +206,24 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         } except Exception { failure = "Could not save these facts. Check the traveler counts, ages, timezone and amounts, then reload if the trip changed."; }
         finally { if alive.current { busy = False; if checkQueued.current { checkVersion(); } } }
     }
+    async def saveTerms(item_id: str, remove: bool = False) -> None {
+        if busy or state is None { return; }
+        text = "" if remove else termsText.get(item_id, "");
+        if not remove and not text.strip() { failure = "Paste the booking's cancellation terms first."; return; }
+        busy = True; failure = ""; notice = ""; clear();
+        request = sequence.current;
+        try {
+            updated = await save_cancellation_terms(trip_id=trip_id, item_id=item_id, terms=text, expected_version=state["trip_version"]);
+            if request != sequence.current { return; }
+            fill(updated); notifyTabs();
+            cleared = browser.Object.assign({}, termsText); cleared[item_id] = ""; termsText = cleared;
+            outcome = updated["terms_saved"];
+            notice = "Cancellation terms removed." if outcome["removed"] else
+                "Terms saved, but some parts couldn't be checked against the text. They're marked unknown." if outcome["needs_review"] else
+                "Cancellation terms saved. Find plans again to see them on each option.";
+        } except Exception as exc { failure = "Could not save these terms. " + str(exc); }
+        finally { if alive.current { busy = False; if checkQueued.current { checkVersion(); } } }
+    }
     async def findPlans(other: bool = False) -> None {
         if busy or state is None { return; }
         excluded: list[str] = [key for key in seenCandidates.current] if other else [];
@@ -234,6 +268,9 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         finally { if alive.current { busy = False; if checkQueued.current { checkVersion(); } } }
     }
     currentItems: any = state.get("items", items) if state else items;
+    plansShown: any = result["plans"] if result else [];
+    sharedTerms = len(plansShown) > 1 and len(plansShown[0]["comparison"].get("cancellation", [])) > 0 and all(
+        browser.JSON.stringify(p["comparison"].get("cancellation", [])) == browser.JSON.stringify(plansShown[0]["comparison"]["cancellation"]) for p in plansShown);
     scheduled = sorted([item for item in currentItems if item.category in ("activity", "food", "stay", "transport")], key=lambda (item: ItemView) -> str { item.date + "T" + item.time; });
     return <section className="card integrated-planning" aria-label="Integrated backup plans">
         <h3>Alternatives for your trip</h3><p>Choose what the plans should address, then find and compare alternatives. For more accurate checks, add traveler details first.</p>
@@ -243,7 +280,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         {(<p role="status">{notice}</p>) if notice else None}
         <button className="text-button" type="button" disabled={busy} onClick={reload}>Reload trip facts</button>
         {(<div>
-            <details className="planning-facts"><summary>Traveler details and requirements</summary>
+            <details className="planning-facts" open={factsOpen} onToggle={lambda (e: any) { factsOpen = e.currentTarget.open; }}><summary>Traveler details and requirements</summary>
                 <form onSubmit={saveFacts}><fieldset disabled={busy}>
                     <div className="validation-controls">
                         <label>Adults<input type="number" min="1" required={True} value={adults} onChange={lambda (e: ChangeEvent) { adults = e.target.value; clear(); }}/></label>
@@ -283,6 +320,24 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                     <button type="submit" className="secondary" disabled={busy}>Save requirements and facts</button></fieldset>
                 </form>
             </details>
+            <details className="planning-facts planning-terms" open={termsOpen} onToggle={lambda (e: any) { termsOpen = e.currentTarget.open; }}><summary>Cancellation terms</summary>
+                <p>Paste each booking's cancellation terms from its confirmation. Alternatives then show what cancelling it would cost. Anything the text doesn't clearly state stays unknown. Write amounts with a currency symbol, like $20.00.</p>
+                {[<div className="planning-terms-item" key={item.id}>
+                    {(<CancellationTerms entries={[state["cancellation"][item.id]]} heading="" caption=""/>)
+                        if state.get("cancellation", {}).get(item.id) else (<p className="cancel-term-head"><strong>{item.title}</strong><span className="cancel-badge" data-state="nothing_paid">No terms saved</span></p>)}
+                    <label htmlFor={"terms-" + item.id}>{"Cancellation terms for " + item.title}</label>
+                    <textarea id={"terms-" + item.id} rows={3} maxLength={20000} disabled={busy} value={termsText.get(item.id, "")}
+                        placeholder="e.g. Free cancellation up to 24 hours before. After that time, a $20.00 fee is charged and the remainder is refunded."
+                        onChange={lambda (e: ChangeEvent) { termsText = {**termsText, item.id: e.target.value}; }}/>
+                    <div className="route-row-actions">
+                        <button type="button" className="secondary" disabled={busy or not termsText.get(item.id, "").strip()}
+                            onClick={lambda { saveTerms(item.id); }}>Save terms</button>
+                        {(<button type="button" className="text-button delete" disabled={busy}
+                            onClick={lambda { saveTerms(item.id, True); }}>Remove saved terms</button>)
+                            if state.get("cancellation", {}).get(item.id, {}).get("traveler_supplied", False) else None}
+                    </div>
+                </div> for item in scheduled]}
+            </details>
             <div className="validation-controls">
                 <label>What should the plans address?<select value={reason} disabled={busy} onChange={lambda (e: ChangeEvent) { reason = e.target.value; clear(); }}>
                     <option value="detected">Detected risks</option>{[<option key={value} value={value}>{label(value)}</option> for value in ["weather", "timing", "closure", "cancellation", "long_drive", "opening_hours", "booking_terms", "traveler_change", "budget_change", "inventory_change"]]}</select></label>
@@ -293,29 +348,40 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
             </div>
             {(<p className="muted">Uses your saved budget. To change it, edit the trip.</p>) if reason == "budget_change" else None}
             {(<p className="muted">Save the updated traveler details above before finding plans.</p>) if reason == "traveler_change" else None}
-            {(<div className="planning-risk-list">{[<label className="replan-check" key={risk["id"]}><input type="checkbox" checked={risk["id"] in selectedRisks} disabled={busy}
-                onChange={lambda (e: ChangeEvent) { selectedRisks = selectedRisks + [risk["id"]] if e.target.checked else [key for key in selectedRisks if key != risk["id"]]; clear(); }}/>
-                {risk["summary"] + (" · Not confirmed" if risk["status"] != "flagged" else "")}</label> for risk in state["risks"]]}
-                {(<p>No risks found yet. Add traveler details or report a change.</p>) if len(state["risks"]) == 0 else None}</div>) if reason == "detected" else None}
+            {(<RiskPanel risks={state["risks"]} items={currentItems} selected={selectedRisks} disabled={busy}
+                onToggle={lambda (key: str, on: bool) { selectedRisks = selectedRisks + [key] if on else [k for k in selectedRisks if k != key]; clear(); }}/>) if reason == "detected" else None}
             <label className="replan-check"><input type="checkbox" checked={useAI} disabled={busy} onChange={lambda (e: ChangeEvent) { useAI = e.target.checked; clear(); }}/>Let AI choose among plans that pass the checks</label>
             <button type="button" className="primary" disabled={busy or (reason == "detected" and len(selectedRisks) == 0)} onClick={lambda { findPlans(); }}>{"Preparing plans…" if busy else "Find alternative plans"}</button>
+            {(<p className="section-caption" role="status">Select at least one risk above, or choose a specific change, to find alternatives.</p>) if reason == "detected" and len(selectedRisks) == 0 and not busy else None}
             {(<section className="planning-results" aria-live="polite"><p>{result["message"]}</p>
-                <div className="backup-grid">{[<article className="backup-option" key={plan["id"]}>
-                    <h4>{"Alternative " + str(index + 1)}</h4><p>{"Ready for review" if plan["selectable"] else "Needs confirmation"}</p>
-                    {[<div key={change["replaces_id"]}><strong>{("Move " + title(change["replaces_id"])) if change["action"] == "reschedule" else title(change["replaces_id"]) + " → " + change["item"]["title"]}</strong>
-                        <p>{"Originally: " + originalTime(change["replaces_id"])}</p>
-                        <p>{"Proposed: " + change["item"]["start"]["local"] + " to " + change["item"]["end"]["local"] + " · " + change["item"]["start"]["zone"]}</p></div> for change in plan["replacements"]]}
-                    <dl className="validation-costs"><div><dt>Original planned total, with reserve</dt><dd>{money(plan["comparison"]["original_planned_minor"])}</dd></div>
-                        <div><dt>Projected trip total, with reserve</dt><dd>{money(plan["comparison"]["projected_total_minor"])}</dd></div>
-                        <div><dt>Change in planned total</dt><dd>{costChange(plan["comparison"]["planned_difference_minor"])}</dd></div>
-                        <div><dt>New purchase quotes</dt><dd>{money(plan["comparison"]["new_purchase_quotes_minor"])}</dd></div>
-                        <div><dt>Cash due now</dt><dd>{money(plan["comparison"]["cash_needed_now_minor"])}</dd></div>
-                        <div><dt>Potential cash not refunded</dt><dd>{money(plan["comparison"]["refund_loss_minor"])}</dd></div>
-                        <div><dt>Potential credit</dt><dd>{money(plan["comparison"]["eligible_credit_minor"])}</dd></div></dl>
-                    <p className="muted">No refunds assumed. Quotes are not amounts due now.</p>
+                {(<CancellationTerms entries={result["plans"][0]["comparison"]["cancellation"]}
+                    heading="Cancelling the original booking (same for every alternative)"/>) if sharedTerms else None}
+                <div className="backup-grid alt-cards">{[<article className="backup-option alt-card" key={plan["id"]}>
+                    <div className="alt-card-head"><h4>{"Alternative " + str(index + 1)}</h4>
+                        <span className="plan-status" data-ready={plan["selectable"]}>{"Ready for review" if plan["selectable"] else "Needs confirmation"}</span></div>
+                    {[<div className="plan-change" key={change["replaces_id"]}><strong>{("Move " + title(change["replaces_id"])) if change["action"] == "reschedule" else title(change["replaces_id"]) + " → " + change["item"]["title"]}</strong>
+                        {(<p className="plan-when">{"Same time: " + spanText(change["item"]["start"]["local"], change["item"]["end"]["local"])}</p>)
+                            if originalTime(change["replaces_id"]).replace(" ", "T") == change["item"]["start"]["local"][:16] else
+                            (<p className="plan-when"><span>{"Was: " + whenText(originalTime(change["replaces_id"]))}</span>
+                                <span>{"Now: " + spanText(change["item"]["start"]["local"], change["item"]["end"]["local"])}</span></p>)}</div> for change in plan["replacements"]]}
+                    <div className="plan-key-costs">
+                        <div><small>Trip total</small><strong>{money(plan["comparison"]["projected_total_minor"])}</strong></div>
+                        <div><small>Change</small><strong>{costChange(plan["comparison"]["planned_difference_minor"])}</strong></div>
+                        <div><small>New purchases</small><strong>{money(plan["comparison"]["new_purchase_quotes_minor"])}</strong></div>
+                    </div>
+                    <details className="plan-more-costs"><summary>More cost details</summary>
+                        <dl className="validation-costs"><div><dt>Original total, with reserve</dt><dd>{money(plan["comparison"]["original_planned_minor"])}</dd></div>
+                            <div><dt>Cash due now</dt><dd>{money(plan["comparison"]["cash_needed_now_minor"])}</dd></div>
+                            <div><dt>Paid and not refunded</dt><dd>{money(plan["comparison"]["refund_loss_minor"])}</dd></div>
+                            <div><dt>Possible credit</dt><dd>{money(plan["comparison"]["eligible_credit_minor"])}</dd></div></dl>
+                        <p className="muted">Totals include your reserve. No refunds are assumed, and quotes aren't amounts due now.</p>
+                    </details>
+                    {(<CancellationTerms entries={plan["comparison"]["cancellation"]}/>) if not sharedTerms and len(plan["comparison"].get("cancellation", [])) > 0 else None}
                     {(<ul>{[<li key={message}>{message}</li> for message in missingReasons(plan)]}</ul>) if not plan["selectable"] else None}
-                    <button type="button" className="primary" disabled={busy or not plan["selectable"]} onClick={lambda { review(plan["id"], True); }}>Accept this plan</button>
-                    <button type="button" className="secondary" disabled={busy} onClick={lambda { review(plan["id"], False); }}>Keep current plan</button>
+                    <div className="plan-actions">
+                        <button type="button" className="primary" disabled={busy or not plan["selectable"]} onClick={lambda { review(plan["id"], True); }}>Accept this plan</button>
+                        <button type="button" className="secondary" disabled={busy} onClick={lambda { review(plan["id"], False); }}>Keep current plan</button>
+                    </div>
                 </article> for (index, plan) in enumerate(result["plans"])]}</div>
                 <button type="button" className="secondary" disabled={busy} onClick={lambda { findPlans(True); }}>Find other plans</button>
             </section>) if result else None}

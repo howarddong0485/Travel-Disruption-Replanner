@@ -676,3 +676,74 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
   .with-assistant[data-reviewing="true"] .detail-grid[data-reviewing="true"] { grid-template-columns: minmax(0, 1fr) minmax(310px, 390px); }
 }
 @media (max-width: 650px) { .route-editor .form-pair { grid-template-columns: minmax(0,1fr); } }
+
+/* Cancellation terms beside each alternative */
+.cancel-terms { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.cancel-terms h4 { margin: 0 0 10px; font-size: 13px; }
+.cancel-term { border: 1px solid var(--line); border-radius: 9px; padding: 12px 13px; margin-bottom: 10px; background: white; }
+.cancel-term > p { font-size: 12px; margin: 6px 0 0; }
+.cancel-term-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.cancel-term-head strong { font-size: 13px; overflow-wrap: anywhere; }
+.cancel-badge { font-size: 10px; font-weight: 700; border-radius: 20px; padding: 3px 9px; white-space: nowrap;
+  background: var(--warning-bg); color: var(--text); border: 1px solid var(--line); }
+.cancel-badge[data-state="free"] { background: var(--success-bg); color: var(--success); border-color: var(--success-line); }
+.cancel-badge[data-state="no_refund"] { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-line); }
+.cancel-badge[data-state="nothing_paid"] { background: var(--surface-muted); color: var(--muted); }
+.cancel-excerpt { margin: 9px 0 0; padding: 8px 11px; border-left: 3px solid var(--line); background: var(--surface-muted); border-radius: 0 6px 6px 0; }
+.cancel-excerpt p { font-size: 11px; margin: 0; overflow-wrap: anywhere; }
+.cancel-excerpt cite { display: block; font-size: 10px; color: var(--muted); font-style: normal; margin-top: 4px; overflow-wrap: anywhere; }
+.cancel-open { color: var(--danger); font-size: 11px !important; }
+.option-cancel { color: var(--muted); }
+.planning-terms > p { font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+.planning-terms-item { border-top: 1px solid var(--line); padding: 14px 0 6px; }
+.planning-terms-item .cancel-terms { margin-top: 0; padding-top: 0; border-top: 0; }
+.planning-terms-item > .cancel-term-head { margin: 0; }
+
+/* Risk panel in Backup plans */
+.risk-panel { margin: 18px 0 8px; }
+.risk-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.risk-panel-heading h4 { margin: 0; font-size: 14px; }
+.risk-panel .section-caption { margin: 6px 0 10px; }
+.risk-empty { font-size: 12px; color: var(--muted); }
+.risk-row { display: flex; gap: 11px; align-items: flex-start; border: 1px solid var(--line); border-left-width: 4px;
+  border-radius: 9px; padding: 11px 13px; margin: 0 0 9px; background: white; color: var(--text); cursor: pointer; }
+.risk-row input { width: auto; margin-top: 3px; flex-shrink: 0; }
+.risk-row[data-severity="high"][data-confirmed="true"] { border-left-color: var(--danger); }
+.risk-row[data-severity="medium"][data-confirmed="true"] { border-left-color: #c98a16; }
+.risk-row[data-severity="low"][data-confirmed="true"] { border-left-color: var(--link); }
+.risk-row[data-confirmed="false"] { border-left-color: var(--line); background: var(--surface-muted); }
+.risk-body { display: grid; gap: 4px; min-width: 0; }
+.risk-body strong { font-size: 13px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.risk-body small { font-size: 12px; color: var(--muted); }
+.risk-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.risk-severity, .risk-category { font-size: 11px; font-weight: 700; border-radius: 20px; padding: 2px 8px;
+  background: var(--surface-muted); color: var(--muted); }
+.risk-severity[data-severity="high"] { background: var(--danger-bg); color: var(--danger); }
+.risk-severity[data-severity="medium"] { background: var(--warning-bg); color: #8a5a00; }
+.risk-fix { font-size: 12px; color: var(--text); }
+.risk-why { font-size: 12px; color: var(--muted); }
+.risk-pending summary { font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 0; }
+
+/* Alternative cards in Backup plans */
+.planning-results .alt-cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; }
+.alt-card { display: flex; flex-direction: column; gap: 12px; padding: 18px; }
+.alt-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.alt-card-head h4 { margin: 0; font-size: 15px; }
+.plan-status { font-size: 11px; font-weight: 700; border-radius: 20px; padding: 3px 9px; background: var(--warning-bg); color: #8a5a00; }
+.plan-status[data-ready="true"] { background: var(--success-bg); color: var(--success); }
+.plan-change strong { display: block; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+.plan-when { display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+.plan-key-costs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; background: var(--surface-muted); border-radius: 8px; padding: 10px 12px; }
+.plan-key-costs small { display: block; font-size: 11px; color: var(--muted); }
+.plan-key-costs strong { display: block; font-size: 14px; margin-top: 2px; overflow-wrap: anywhere; }
+.plan-more-costs summary { font-size: 12px; font-weight: 600; cursor: pointer; color: var(--link); }
+.plan-more-costs .validation-costs { margin: 8px 0 4px; font-size: 12px; }
+.alt-card .cancel-terms { margin-top: 0; }
+.planning-results .alt-card > button { margin: 0; }
+.alt-card .primary { margin-top: auto; }
+@media (max-width: 420px) { .plan-key-costs { grid-template-columns: 1fr 1fr; } }
+.plan-when { flex-direction: column; gap: 2px; }
+.plan-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+.integrated-planning .plan-actions button { flex: 1 1 140px; margin: 0 !important; max-width: none !important; width: auto;
+  font-size: 13px; padding: 10px 14px; border-radius: 7px; }
+.planning-results > .cancel-terms { margin: 14px 0 0; padding-top: 0; border-top: 0; }

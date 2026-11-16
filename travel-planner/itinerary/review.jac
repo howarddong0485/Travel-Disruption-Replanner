@@ -2,6 +2,7 @@
 import from server.main { replan_state, planning_state, report_itinerary_change, generate_backup_plans, review_backup_plan }
 import from itinerary.presentation { affectedItemIds, planTitle, shiftLabel, differenceLabel }
 import from itinerary.evidence { EvidencePopover, planSources }
+import from itinerary.cancellation { CancellationTerms, cancellationSummary }
 
 def:pub itinerarySchedule(date: str, time: str) -> str {
     return date + (" · " + time if time else " · Flexible time") if date else "Date to be decided";
@@ -315,6 +316,8 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
                             " · " + str(len(option["replacements"])) +
                             (" stop changed" if len(option["replacements"]) == 1 else " stops changed")}</small>
                         <small>{", ".join([shiftLabel(time["start_shift_minutes"]) for time in option["comparison"]["time_changes"]])}</small>
+                        {(<small className="option-cancel">{cancellationSummary(option["comparison"]["cancellation"])}</small>)
+                            if cancellationSummary(option["comparison"].get("cancellation", [])) else None}
                         {(<span className="option-badge">Lowest total among ready options</span>) if option["selectable"] and
                             lowest is not None and option["comparison"]["projected_total_minor"] == lowest else None}
                         {(<small>Ready for review</small>) if option["selectable"] else None}
@@ -344,6 +347,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
                             sources={[]} onFacts={lambda { onFacts("budget"); }} actionLabel="View trip budget"/>)}</dd></div>
                 </dl>
                 <p className="section-caption">Totals include any saved reserve. Quotes are estimates.</p>
+                {(<CancellationTerms entries={comparison["cancellation"]}/>) if len(comparison.get("cancellation", [])) > 0 else None}
                 {(<div className="review-unresolved"><strong>Needs confirmation</strong>
                     <ul>{[<li key={message}>{message}</li> for message in missing]}</ul>
                     <p>Add the missing details in Backup plans, then refresh these options.</p>

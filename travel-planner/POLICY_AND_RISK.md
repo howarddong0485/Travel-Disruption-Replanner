@@ -93,7 +93,32 @@ flag rather than treating it as safe.
 - Roam records have no end times, zones, dependencies or policies; decide whether
   the foundation should store them or whether the adapter stays lossy.
 
+## In the web app
+
+- **Backup plans → Trip risks** lists confirmed risks by severity with each rule's
+  "What to do" step. Risks that need missing or expired information are listed
+  separately under "Can't check yet" and are never shown as safe.
+- **Backup plans → Cancellation terms** lets a traveler paste a booking's terms.
+  The rule-based PolicyAgent verifies every excerpt against the text; the policy is
+  stored with `user` origin evidence that stays current for 7 days
+  (`planning/terms.jac`, `save_cancellation_terms`). Amounts need a currency symbol
+  (`$20.00`); the rule extractor does not read ISO codes such as `USD 20.00`, so
+  those terms stay unknown.
+- Every alternative shows the replaced booking's cancellation terms: free, fee,
+  no refund, unknown, no terms saved or nothing paid, with the cited excerpt and
+  open questions (`comparison.cancellation`, `itinerary/cancellation.jac`).
+
+## Launch scenarios and where they are tested
+
+| Scenario | Tests |
+|---|---|
+| Storm disruption | `planning/test_launch_scenarios.jac` (terms shown, rejection keeps the trip); `planning/test_engine.jac` weather search |
+| Fee-bearing cancellation | `planning/test_launch_scenarios.jac` (pasted fee terms reach every alternative, no refund assumed); `planning/test_cancellation_terms.jac` |
+| Tight transfer | `planning/test_service.jac` supplemental connection lifecycle; `risk/analyzer.test.jac` tight connections |
+| Unknown fare | `planning/test_engine.jac` missing evidence cannot become selectable; `assistant/test_workflow.jac` unknown price cannot be applied |
+| Itinerary edited while a draft waits | `planning/test_launch_scenarios.jac`; `planning/test_service.jac` stale versions; `assistant/test_workflow.jac` changed trip rejects old drafts |
+
 ## Next
 
 - Optional bounded LLM classification for indoor/outdoor activities.
-- Risk/policy panel in the web UI.
+- Read ISO currency codes (`USD 20.00`) in the rule-based extractor.
