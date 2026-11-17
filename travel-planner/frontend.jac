@@ -14,7 +14,7 @@ import from itinerary.trip_map { TripMap }
 import from journey.frontend { RouteEditor, journeyLabel, legLabel }
 import from journey.display { itineraryOrder, journeyCity }
 import from server.main { journey_state }
-import from assistant.frontend { ChatSidebar, AIPlanner }
+import from assistant.frontend { ChatSidebar, AIPlanner, assistantError }
 import from server.main { assistant_review, assistant_update_prices, assistant_save_preferences }
 
 def:pub app -> JsxElement {
@@ -177,7 +177,7 @@ def:pub app -> JsxElement {
             if accept { await refresh(); }
             aiReload += 1;
             notice = "Plan saved to your itinerary. No bookings or payments were made." if accept else "Your current itinerary is unchanged.";
-        } except Exception as exc { error = str(exc); aiReload += 1; }
+        } except Exception as exc { error = assistantError(exc); aiReload += 1; }
         finally { busy = False; }
     }
     async def priceAI(draft_id: str, prices: dict[str, any]) -> str {
@@ -187,7 +187,7 @@ def:pub app -> JsxElement {
             aiReload += 1;
             notice = "Prices checked. Review the total, then tick the checkbox to save the plan.";
             return "";
-        } except Exception as exc { error = str(exc); return str(exc); }
+        } except Exception as exc { error = assistantError(exc); return error; }
         finally { busy = False; }
     }
     async def savePreferences(pet: bool, pace: str) -> None {

@@ -7,6 +7,8 @@ import from planning.fixtures { sample_state }
 import from planning.context { build_context }
 import from planning.engine { generate_plans }
 import from planning.profile_io { profile_from_data }
+import from planning.comparison { compare_plan }
+import from backup.validation_models { Replacement }
 
 glob BOUNDARY_CLOCK = datetime(2026, 10, 30, 12, tzinfo=timezone.utc);
 
@@ -65,6 +67,26 @@ test "refund cash and credit stay separate and neither reduces the projected tot
     assert records[1]["eligible_cash_refund_minor"] == 0 and records[1]["eligible_credit_minor"] == 4500;
     assert records[0]["projected_total_minor"] == records[1]["projected_total_minor"];
     assert all(record["confirmed_refund_minor"] == 0 and record["cash_needed_now_minor"] is None for record in records);
+}
+
+test "JPY policy fees use yen while the Roam ledger and comparison retain hundredths" {
+    (state, facts) = sample_state(BOUNDARY_CLOCK);
+    state["trip"]["currency"] = "JPY";
+    for item in state["items"] { if item["id"] == "activity" { item["paid"] = True; item["cost_cents"] = 10000; } }
+    facts["items"]["activity"]["policy_id"] = "yen-policy";
+    facts["evidence"].append({"id":"yen-proof", "source_ref":"fixture://yen-policy", "excerpt":"100% refund less 10 JPY",
+        "retrieved_at":BOUNDARY_CLOCK.isoformat(), "origin":"mock"});
+    facts["evidence_deadlines"]["yen-proof"] = (BOUNDARY_CLOCK + timedelta(minutes=15)).isoformat();
+    facts["policies"] = [{"id":"yen-policy", "booking_node_id":"activity", "scope":"Synthetic booking", "tz":"America/New_York",
+        "currency":"JPY", "retrieved_at":BOUNDARY_CLOCK.isoformat(), "tiers":[{"evidence_id":"yen-proof", "refund_percent":100, "fee_minor":10, "refund_form":"cash"}]}];
+    context = build_context(state, facts, BOUNDARY_CLOCK);
+    booking = context["bundle"].itinerary.find_node("activity");
+    assert booking.paid_minor == 100 and booking.price_minor == 100;
+    old = next(i for i in context["trip"].items if i.id == "activity");
+    replacement = Replacement("new", "activity", replace(old, cost_minor=12000), ());
+    result = compare_plan(context, (replacement,), {"projected_total_minor":22000}, BOUNDARY_CLOCK);
+    assert result["retained_paid_minor"] == 10000 and result["eligible_cash_refund_minor"] == 9000;
+    assert result["refund_loss_minor"] == 1000 and result["new_purchase_quotes_minor"] == 12000;
 }
 
 test "implicit traveling pets remain mandatory and shared profile inputs are not mutated" {

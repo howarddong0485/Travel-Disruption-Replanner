@@ -388,6 +388,7 @@ def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_ve
         facts = check_payload(payload, state);
         build_context(state, facts, clock());
         conn.execute("DELETE FROM planning_fact_invalidations WHERE trip_id=?", (trip_id,));
+        conn.execute("DELETE FROM planning_route_invalidations WHERE trip_id=?", (trip_id,));
         conn.execute("INSERT INTO planning_contexts VALUES (?,?) ON CONFLICT(trip_id) DO UPDATE SET payload=excluded.payload",
             (trip_id, json.dumps(facts, sort_keys=True, allow_nan=False)));
         result = public_context(build_context(snapshot(conn, trip_id), facts, clock()));

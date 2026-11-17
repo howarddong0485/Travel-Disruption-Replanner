@@ -11,6 +11,8 @@ import from events.simulator { simulated_event }
 import from replan.backups { backups_for }
 import from planning.application { apply_backup }
 import journey.model as journey_model;
+import from planning.context { read_facts }
+import from replan.connections { validate_connections }
 def install_schema(conn: sqlite3.Connection) -> None {
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS trip_versions (
@@ -105,6 +107,7 @@ def snapshot(conn: any, trip_id: any) -> dict[str, any] {
     return {
         'trip': `dict(trip),
         'journey': journey_model.read(conn, trip_id),
+        'connection_facts': read_facts(conn, trip_id),
         'items': items,
         'dependencies': edges,
         'version': version
@@ -314,6 +317,7 @@ def save_dependency(
     return snapshot(conn, trip_id);
 }
 def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
+    validate_connections(state, nodes, state.get("connection_facts", {}), datetime.now(timezone.utc));
     if state.get("journey") { journey_model.validate(state["journey"], state["trip"], list(nodes.values())); }
     topological(`list(nodes.values()), state['dependencies']);
     original = {i['id']: i for i in state['items']};

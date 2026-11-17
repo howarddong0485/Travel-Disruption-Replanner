@@ -4,7 +4,7 @@ import from backup.validation { instant, evidence_problem }
 import from backup.validation_models { Replacement, Evidence }
 import from policy.cancellation { evaluate_cancellation, tier_deadline }
 import from schema.common { local_to_instant }
-import from schema.common { to_plain }
+import from schema.common { to_plain, minor_to_roam }
 import from backup.changes { quote_problem }
 
 def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...], checked: dict[str, any], now: datetime) -> dict[str, any] {
@@ -29,8 +29,8 @@ def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...],
                 }
                 if fresh and not cancel.unknowns and cancel.currency == context["trip"].currency and cancel.refund_if_cancel_now_minor is not None and
                     cancel.refund_form.value in ("cash", "credit", "none") {
-                    refunds.append(cancel.refund_if_cancel_now_minor if cancel.refund_form.value == "cash" else 0);
-                    credits.append(cancel.refund_if_cancel_now_minor if cancel.refund_form.value == "credit" else 0);
+                    refunds.append(minor_to_roam(cancel.refund_if_cancel_now_minor, cancel.currency) if cancel.refund_form.value == "cash" else 0);
+                    credits.append(minor_to_roam(cancel.refund_if_cancel_now_minor, cancel.currency) if cancel.refund_form.value == "credit" else 0);
                 }
                 else { unknowns.append("Refund entitlement needs current policy evidence"); }
             } elif old.paid_minor { unknowns.append("Refund terms for an original payment are unknown"); }

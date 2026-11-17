@@ -14,7 +14,7 @@ import from planning.connections { estimate_connections }
 import from profile.checks { hard_requirements }
 import from budget.ledger { build_ledger }
 import from schema.bundle { bundle_from_dict }
-import from schema.common { to_plain }
+import from schema.common { to_plain, roam_to_minor }
 import from risk.analyzer { analyze_trip }
 import from backup.validation { instant, evidence_problem }
 import from backup.validation_models { TripContext, ScheduledItem, Profile, Evidence, Moment, Window, Transfer, Dependency }
@@ -37,6 +37,18 @@ def install_context_schema(conn: any) -> None {
              OLD.location IS NOT NEW.location OR OLD.reference IS NOT NEW.reference OR
              OLD.cost_cents IS NOT NEW.cost_cents
         BEGIN INSERT OR REPLACE INTO planning_fact_invalidations(item_id,trip_id) VALUES(NEW.id,NEW.trip_id); END""");
+    routes_installed = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='planning_route_invalidations'").fetchone();
+    conn.execute("CREATE TABLE IF NOT EXISTS planning_route_invalidations (item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE, trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE)");
+    if routes_installed is None {
+        conn.execute("INSERT OR IGNORE INTO planning_route_invalidations SELECT item_id,trip_id FROM planning_fact_invalidations");
+    }
+    # A schedule or price edit does not change the route's endpoints. Retain its
+    # duration and expiry; identity/location edits still require fresh evidence.
+    conn.execute("""CREATE TRIGGER IF NOT EXISTS planning_item_route_changed
+        AFTER UPDATE OF title,category,location,reference ON items
+        WHEN OLD.title IS NOT NEW.title OR OLD.category IS NOT NEW.category OR
+             OLD.location IS NOT NEW.location OR OLD.reference IS NOT NEW.reference
+        BEGIN INSERT OR REPLACE INTO planning_route_invalidations(item_id,trip_id) VALUES(NEW.id,NEW.trip_id); END""");
     for operation in ("INSERT", "UPDATE", "DELETE") {
         ref = "OLD" if operation == "DELETE" else "NEW";
         conn.execute("CREATE TRIGGER IF NOT EXISTS planning_context_" + operation.lower() + " AFTER " + operation +
@@ -49,6 +61,7 @@ def read_facts(conn: any, trip_id: str) -> dict[str, any] {
     row = conn.execute("SELECT payload FROM planning_contexts WHERE trip_id=?", (trip_id,)).fetchone();
     facts = json.loads(row["payload"]) if row else {};
     changed = {r["item_id"] for r in conn.execute("SELECT item_id FROM planning_fact_invalidations WHERE trip_id=?", (trip_id,))};
+    route_changed = {r["item_id"] for r in conn.execute("SELECT item_id FROM planning_route_invalidations WHERE trip_id=?", (trip_id,))};
     for key in changed {
         detail = facts.get("items", {}).get(key);
         if detail is not None {
@@ -58,7 +71,8 @@ def read_facts(conn: any, trip_id: str) -> dict[str, any] {
     }
     for (field, keys) in (("place_hours", ("node_id",)), ("policies", ("booking_node_id",)),
         ("travel_estimates", ("from_node_id", "to_node_id")), ("transfers", ("from_id", "to_id"))) {
-        if field in facts { facts[field] = [record for record in facts[field] if not any(record[key] in changed for key in keys)]; }
+        invalid = route_changed if field in ("travel_estimates", "transfers") else changed;
+        if field in facts { facts[field] = [record for record in facts[field] if not any(record[key] in invalid for key in keys)]; }
     }
     if "manual_risks" in facts { facts["manual_risks"] = [risk for risk in facts["manual_risks"] if not changed.intersection(risk["node_ids"])]; }
     return facts;
@@ -233,7 +247,7 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
             "tz": item.start.zone, "start_local": start_local, "end_local": end_local, "end_tz": item.end.zone,
             "location": item.venue, "area": trip["destination"], "fixed": item.fixed,
             "booking_status": "completed" if item.completed else "booked" if item.paid_minor or next(i for i in state["items"] if i["id"] == item.id)["done"] else "planned",
-            "currency": item.currency, "price_minor": item.cost_minor, "paid_minor": item.paid_minor,
+            "currency": item.currency, "price_minor": roam_to_minor(item.cost_minor, item.currency), "paid_minor": roam_to_minor(item.paid_minor, item.currency),
             "tags": detail.get("tags", []), "policy_id": detail.get("policy_id", ""), "evidence_ids": cited});
     }
     bundle_data = {key: deepcopy(facts.get(key, [])) for key in ("evidence", "policies", "forecasts", "place_hours", "travel_estimates")};

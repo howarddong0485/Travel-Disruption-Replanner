@@ -3,13 +3,26 @@ import from browser_ids { request_id }
 import from server.main { assistant_state, assistant_chat, assistant_review, assistant_confirm_map }
 import from journey.frontend { journeyLabel }
 
+def:pub assistantError(error: any) -> str {
+    browser: any = window;
+    text = str(error); offset = text.find("{");
+    if offset >= 0 {
+        try {
+            payload = browser.JSON.parse(text[offset:]);
+            if payload.get("error", {}).get("message", "") { return payload["error"]["message"]; }
+        } except Exception { return "The request could not be completed. Reload the conversation and try again."; }
+    }
+    return "The request could not be completed. Reload the conversation and try again." if "Function " in text else text;
+}
+
 def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int = 0,
     compose: int = 0, composeMode: str = "ask", composeText: str = "", externalBusy: bool = False, onKeyChange: any = None) -> JsxElement {
     browser: any = window;
     has data: dict[str, any] = {}, text: str = "", mode: str = "ask", search: bool = True,
         apiKey: str = "", keyInput: str = "", keyError: str = "",
         busy: bool = False, loading: bool = True, failure: str = "", pendingText: str = "",
-        alive: Ref[bool] = Ref(True), sequence: Ref[int] = Ref(0), scrollTarget: Ref[any] = Ref(None);
+        alive: Ref[bool] = Ref(True), sequence: Ref[int] = Ref(0), scrollTarget: Ref[any] = Ref(None),
+        poll: Ref[any] = Ref(None), reloadAction: Ref[any] = Ref(None), focusAction: Ref[any] = Ref(None);
     async def load -> None {
         if busy { return; }
         request = sequence.current;
@@ -19,9 +32,21 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         } except Exception { if alive.current { failure = "Could not load this conversation. Try Reload."; } }
         finally { if alive.current { loading = False; } }
     }
-    can with entry { alive.current = True; }
+    reloadAction.current = lambda { load(); };
+    can with entry {
+        alive.current = True;
+        focusAction.current = lambda { if not browser.document.hidden { reloadAction.current(); } };
+        poll.current = browser.setInterval(focusAction.current, 15000);
+        browser.addEventListener("focus", focusAction.current);
+        browser.document.addEventListener("visibilitychange", focusAction.current);
+    }
     can with [trip_id, reload] entry { load(); }
-    can with exit { if onKeyChange { onKeyChange(""); } alive.current = False; sequence.current += 1; }
+    can with exit {
+        browser.clearInterval(poll.current);
+        browser.removeEventListener("focus", focusAction.current);
+        browser.document.removeEventListener("visibilitychange", focusAction.current);
+        if onKeyChange { onKeyChange(""); } alive.current = False; sequence.current += 1;
+    }
     can with [compose] entry {
         if compose > 0 {
             mode = composeMode; text = composeText;
@@ -29,12 +54,13 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
             if field { field.focus(); }
         }
     }
-    can with [data, busy] entry {
+    messageCount = len(data.get("messages", []));
+    can with [messageCount, busy] entry {
         if scrollTarget.current { scrollTarget.current.scrollIntoView({"block": "nearest", "behavior": "smooth"}); }
     }
     async def send(e: FormEvent) -> None {
         e.preventDefault(); if busy or externalBusy or loading or not text.strip() { return; }
-        busy = True; failure = ""; pendingText = text.strip(); request = sequence.current;
+        sequence.current += 1; busy = True; failure = ""; pendingText = text.strip(); request = sequence.current;
         try {
             fresh = await assistant_chat(trip_id=trip_id, message=pendingText, mode=mode,
                 search=search, request_id=request_id(browser), api_key=apiKey);
@@ -44,15 +70,15 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                 data = fresh; text = ""; pendingText = ""; onUpdate(fresh, mode != "ask" or created);
             }
         } except Exception as error {
-            if alive.current and request == sequence.current { failure = str(error); pendingText = ""; }
+            if alive.current and request == sequence.current { failure = assistantError(error); pendingText = ""; }
         } finally { if alive.current and request == sequence.current { busy = False; } }
     }
     async def confirmMap(messageId: str, actionIndex: int, choiceIndex: int) -> None {
-        busy = True; failure = "";
+        sequence.current += 1; busy = True; failure = "";
         try {
             data = await assistant_confirm_map(trip_id=trip_id, message_id=messageId, action_index=actionIndex, choice_index=choiceIndex);
             onUpdate(data, False);
-        } except Exception as error { failure = str(error); }
+        } except Exception as error { failure = assistantError(error); }
         finally { busy = False; }
     }
     def useKey(e: FormEvent) -> None {
@@ -134,7 +160,16 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
 }
 
 def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview: any, onPrices: any, onPreferences: any, busy: bool) -> JsxElement {
-    has acknowledged: dict[str, bool] = {}, prices: dict[str, str] = {}, priceErrors: dict[str, str] = {};
+    browser: any = window;
+    has acknowledged: dict[str, bool] = {}, prices: dict[str, str] = {}, priceErrors: dict[str, str] = {},
+        tick: float = 0, timer: Ref[any] = Ref(None), clockOffset: Ref[float] = Ref(0);
+    can with [data] entry { if data.get("checked_at", "") { clockOffset.current = browser.Date.parse(data["checked_at"]) - browser.Date.now(); } tick = browser.Date.now(); }
+    can with entry { tick = browser.Date.now(); timer.current = browser.setInterval(lambda { tick = browser.Date.now(); }, 1000); }
+    can with exit { browser.clearInterval(timer.current); }
+    def status(draft: dict[str, any]) -> str {
+        if draft["status"] == "pending" and browser.Date.parse(draft["expires"]) <= tick + clockOffset.current { return "expired"; }
+        return draft["status"];
+    }
     async def savePrices(e: FormEvent, draft: dict[str, any]) -> None {
         e.preventDefault();
         values: dict[str, any] = {};
@@ -149,8 +184,8 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
     def money(value: any, unit: str = "") -> str { return "Unknown" if value is None else (unit or currency) + " " + (value / 100).toFixed(2); }
     def detail(value: any, field: str, unit: str) -> str { return money(value, unit) if field == "budget_cents" else str(value) or "Not set"; }
     def label(mode: str) -> str { return "Trip details" if mode == "edit" else "Trip plan" if mode == "plan" else "Alternative" if mode == "backup" else "Replan"; }
-    pending = [draft for draft in data.get("drafts", []) if draft["status"] == "pending"];
-    history = [draft for draft in data.get("drafts", []) if draft["status"] != "pending"];
+    pending = [draft for draft in data.get("drafts", []) if status(draft) == "pending"];
+    history = [draft for draft in data.get("drafts", []) if status(draft) != "pending"];
     preferences = data.get("preferences", {"pet_friendly": False, "pace": "balanced"});
     <section className="ai-planner" aria-label="AI planning workspace">
         <div className="card ai-planner-intro"><h2>Plan with the assistant</h2>
@@ -207,7 +242,7 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
                     <div key={str(index)} className="ai-change"><span className="change-type">{"EDIT" if change["item_id"] else "ADD"}</span><div>
                         {(<p className="ai-before">{change["before"]["title"] + " · " + change["before"]["date"] + " " + change["before"]["time"] + " · " + money(change["before"]["cost_cents"])}</p>) if change["before"] else None}
                         <h4>{change["after"]["title"]}</h4><p>{change["after"]["date"] + " · " + change["after"]["time"] + " · " + str(change["after"]["duration_minutes"]) + " min"}</p>
-                        {(<p>{change["after"]["journey"]["zone"] + " → " + change["after"]["journey"]["arrival_date"] + " " + change["after"]["journey"]["arrival_time"] + " " + change["after"]["journey"]["end_zone"]}</p>) if change["after"].get("journey") else None}
+                        {(<p>{change["after"]["journey"]["zone"] + " → " + change["after"]["journey"]["arrival_date"] + " " + change["after"]["journey"]["arrival_time"] + " " + change["after"]["journey"]["end_zone"]}</p>) if change["after"].get("journey", {}).get("zone", "") and change["after"].get("journey", {}).get("arrival_date", "") and change["after"].get("journey", {}).get("arrival_time", "") and change["after"].get("journey", {}).get("end_zone", "") else None}
                         <p>{change["after"]["location"]}</p><strong>{"Unknown price" if change["price_unknown"] else money(change["after"]["cost_cents"], draft.get("trip_after", {}).get("currency", currency))}</strong>
                         {(<p className="ai-change-notes">{change["after"]["notes"]}</p>) if change["after"]["notes"] else None}
                     </div></div> for (index, change) in enumerate(draft["changes"])
@@ -224,8 +259,8 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
             </article> for draft in pending
         ]}</div>
         {(<details className="card ai-draft-history"><summary>Previous proposals ({str(len(history))})</summary>{[
-            <div key={draft["id"]}><strong>{draft["title"]}</strong><span>{draft["status"]}</span>
-                {(<small>Ask for a new draft based on your current trip.</small>) if draft["status"] in ["stale", "expired"] else None}</div> for draft in history
+            <div key={draft["id"]}><strong>{draft["title"]}</strong><span>{status(draft)}</span>
+                {(<small>Ask for a new draft based on your current trip.</small>) if status(draft) in ["stale", "expired"] else None}</div> for draft in history
         ]}</details>) if history else None}
     </section>
 }

@@ -62,6 +62,17 @@ def to_local_text(instant: datetime, tz: str) -> str {
 
 glob ZERO_DECIMAL_CURRENCIES: list[str] = ["JPY", "KRW"];
 
+"""Roam's legacy storage is hundredths for every currency; shared contracts use true minor units."""
+def roam_to_minor(cents: int | None, currency: str) -> int | None {
+    if cents is None { return None; }
+    if currency in ZERO_DECIMAL_CURRENCIES { return cents // 100 if cents % 100 == 0 else None; }
+    return cents;
+}
+
+def minor_to_roam(minor: int, currency: str) -> int {
+    return minor * 100 if currency in ZERO_DECIMAL_CURRENCIES else minor;
+}
+
 """Parse a written amount such as "260", "260.00" or "1,250.5" into minor units; None if malformed."""
 def parse_amount_minor(text: str, currency: str) -> int | None {
     cleaned = text.strip().replace(",", "");

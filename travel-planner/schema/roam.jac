@@ -6,6 +6,7 @@ IANA zone if it is known. Roam's `done` means confirmed for transport and stays
 and completed for activities and dining.
 """
 import from schema.itinerary { ItineraryNode, ItineraryGraph, NodeKind, BookingStatus }
+import from schema.common { roam_to_minor }
 
 glob ROAM_KINDS: dict[str, NodeKind] = {
     "activity": NodeKind.ACTIVITY, "food": NodeKind.FOOD,
@@ -28,8 +29,8 @@ def node_from_roam_item(item: dict[str, any], currency: str, tz: str, area: str)
         location=str(item.get("location", "")), area=area,
         booking_status=_status(category, bool(item.get("done", False))),
         currency=currency,
-        price_minor=cost if cost > 0 else None,
-        paid_minor=(cost if item.get("paid", False) else 0) if cost > 0 else None);
+        price_minor=roam_to_minor(cost, currency) if cost > 0 else None,
+        paid_minor=roam_to_minor(cost if item.get("paid", False) else 0, currency) if cost > 0 else None);
 }
 
 """Build a version-1 graph from a Roam trip and its items. Packing and standalone expenses are skipped."""
