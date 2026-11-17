@@ -6,6 +6,7 @@ import from policy.cancellation { evaluate_cancellation, tier_deadline }
 import from schema.common { local_to_instant }
 import from schema.common { to_plain, minor_to_roam }
 import from backup.changes { quote_problem }
+import from policy.review { cancellation_review }
 
 def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...], checked: dict[str, any], now: datetime) -> dict[str, any] {
     originals = {item.id: item for item in context["trip"].items};
@@ -55,6 +56,7 @@ def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...],
         "retained_paid_minor": None if any("payment" in reason for reason in unknowns) else retained,
         "eligible_refund_minor": eligible, "eligible_cash_refund_minor": eligible, "eligible_credit_minor": sum(credits) if refund_known else None, "confirmed_refund_minor": 0,
         "refund_loss_minor": retained - eligible if eligible is not None else None,
+        "policy_reviews": [{**cancellation_review(context["bundle"], context["bundle"].itinerary.find_node(c.replaces_id), context["facts"].get("evidence_deadlines", {}), now), "action":c.action} for c in replacements],
         "time_changes": times, "changed_item_count": len(replacements), "unknowns": unknowns + ["Payment timing is not supplied; new purchase quotes are not an amount due now"],
         "notice": "Synthetic quotes only. Eligible refunds have not been received and are not deducted from total cost or cash needs."};
 }

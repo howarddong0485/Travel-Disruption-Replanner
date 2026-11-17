@@ -16,6 +16,7 @@ import from budget.ledger { build_ledger }
 import from schema.bundle { bundle_from_dict }
 import from schema.common { to_plain, roam_to_minor }
 import from risk.analyzer { analyze_trip }
+import from policy.review { cancellation_review }
 import from backup.validation { instant, evidence_problem }
 import from backup.validation_models { TripContext, ScheduledItem, Profile, Evidence, Moment, Window, Transfer, Dependency }
 
@@ -282,6 +283,7 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
         }
         if stale or not risk["evidence_ids"] { risk["status"] = "unresolved"; }
         risk["stale_evidence_ids"] = stale;
+        risk["sources"] = [{**evidence_by_id[key], "expires_at":deadlines.get(key, ""), "current":key not in stale} for key in risk["evidence_ids"] if key in evidence_by_id];
     }
     for risk in facts.get("manual_risks", []) {
         if set(risk) - {"id", "category", "node_ids", "summary", "evidence", "not_before"} { raise ValueError("Unsupported manual risk fields"); }
@@ -299,6 +301,7 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
 
 def public_context(context: dict[str, any]) -> dict[str, any] {
     result = {key: context[key] for key in ("contract_version", "trip_id", "trip_version", "base_snapshot", "risks", "ledger", "facts", "checked_at")};
+    result["policy_reviews"] = [cancellation_review(context["bundle"], item, context["facts"].get("evidence_deadlines", {}), datetime.fromisoformat(context["checked_at"])) for item in context["bundle"].itinerary.nodes];
     result["items"] = [{key: item[key] for key in ("id", "title", "category", "date", "time", "location", "cost_cents", "done", "paid")} for item in context["state"]["items"]];
     return result;
 }

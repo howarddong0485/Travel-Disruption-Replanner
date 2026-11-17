@@ -11,6 +11,7 @@ import from replan.engine { snapshot, validate }
 import from planning.context { read_facts }
 import from assistant.provider { configuration }
 import assistant.preferences as preferences;
+import from policy.review { saved_policy_reviews }
 
 def now -> str { return datetime.now(timezone.utc).isoformat(); }
 
@@ -243,6 +244,8 @@ def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any
         "warnings": journey_issues + ["AI prices are estimates, not live quotes. Confirm availability, opening hours, travel times and traveler eligibility before booking."] + (["Changing trip dates or locations requires fresh checks of hours, routes and reservations."] if any(key in delta for key in ["start_date", "end_date", "destination", "departure_location", "return_location"]) else []),
         "can_apply": not missing_price};
     draft["summary"] = checked_summary(draft);
+    edited = {change["item_id"] for change in displayed if change["item_id"]};
+    draft["policy_reviews"] = [row for row in saved_policy_reviews(state, facts, datetime.now(timezone.utc)) if row["item_id"] in edited];
     return draft;
 }
 

@@ -30,6 +30,8 @@ import assistant.provider as ai_provider;
 import assistant.map_actions as ai_maps;
 import assistant.preferences as ai_preferences;
 import journey.model as journey_model;
+import from policy.agent { PolicyRequest, extract_policy }
+import from schema.common { to_plain, Origin, valid_zone }
 
 def:pub journey_state(trip_id: str) -> dict[str, any] {
     conn = _connect();
@@ -42,6 +44,39 @@ def:pub journey_state(trip_id: str) -> dict[str, any] {
         }
         return {"journey": journey, "version": state["version"], "issues": issues};
     } finally { conn.close(); }
+}
+
+def:pub save_policy_terms(trip_id: str, item_id: str, terms: str, source: str, zone: str,
+    expires_at: str, expected_version: int) -> dict[str, any] {
+    terms = _text(terms, "Cancellation terms", 20000, True);
+    source = _text(source, "Policy source", 1000, True);
+    if not valid_zone(zone) { raise ValueError("Enter an IANA policy timezone, such as America/Chicago."); }
+    now = clock();
+    try { expires = datetime.datetime.fromisoformat(expires_at); }
+    except ValueError { raise ValueError("Enter the policy evidence expiry with a UTC offset.") from None; }
+    if expires.utcoffset() is None or expires <= now { raise ValueError("Policy evidence expiry must be in the future and include a UTC offset."); }
+    conn = _connect();
+    try {
+        state = snapshot(conn, trip_id); facts = read_facts(conn, trip_id);
+        if state["version"] != expected_version { raise ValueError("Your trip changed. Reload before saving these terms."); }
+        context = build_context(state, facts, now);
+        booking = context["bundle"].itinerary.find_node(item_id);
+        if booking is None { raise ValueError("Choose a scheduled item from this trip."); }
+        policy_id = "saved-policy:" + item_id;
+        extracted = extract_policy(PolicyRequest(policy_id, booking, terms, source, now.isoformat(),
+            scope="Traveler-supplied booking terms", tz=zone, origin=Origin.USER), use_llm=False);
+        facts["contract_version"] = CONTEXT_VERSION;
+        facts["items"] = facts.get("items", {});
+        facts["items"][item_id] = {**facts["items"].get(item_id, {}), "policy_id":policy_id, "zone":zone};
+        facts["policies"] = [p for p in facts.get("policies", []) if p["booking_node_id"] != item_id] + [to_plain(extracted.policy)];
+        ids = {e.id for e in extracted.evidence};
+        facts["evidence"] = [e for e in facts.get("evidence", []) if e["id"] not in ids] + [to_plain(e) for e in extracted.evidence];
+        facts["evidence_deadlines"] = {**facts.get("evidence_deadlines", {}), **{key:expires.isoformat() for key in ids}};
+    } finally { conn.close(); }
+    # The existing versioned facts endpoint revalidates under a write lock.
+    result = save_planning_context(trip_id, facts, expected_version);
+    result["policy_notes"] = extracted.notes;
+    return result;
 }
 
 def:pub save_journey(trip_id: str, payload: dict[str, any], expected_version: any) -> dict[str, any] {

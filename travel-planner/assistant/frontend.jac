@@ -2,6 +2,7 @@
 import from browser_ids { request_id }
 import from server.main { assistant_state, assistant_chat, assistant_review, assistant_confirm_map }
 import from journey.frontend { journeyLabel }
+import from itinerary.policy_review { PolicyReview }
 
 def:pub assistantError(error: any) -> str {
     browser: any = window;
@@ -247,6 +248,7 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
                         {(<p className="ai-change-notes">{change["after"]["notes"]}</p>) if change["after"]["notes"] else None}
                     </div></div> for (index, change) in enumerate(draft["changes"])
                 ]}</div>
+                <PolicyReview rows={draft.get("policy_reviews", [])}/>
                 <div className="ai-draft-warning">{[<p key={warning}>{warning}</p> for warning in draft["warnings"]]}{[<p key={issue}>{issue}</p> for issue in draft["issues"]]}</div>
                 <label className="ai-ack"><input type="checkbox" checked={acknowledged.get(draft["id"], False)} disabled={busy or not draft["can_apply"]}
                     onChange={lambda (e: ChangeEvent) { acknowledged = {**acknowledged, draft["id"]: e.target.checked}; }}/>
