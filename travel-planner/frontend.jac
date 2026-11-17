@@ -166,7 +166,7 @@ def:pub app -> JsxElement {
         aiMode = mode; aiText = text; aiCompose += 1; tab = "planner";
     }
     def receiveAI(data: dict[str, any], generated: bool) -> None {
-        aiData = data;
+        aiData = data; mapRevision += 1;
         if generated { tab = "planner"; }
     }
     async def routeSaved(data: any) -> None { journeyData = data; await refresh(); }

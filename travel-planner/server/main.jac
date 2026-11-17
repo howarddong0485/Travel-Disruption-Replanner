@@ -27,6 +27,7 @@ import from itinerary.place_data { read_place_details, write_place_details }
 import from itinerary.map_data { install_map_schema, save_map_route, map_points, current_map_plans }
 import assistant.workflow as ai_workflow;
 import assistant.provider as ai_provider;
+import assistant.map_actions as ai_maps;
 import assistant.preferences as ai_preferences;
 import journey.model as journey_model;
 
@@ -83,6 +84,15 @@ def:pub assistant_chat(trip_id: str, message: str, mode: str, search: any, reque
     if captured["replay"] { return assistant_state(trip_id); }
     try {
         result = ai_provider.generate(captured["context"], captured["history"], message, mode, search, api_key);
+        if result.get("map_requests") {
+            conn = _connect();
+            try {
+                if ai_workflow.fingerprint(snapshot(conn, trip_id), ai_workflow.planning_facts(conn, trip_id)) != captured["fingerprint"] {
+                    result["answer"] = "Your trip changed. Ask for a fresh map lookup.";
+                } else { result.update(ai_maps.execute(conn, trip_id, result["map_requests"])); }
+            }
+            finally { conn.close(); }
+        }
         failures: list[str] = [];
         if result.get("plans", []) {
             for plan in result.get("plans", []) {
@@ -116,7 +126,24 @@ def:pub assistant_update_prices(trip_id: str, draft_id: str, prices: dict[str, a
 
 def:pub assistant_review(trip_id: str, draft_id: str, accept: any, acknowledged: any = False) -> dict[str, any] {
     conn = _connect();
-    try { return ai_workflow.review(conn, trip_id, draft_id, accept, acknowledged); }
+    try {
+        result = ai_workflow.review(conn, trip_id, draft_id, accept, acknowledged);
+        if accept {
+            # The accepted AI itinerary uses exactly the same real-place resolver as chat.
+            located = ai_maps.execute(conn, trip_id, [{"name": "locate_itinerary_places", "arguments": {}}]);
+            conn.execute("INSERT INTO assistant_messages VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), trip_id, "assistant",
+                located["answer"], json.dumps({"mode": "ask", "map_actions": located["map_actions"]}), ai_workflow.now()));
+            conn.commit(); result = ai_workflow.read(conn, trip_id);
+        }
+        return result;
+    }
+    except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
+
+def:pub assistant_confirm_map(trip_id: str, message_id: str, action_index: int, choice_index: int) -> dict[str, any] {
+    conn = _connect();
+    try { ai_maps.confirm(conn, trip_id, message_id, action_index, choice_index); return ai_workflow.read(conn, trip_id); }
     except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
 }

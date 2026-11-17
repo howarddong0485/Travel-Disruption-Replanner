@@ -70,7 +70,7 @@ def request(body: dict[str, any], api_key: str = "") -> dict[str, any] {
     return result;
 }
 
-def contents(response: dict[str, any]) -> tuple[str, list[dict[str, str]]] {
+def contents(response: dict[str, any], require_text: bool = True) -> tuple[str, list[dict[str, str]]] {
     parts = []; sources = []; seen = `set();
     for item in response.get("output", []) {
         if item.get("type") == "message" {
@@ -88,7 +88,7 @@ def contents(response: dict[str, any]) -> tuple[str, list[dict[str, str]]] {
             }
         }
     }
-    if not parts { raise ValueError("The assistant returned no answer. Please retry."); }
+    if not parts and require_text { raise ValueError("The assistant returned no answer. Please retry."); }
     return ("\n".join(parts), sources[:16]);
 }
 
@@ -150,7 +150,7 @@ def journey_instructions -> str {
         + "Every city activity must fit its city dates, occur after incoming arrival plus after_minutes, and finish before outgoing departure minus before_minutes. Compare times across zones, including overnight flights and date-line crossings. "
         + "When adopting a journey for an existing itinerary, assign every scheduled item in the same draft using exact item IDs; do not duplicate it. Never change locked arrangements. "
         + "For a single-city legacy trip without a known origin, journey may remain null and the new item fields may be blank. Do not invent an origin. "
-        + "Transport schedules and costs remain explicit planning estimates unless supported by current sources. Do not invent verified flight numbers. Coordinates are optional: use null when uncertain.";
+        + "Transport schedules and costs remain explicit planning estimates unless supported by current sources. Do not invent verified flight numbers. Leave journey lat/lon null; real coordinates are resolved by the application after acceptance. Give each hotel, restaurant and activity a specific venue/address in location, not just a city.";
 }
 
 def generate(context: dict[str, any], history: list[dict[str, any]], message: str,
@@ -182,6 +182,17 @@ def generate(context: dict[str, any], history: list[dict[str, any]], message: st
             "description": "Prepare user-requested changes to the active trip's details. Use null for unchanged fields. Dates use YYYY-MM-DD. Does not save changes.",
             "parameters": trip_schema()});
     }
+    if mode == "ask" {
+        tools.extend([
+            {"type": "function", "name": "locate_itinerary_places", "strict": True,
+                "description": "Find and save real coordinates for the current saved itinerary. Use when the traveler asks to locate hotels/attractions or populate the map. Ambiguous matches require confirmation.",
+                "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}},
+            {"type": "function", "name": "lookup_flight_track", "strict": True,
+                "description": "Look up actual recorded ADS-B coordinates for one saved transport item. Use the exact item_id from context and an ICAO callsign/UTC date supplied by the traveler or verified with web research. Ask if these cannot be established; never invent a callsign or positions. Returns candidates for confirmation, not a booking or a saved track.",
+                "parameters": {"type": "object", "properties": {"item_id": {"type": "string"}, "callsign": {"type": "string"}, "day": {"type": "string"}},
+                    "required": ["item_id", "callsign", "day"], "additionalProperties": False}}
+        ]);
+    }
     if tools { body["tools"] = tools; }
     if search { body["max_tool_calls"] = 3; }
     if mode != "ask" {
@@ -192,6 +203,11 @@ def generate(context: dict[str, any], history: list[dict[str, any]], message: st
     # before generating the actual draft. Explicit metadata edits also need no search.
     if mode == "ask" or (search and mode != "edit") {
         response = request(body, api_key);
+        map_calls = [item for item in response.get("output", []) if item.get("type") == "function_call" and item.get("name") in ["locate_itinerary_places", "lookup_flight_track"]];
+        if map_calls {
+            return {"answer": "", "sources": contents(response, False)[1], "plans": [],
+                "map_requests": [{"name": call["name"], "arguments": json.loads(call["arguments"])} for call in map_calls[:3]]};
+        }
         edit_calls = [item for item in response.get("output", []) if item.get("type") == "function_call" and item.get("name") == "prepare_trip_edit"];
         if edit_calls {
             try { edit = json.loads(edit_calls[0]["arguments"]); }
