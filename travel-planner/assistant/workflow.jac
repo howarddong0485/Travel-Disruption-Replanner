@@ -179,7 +179,23 @@ def trip_patch(state: dict[str, any], facts: dict[str, any], patch: any) -> dict
     return after;
 }
 
-def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any], preserve_budget: bool = False, calculate_transport: bool = False, require_travel: bool = False, flight_sources: list[dict[str, any]] | None = None, relaxed: bool = False) -> dict[str, any] {
+"""Route metadata for saved items that a relaxed draft's new route leaves unassigned.
+Only the city assignment is derived (from the item's date); title, time, cost and
+booking fields stay exactly as saved."""
+def assign_saved_items(state: dict[str, any], journey: any) -> dict[str, dict[str, any]] {
+    assigned: dict[str, dict[str, any]] = {};
+    if not isinstance(journey, dict) or not journey.get("stops") { return assigned; }
+    stops = journey["stops"];
+    for item in state["items"] {
+        if item["category"] in ["packing", "expense"] or item.get("journey") or not item["date"] or not item["time"] { continue; }
+        matching = [stop for stop in stops if stop["arrival_date"] <= item["date"] <= stop["departure_date"]];
+        stop = matching[-1] if matching else stops[0] if item["date"] < stops[0]["arrival_date"] else stops[-1];
+        assigned[item["id"]] = journey_model.bind(item, {"stop_id": stop["id"], "leg_id": ""}, journey);
+    }
+    return assigned;
+}
+
+def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any], preserve_budget: bool = False, calculate_transport: bool = False, require_travel: bool = False, flight_sources: list[dict[str, any]] | None = None, relaxed: bool = False, budget_warning_only: bool = False) -> dict[str, any] {
     if not isinstance(plan, dict) or not isinstance(plan.get("changes"), list) or len(plan["changes"]) > 40 {
         raise ValueError("A plan can have at most 40 itinerary changes.");
     }
@@ -301,10 +317,10 @@ def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any
     journey_issues = []; total = sum(i["cost_cents"] for i in nodes.values()) + reserve;
     if not relaxed {
         if journey { journey_issues = journey_model.validate(journey, after_trip, list(nodes.values()), complete=complete_route); }
-        if changes { total = validate(augmented, nodes, changes, reserve); }
+        if changes { total = validate(augmented, nodes, changes, reserve, not budget_warning_only); }
     }
     if after_trip["budget_cents"] and total > after_trip["budget_cents"] and ("budget_cents" in delta or (calculate_transport and plan["changes"])) {
-        if not relaxed { raise ValueError("Required saved arrangements and contingency exceed the current budget; optional omissions cannot resolve this conflict."); }
+        if not relaxed and not budget_warning_only { raise ValueError("Required saved arrangements and contingency exceed the current budget; optional omissions cannot resolve this conflict."); }
         draft_warnings.append("The estimated total exceeds your saved budget; adjust it before booking.");
     }
     labels = {"title": "Trip name", "destination": "Destination", "departure_location": "Departing from", "return_location": "Return to", "start_date": "Departure date", "end_date": "Return date", "currency": "Currency", "budget_cents": "Budget", "notes": "Trip notes"};
@@ -453,9 +469,20 @@ def review(conn: any, trip_id: str, draft_id: str, accept: bool, acknowledged: b
             for change in draft["changes"]]};
         # Relaxed drafts skip schedule checks so travelers always get something to
         # review, but nothing is saved without the full strict validation.
-        try { checked = check_plan(state, facts, raw, draft.get("preserve_budget", False), False, draft.get("require_travel", False), draft.get("flight_sources", []), False); }
+        relaxed = draft.get("relaxed", False);
+        # A relaxed draft may add a route to a trip whose saved bookings have no
+        # city yet; assign those by date so the strict route checks can run.
+        routes = {};
+        checked_state = state;
+        if relaxed {
+            try { routes = assign_saved_items(state, draft.get("journey")); }
+            except ValueError as error { raise ValueError("This estimated draft can't be saved yet: " + str(error)) from None; }
+            checked_state = copy.deepcopy(state);
+            for item in checked_state["items"] { if item["id"] in routes { item["journey"] = routes[item["id"]]; } }
+        }
+        try { checked = check_plan(checked_state, facts, raw, draft.get("preserve_budget", False), False, draft.get("require_travel", False), draft.get("flight_sources", []), False, relaxed); }
         except ValueError as error {
-            if not draft.get("relaxed", False) { raise; }
+            if not relaxed { raise; }
             reason = str(error).strip(); reason += "" if reason.endswith((".", "!", "?")) else ".";
             raise ValueError("This estimated draft can't be saved yet: " + reason + " Ask the assistant to revise it, or adjust your itinerary and request a new draft.") from None;
         }
@@ -485,6 +512,10 @@ def review(conn: any, trip_id: str, draft_id: str, accept: bool, acknowledged: b
             flight_details.write(conn, item_id, item);
             conn.execute("INSERT INTO replan_rules(item_id,duration_minutes) VALUES (?,?) ON CONFLICT(item_id) DO UPDATE SET duration_minutes=excluded.duration_minutes",
                 (item_id, item["duration_minutes"]));
+        }
+        edited = {change["item_id"] for change in checked["changes"] if change["item_id"]};
+        for (item_id, detail) in routes.items() {
+            if item_id not in edited { journey_model.write_item(conn, item_id, detail); }
         }
         conn.execute("UPDATE assistant_drafts SET status='stale' WHERE trip_id=? AND status='pending' AND id!=?", (trip_id, draft_id));
     }

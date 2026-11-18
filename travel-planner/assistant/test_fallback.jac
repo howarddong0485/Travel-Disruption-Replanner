@@ -125,9 +125,11 @@ test "fallback preserves a paid booking and never automatically writes the draft
         assert len(api.list_items(id)) == 1;
         api.assistant_review(id, draft["id"], True, True);
         after = next(item for item in api.list_items(id) if item.id == booking.id);
-        for key in ["id", "trip_id", "title", "category", "date", "time", "location", "reference", "notes", "cost_cents", "done", "paid", "journey", "duration_minutes"] {
+        for key in ["id", "trip_id", "title", "category", "date", "time", "location", "reference", "notes", "cost_cents", "done", "paid", "duration_minutes"] {
             assert getattr(before, key) == getattr(after, key);
         }
+        # Saving assigns the booking to the new route's city; only route metadata changes.
+        assert not before.journey and after.journey["city"] == "New York" and after.journey["leg_id"] == "";
         assert len(api.list_items(id)) > 1;
     }
 }

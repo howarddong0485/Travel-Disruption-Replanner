@@ -316,7 +316,7 @@ def save_dependency(
     }
     return snapshot(conn, trip_id);
 }
-def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
+def validate(state: any, nodes: any, changes: any, retained_cents: any, enforce_budget: bool = True) -> any {
     validate_connections(state, nodes, state.get("connection_facts", {}), datetime.now(timezone.utc));
     if state.get("journey") { journey_model.validate(state["journey"], state["trip"], list(nodes.values())); }
     topological(`list(nodes.values()), state['dependencies']);
@@ -385,7 +385,7 @@ def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
         }
     }
     total = sum(i['cost_cents'] for i in nodes.values()) + retained_cents;
-    if (state['trip']['budget_cents'] and (total > state['trip']['budget_cents'])) {
+    if (enforce_budget and state['trip']['budget_cents'] and (total > state['trip']['budget_cents'])) {
         raise ValueError('This plan goes over the trip budget');
     }
     return total;
