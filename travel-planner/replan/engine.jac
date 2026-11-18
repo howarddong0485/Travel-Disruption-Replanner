@@ -837,7 +837,7 @@ def decide(conn: any, trip_id: any, proposal_id: any, accept: any) -> dict[str, 
         'message': 'Revised mock plan applied. No real bookings were made or canceled.'
     };
 }
-def seed_demo(conn: any) -> dict[str, any] {
+def seed_demo(conn: any, owner: str) -> dict[str, any] {
     trip_id = str(uuid4());
     conn.execute('BEGIN IMMEDIATE');
     try {
@@ -854,6 +854,7 @@ def seed_demo(conn: any) -> dict[str, any] {
                 'Synthetic Boston trip for generating dinner and rain backups, then repairing a 180-minute flight delay. No real reservations.'
             )
         );
+        conn.execute("INSERT INTO trip_workspaces VALUES (?,?)", (trip_id, owner));
         definitions = [
             (
                 'Flight arrival',

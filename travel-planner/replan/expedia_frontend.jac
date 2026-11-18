@@ -1,4 +1,5 @@
 """Hotel shopping and automatically computed review drafts."""
+import from workspace { workspaceKey }
 import from server.main { preview_expedia_hotels, expedia_status }
 
 def:pub ExpediaPanel(trip: any, items: list[any], workflow: str = "backup") -> JsxElement {
@@ -13,7 +14,7 @@ def:pub ExpediaPanel(trip: any, items: list[any], workflow: str = "backup") -> J
     async def generate(e: FormEvent) -> None {
         e.preventDefault(); if busy { return; } busy = True; clear();
         try {
-            result = await preview_expedia_hotels(trip_id=trip.id, item_id=item_id, checkout=checkout,
+            result = await preview_expedia_hotels(workspace_key=await workspaceKey(), trip_id=trip.id, item_id=item_id, checkout=checkout,
                 property_ids=[p.strip() for p in property_ids.split(",") if p.strip()], occupancy=occupancy,
                 country=country, mode=workflow, kind=kind, delay_minutes=int(delay) if kind == "delayed" else 0);
         } except Exception as exc { error = str(exc); }

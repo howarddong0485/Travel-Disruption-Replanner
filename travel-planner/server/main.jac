@@ -1,5 +1,6 @@
 """Trip records and travel items persisted in an independent SQLite database."""
 import os;
+import from hashlib { sha256 }
 import tools.map_providers as map_providers;
 import tools.flight_details as flight_details;
 import from itinerary.map_locations { location_points }
@@ -35,8 +36,8 @@ import journey.model as journey_model;
 import from policy.agent { PolicyRequest, extract_policy }
 import from schema.common { to_plain, Origin, valid_zone }
 
-def:pub journey_state(trip_id: str) -> dict[str, any] {
-    conn = _connect();
+def:pub journey_state(workspace_key: str, trip_id: str) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         state = snapshot(conn, trip_id); journey = state["journey"];
         issues = [];
@@ -48,7 +49,7 @@ def:pub journey_state(trip_id: str) -> dict[str, any] {
     } finally { conn.close(); }
 }
 
-def:pub save_policy_terms(trip_id: str, item_id: str, terms: str, source: str, zone: str,
+def:pub save_policy_terms(workspace_key: str, trip_id: str, item_id: str, terms: str, source: str, zone: str,
     expires_at: str, expected_version: int) -> dict[str, any] {
     terms = _text(terms, "Cancellation terms", 20000, True);
     source = _text(source, "Policy source", 1000, True);
@@ -57,7 +58,7 @@ def:pub save_policy_terms(trip_id: str, item_id: str, terms: str, source: str, z
     try { expires = datetime.datetime.fromisoformat(expires_at); }
     except ValueError { raise ValueError("Enter the policy evidence expiry with a UTC offset.") from None; }
     if expires.utcoffset() is None or expires <= now { raise ValueError("Policy evidence expiry must be in the future and include a UTC offset."); }
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         state = snapshot(conn, trip_id); facts = read_facts(conn, trip_id);
         if state["version"] != expected_version { raise ValueError("Your trip changed. Reload before saving these terms."); }
@@ -76,13 +77,13 @@ def:pub save_policy_terms(trip_id: str, item_id: str, terms: str, source: str, z
         facts["evidence_deadlines"] = {**facts.get("evidence_deadlines", {}), **{key:expires.isoformat() for key in ids}};
     } finally { conn.close(); }
     # The existing versioned facts endpoint revalidates under a write lock.
-    result = save_planning_context(trip_id, facts, expected_version);
+    result = save_planning_context(workspace_key, trip_id, facts, expected_version);
     result["policy_notes"] = extracted.notes;
     return result;
 }
 
-def:pub save_journey(trip_id: str, payload: dict[str, any], expected_version: any) -> dict[str, any] {
-    conn = _connect();
+def:pub save_journey(workspace_key: str, trip_id: str, payload: dict[str, any], expected_version: any) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         conn.execute("BEGIN IMMEDIATE"); state = snapshot(conn, trip_id);
         if type(expected_version) is not int or expected_version != state["version"] { raise ValueError("Your trip changed. Reload the route before saving."); }
@@ -94,11 +95,11 @@ def:pub save_journey(trip_id: str, payload: dict[str, any], expected_version: an
         conn.commit();
     } except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
-    return journey_state(trip_id);
+    return journey_state(workspace_key, trip_id);
 }
 
-def:pub assistant_save_preferences(trip_id: str, pet_friendly: any, pace: str, expected_version: any) -> dict[str, any] {
-    conn = _connect();
+def:pub assistant_save_preferences(workspace_key: str, trip_id: str, pet_friendly: any, pace: str, expected_version: any) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         ai_preferences.save(conn, trip_id, pet_friendly, pace, expected_version);
         return ai_workflow.read(conn, trip_id);
@@ -106,23 +107,23 @@ def:pub assistant_save_preferences(trip_id: str, pet_friendly: any, pace: str, e
     finally { conn.close(); }
 }
 
-def:pub assistant_state(trip_id: str) -> dict[str, any] {
-    conn = _connect();
+def:pub assistant_state(workspace_key: str, trip_id: str) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return ai_workflow.read(conn, trip_id); }
     finally { conn.close(); }
 }
 
-def:pub assistant_chat(trip_id: str, message: str, mode: str, search: any, request_id: str, api_key: str = "") -> dict[str, any] {
+def:pub assistant_chat(workspace_key: str, trip_id: str, message: str, mode: str, search: any, request_id: str, api_key: str = "") -> dict[str, any] {
     api_key = ai_provider.validate_key(api_key);
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { captured = ai_workflow.begin(conn, trip_id, request_id, message, mode, search); }
     except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
-    if captured["replay"] { return assistant_state(trip_id); }
+    if captured["replay"] { return assistant_state(workspace_key, trip_id); }
     try {
         result = ai_provider.generate(captured["context"], captured["history"], message, mode, search, api_key);
         if result.get("map_requests") {
-            conn = _connect();
+            conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
             try {
                 if ai_workflow.fingerprint(snapshot(conn, trip_id), ai_workflow.planning_facts(conn, trip_id)) != captured["fingerprint"] {
                     result["answer"] = "Your trip changed. Ask for a fresh map lookup.";
@@ -140,12 +141,12 @@ def:pub assistant_chat(trip_id: str, message: str, mode: str, search: any, reque
             }
             if failures { result = ai_provider.repair(captured["context"], result, failures, api_key); }
         }
-        conn = _connect();
+        conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
         try { return ai_workflow.finish(conn, trip_id, request_id, message, mode, captured, result); }
         except Exception { conn.rollback(); raise; }
         finally { conn.close(); }
     } except Exception {
-        conn = _connect();
+        conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
         try {
             conn.execute("UPDATE assistant_requests SET status='failed' WHERE id=? AND trip_id=? AND status='pending'", (request_id, trip_id));
             conn.commit();
@@ -154,15 +155,15 @@ def:pub assistant_chat(trip_id: str, message: str, mode: str, search: any, reque
     }
 }
 
-def:pub assistant_update_prices(trip_id: str, draft_id: str, prices: dict[str, any]) -> dict[str, any] {
-    conn = _connect();
+def:pub assistant_update_prices(workspace_key: str, trip_id: str, draft_id: str, prices: dict[str, any]) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return ai_workflow.update_prices(conn, trip_id, draft_id, prices); }
     except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
 }
 
-def:pub assistant_review(trip_id: str, draft_id: str, accept: any, acknowledged: any = False) -> dict[str, any] {
-    conn = _connect();
+def:pub assistant_review(workspace_key: str, trip_id: str, draft_id: str, accept: any, acknowledged: any = False) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         prior = conn.execute("SELECT status FROM assistant_drafts WHERE id=? AND trip_id=?", (draft_id, trip_id)).fetchone();
         result = ai_workflow.review(conn, trip_id, draft_id, accept, acknowledged);
@@ -181,15 +182,15 @@ def:pub assistant_review(trip_id: str, draft_id: str, accept: any, acknowledged:
     finally { conn.close(); }
 }
 
-def:pub assistant_confirm_map(trip_id: str, message_id: str, action_index: int, choice_index: int) -> dict[str, any] {
-    conn = _connect();
+def:pub assistant_confirm_map(workspace_key: str, trip_id: str, message_id: str, action_index: int, choice_index: int) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { ai_maps.confirm(conn, trip_id, message_id, action_index, choice_index); return ai_workflow.read(conn, trip_id); }
     except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
 }
 
-def _backup_source(trip_id: str) -> tuple[dict[str, any], list[dict[str, any]]] {
-    conn = _connect();
+def _backup_source(workspace_key: str, trip_id: str) -> tuple[dict[str, any], list[dict[str, any]]] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         conn.execute("BEGIN");
         trip = dict(_require_trip(conn, trip_id));
@@ -211,17 +212,19 @@ def _trip_history(session_id: str, trip: dict[str, any], items: list[dict[str, a
     return data;
 }
 
-def:pub load_trip_backup_history(session_id: str, trip_id: str) -> dict[str, any] {
-    (trip, items) = _backup_source(trip_id);
+def:pub load_trip_backup_history(workspace_key: str, session_id: str, trip_id: str) -> dict[str, any] {
+    session_id = _history_session(workspace_key, session_id);
+    (trip, items) = _backup_source(workspace_key, trip_id);
     return _trip_history(session_id, trip, items, clock());
 }
 
-def:pub save_trip_backup_refresh(session_id: str, request_id: str, expected_revision: any,
+def:pub save_trip_backup_refresh(workspace_key: str, session_id: str, request_id: str, expected_revision: any,
     trip_id: str, item_id: str, expected_base_snapshot: str, trigger: str = "rain",
     inventory_change: str = "unchanged") -> dict[str, any] {
+    session_id = _history_session(workspace_key, session_id);
     if type(expected_revision) is not int or expected_revision < 0 { raise ValueError("Expected revision must be a nonnegative integer"); }
     identifier(session_id); identifier(request_id);
-    now = clock(); (trip, items) = _backup_source(trip_id);
+    now = clock(); (trip, items) = _backup_source(workspace_key, trip_id);
     fingerprint = saved_fingerprint(trip, items);
     if expected_base_snapshot != fingerprint {
         current = _trip_history(session_id, trip, items, now);
@@ -238,26 +241,28 @@ def:pub save_trip_backup_refresh(session_id: str, request_id: str, expected_revi
         "message": "Searched and checked synthetic alternatives against this saved itinerary. Missing trip facts remain unresolved. No trip was changed."
             if result_data["results"] else result_data["message"]});
     # A trip edit during search cannot publish a current result from an old snapshot.
-    (latest_trip, latest_items) = _backup_source(trip_id);
+    (latest_trip, latest_items) = _backup_source(workspace_key, trip_id);
     if saved_fingerprint(latest_trip, latest_items) != fingerprint {
         current = _trip_history(session_id, latest_trip, latest_items, clock());
         return {"outcome": "trip_changed", "replayed": False, "revision": current["revision"], "report": None, "history": current};
     }
     response = append_snapshot(trip_session(session_id, trip_id), request_id, expected_revision, context, result_data, now);
-    (latest_trip, latest_items) = _backup_source(trip_id);
+    (latest_trip, latest_items) = _backup_source(workspace_key, trip_id);
     response["history"] = _trip_history(session_id, latest_trip, latest_items, clock());
     if response["revision"] != response["history"]["revision"] or response["history"]["base_snapshot"] != fingerprint {
         response["report"] = None;
     }
     return response;
 }
-def:pub load_backup_history(session_id: str) -> dict[str, any] {
+def:pub load_backup_history(workspace_key: str, session_id: str) -> dict[str, any] {
+    session_id = _history_session(workspace_key, session_id);
     return read_history(session_id);
 }
 
-def:pub save_backup_refresh(session_id: str, request_id: str, expected_revision: any,
+def:pub save_backup_refresh(workspace_key: str, session_id: str, request_id: str, expected_revision: any,
     scenario: str = "rain", profile_name: str = "family", budget: str = "600",
     inventory_change: str = "unchanged", sample_date: str = "") -> dict[str, any] {
+    session_id = _history_session(workspace_key, session_id);
     # Preserve raw JSON types: the bridge would otherwise coerce True or "1" to int.
     if type(expected_revision) is not int or expected_revision < 0 {
         raise ValueError("Expected revision must be a nonnegative integer");
@@ -277,22 +282,22 @@ def:pub travel_provider_status -> dict[str, any] {
     return {"liteapi": liteapi, "geoapify": {"configured": bool(os.environ.get("GEOAPIFY_API_KEY", "").strip())}};
 }
 
-def:pub discover_travel_places(trip_id: str, destination: str, country: str = "US", category: str = "hotels") -> dict[str, any] {
-    conn = _connect();
+def:pub discover_travel_places(workspace_key: str, trip_id: str, destination: str, country: str = "US", category: str = "hotels") -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { _require_trip(conn, trip_id); }
     finally { conn.close(); }
     return search_geoapify(destination, country, category);
 }
 
-def:pub preview_liteapi_hotels(trip_id: str, item_id: str, checkout: str, city: str,
+def:pub preview_liteapi_hotels(workspace_key: str, trip_id: str, item_id: str, checkout: str, city: str,
     destination_country: str = "US", occupancy: str = "2", nationality: str = "US",
     mode: str = "backup", kind: str = "interrupted", delay_minutes: int = 180) -> dict[str, any] {
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { state = snapshot(conn, trip_id); }
     finally { conn.close(); }
     result = expedia_plans(state, item_id, checkout, [], occupancy, nationality, mode, kind,
         delay_minutes, provider="liteapi", city=city, destination_country=destination_country);
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         if snapshot(conn, trip_id)["version"] != state["version"] {
             raise ValueError("Trip changed while searching. Generate fresh hotel options.");
@@ -303,14 +308,14 @@ def:pub preview_liteapi_hotels(trip_id: str, item_id: str, checkout: str, city: 
 
 def:pub expedia_status -> dict[str, any] { return expedia_configuration(); }
 
-def:pub preview_expedia_hotels(trip_id: str, item_id: str, checkout: str,
+def:pub preview_expedia_hotels(workspace_key: str, trip_id: str, item_id: str, checkout: str,
     property_ids: list[str], occupancy: str = "2", country: str = "US",
     mode: str = "backup", kind: str = "interrupted", delay_minutes: int = 180) -> dict[str, any] {
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { state = snapshot(conn, trip_id); }
     finally { conn.close(); }
     result = expedia_plans(state, item_id, checkout, property_ids, occupancy, country, mode, kind, delay_minutes);
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         if snapshot(conn, trip_id)["version"] != state["version"] {
             raise ValueError("Trip changed while searching Expedia. Generate fresh options.");
@@ -341,6 +346,28 @@ obj ItemView {
     has duration_minutes: int = 60;
 }
 
+def _workspace_owner(key: str) -> str {
+    try {
+        value = uuid.UUID(key);
+        if value.version == 4 and str(value) == key { return sha256(key.encode()).hexdigest(); }
+    } except (TypeError, ValueError, AttributeError) {}
+    raise ValueError("Open your private workspace in this browser.");
+}
+
+def _history_session(key: str, session: str) -> str {
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, _workspace_owner(key) + "/" + identifier(session)));
+}
+
+def _owned_connection(owner: str, trip_id: str) -> sqlite3.Connection {
+    conn = _connect();
+    try {
+        if not conn.execute("SELECT 1 FROM trip_workspaces WHERE trip_id=? AND owner=?", (trip_id, owner)).fetchone() {
+            raise ValueError("Trip unavailable in this workspace.");
+        }
+        return conn;
+    } except Exception { conn.close(); raise; }
+}
+
 def _connect -> sqlite3.Connection {
     path = os.path.abspath(os.environ.get("TRAVEL_DB_PATH") or os.path.join(
         os.path.dirname(__file__), "..", ".jac", "data", "travel.sqlite3"));
@@ -350,6 +377,8 @@ def _connect -> sqlite3.Connection {
     conn.execute("PRAGMA foreign_keys = ON");
     conn.execute("PRAGMA journal_mode = WAL");
     conn.execute("CREATE TABLE IF NOT EXISTS trips (id TEXT PRIMARY KEY, title TEXT NOT NULL, destination TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, currency TEXT NOT NULL, budget_cents INTEGER NOT NULL, notes TEXT NOT NULL)");
+    conn.execute("CREATE TABLE IF NOT EXISTS trip_workspaces (trip_id TEXT PRIMARY KEY REFERENCES trips(id) ON DELETE CASCADE, owner TEXT NOT NULL)");
+    conn.execute("CREATE INDEX IF NOT EXISTS trip_workspaces_owner ON trip_workspaces(owner)");
     # Add optional route endpoints to existing databases without touching saved trips.
     conn.execute("BEGIN IMMEDIATE");
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(trips)")};
@@ -369,21 +398,21 @@ def _connect -> sqlite3.Connection {
     return conn;
 }
 
-def:pub get_place_details(trip_id: str, item_id: str) -> dict[str, any] {
-    conn = _connect();
+def:pub get_place_details(workspace_key: str, trip_id: str, item_id: str) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { conn.execute("BEGIN"); return read_place_details(conn, trip_id, item_id); }
     finally { conn.close(); }
 }
 
-def:pub save_place_details(trip_id: str, item_id: str, location: str,
+def:pub save_place_details(workspace_key: str, trip_id: str, item_id: str, location: str,
     expected_revision: any, payload: dict[str, any]) -> dict[str, any] {
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return write_place_details(conn, trip_id, item_id, location, expected_revision, payload); }
     finally { conn.close(); }
 }
 
-def:pub load_trip_map(trip_id: str, preview_journey: any = None, preview_trip: any = None) -> dict[str, any] {
-    conn = _connect();
+def:pub load_trip_map(workspace_key: str, trip_id: str, preview_journey: any = None, preview_trip: any = None) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         conn.execute("BEGIN");
         state = snapshot(conn, trip_id);
@@ -399,15 +428,15 @@ def:pub load_trip_map(trip_id: str, preview_journey: any = None, preview_trip: a
     } finally { conn.close(); }
 }
 
-def:pub save_trip_map_route(trip_id: str, item_id: str, title: str, location: str,
+def:pub save_trip_map_route(workspace_key: str, trip_id: str, item_id: str, title: str, location: str,
     expected_revision: any, payload: any) -> dict[str, any] {
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return save_map_route(conn, trip_id, item_id, title, location, expected_revision, payload); }
     finally { conn.close(); }
 }
 
-def:pub planning_state(trip_id: str) -> dict[str, any] {
-    conn = _connect();
+def:pub planning_state(workspace_key: str, trip_id: str) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         conn.execute("BEGIN");
         result = public_context(build_context(snapshot(conn, trip_id), read_facts(conn, trip_id), clock()));
@@ -420,9 +449,9 @@ def:pub planning_state(trip_id: str) -> dict[str, any] {
     } finally { conn.close(); }
 }
 
-def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_version: any) -> dict[str, any] {
+def:pub save_planning_context(workspace_key: str, trip_id: str, payload: dict[str, any], expected_version: any) -> dict[str, any] {
     if type(expected_version) is not int or expected_version < 1 { raise ValueError("Expected trip version must be a positive integer"); }
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         conn.execute("BEGIN IMMEDIATE");
         state = snapshot(conn, trip_id);
@@ -439,7 +468,7 @@ def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_ve
     finally { conn.close(); }
 }
 
-def:pub report_itinerary_change(trip_id: str, item_id: str, reason: str, expected_version: any,
+def:pub report_itinerary_change(workspace_key: str, trip_id: str, item_id: str, reason: str, expected_version: any,
     delay_minutes: any = 0) -> dict[str, any] {
     if reason not in ("timing", "weather", "closure", "cancellation", "traveler_change") {
         raise ValueError("Choose a supported disruption");
@@ -448,7 +477,7 @@ def:pub report_itinerary_change(trip_id: str, item_id: str, reason: str, expecte
         raise ValueError("Enter a delay between 1 and 1440 minutes");
     }
     now = clock();
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         conn.execute("BEGIN");
         state = snapshot(conn, trip_id);
@@ -475,7 +504,7 @@ def:pub report_itinerary_change(trip_id: str, item_id: str, reason: str, expecte
     facts = context["facts"];
     facts["contract_version"] = CONTEXT_VERSION;
     facts["manual_risks"] = [r for r in facts.get("manual_risks", []) if r["id"] != risk_id] + [risk];
-    saved = save_planning_context(trip_id, facts, expected_version);
+    saved = save_planning_context(workspace_key, trip_id, facts, expected_version);
     return {"risk_id": risk_id, "trip_version": saved["trip_version"], "not_before": risk.get("not_before")};
 }
 
@@ -491,7 +520,7 @@ def _replay_planning_run(conn: any, payload: str, version: int, now: any) -> dic
     return recorded;
 }
 
-def:pub generate_backup_plans(trip_id: str, expected_version: any, max_plans: any, risk_ids: list[str],
+def:pub generate_backup_plans(workspace_key: str, trip_id: str, expected_version: any, max_plans: any, risk_ids: list[str],
     use_llm: bool = False, request_id: str = "", exclude_candidate_ids: list[str] = []) -> dict[str, any] {
     if type(expected_version) is not int or expected_version < 1 { raise ValueError("Expected trip version must be a positive integer"); }
     if type(max_plans) is not int or not 1 <= max_plans <= 5 { raise ValueError("Choose one to five plans"); }
@@ -504,7 +533,7 @@ def:pub generate_backup_plans(trip_id: str, expected_version: any, max_plans: an
     request_data = {"trip_id": trip_id, "version": expected_version, "risks": risk_ids, "limit": max_plans, "llm": use_llm};
     if exclude_candidate_ids { request_data["exclude_candidate_ids"] = sorted(set(exclude_candidate_ids)); }
     request_hash = json.dumps(request_data, sort_keys=True);
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         conn.execute("BEGIN");
         state = snapshot(conn, trip_id);
@@ -545,18 +574,19 @@ def:pub generate_backup_plans(trip_id: str, expected_version: any, max_plans: an
     finally { conn.close(); }
 }
 
-def:pub review_backup_plan(trip_id: str, proposal_id: str, accept: any) -> dict[str, any] {
+def:pub review_backup_plan(workspace_key: str, trip_id: str, proposal_id: str, accept: any) -> dict[str, any] {
     if type(accept) is not bool { raise ValueError("Accept must be an explicit boolean decision"); }
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return decide(conn, trip_id, proposal_id, accept); }
     finally { conn.close(); }
 }
 
-def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
+def:pub create_planning_demo(workspace_key: str, scenario: str = "rain") -> dict[str, any] {
     if scenario not in ("rain", "arrival_delay", "map") { raise ValueError("Choose rain, arrival_delay or map"); }
     now = clock(); map_demo = scenario == "map";
     (sample, facts) = sample_state(now, "rain" if map_demo else scenario);
     trip_id = str(uuid.uuid4()); mapping = {i["id"]: str(uuid.uuid4()) for i in sample["items"]};
+    owner = _workspace_owner(workspace_key);
     conn = _connect();
     try {
         conn.execute("BEGIN IMMEDIATE");
@@ -564,6 +594,7 @@ def:pub create_planning_demo(scenario: str = "rain") -> dict[str, any] {
         title = "Boston weekend map sample" if map_demo else "Integrated " + ("weather" if scenario == "rain" else "arrival delay") + " demo";
         conn.execute("INSERT INTO trips (id,title,destination,start_date,end_date,currency,budget_cents,notes) VALUES (?,?,?,?,?,?,?,?)", (trip_id, title,
             "Boston", trip["start_date"], trip["end_date"], "USD", trip["budget_cents"], "Explicit synthetic profile, quotes, hours, routes and risk evidence"));
+        conn.execute("INSERT INTO trip_workspaces VALUES (?,?)", (trip_id, owner));
         for item in sample["items"] {
             if map_demo and item["id"] == "arrival" { item["title"] = "Chicago to Boston flight"; item["fixed"] = False; }
             conn.execute("INSERT INTO items VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (mapping[item["id"]], trip_id, item["title"], item["category"],
@@ -640,13 +671,14 @@ def _require_trip(conn: sqlite3.Connection, trip_id: str) -> sqlite3.Row {
     return row;
 }
 
-def:pub list_trips -> list[TripView] {
+def:pub list_trips(workspace_key: str) -> list[TripView] {
+    owner = _workspace_owner(workspace_key);
     conn = _connect();
-    try { return [_trip(row) for row in conn.execute("SELECT * FROM trips ORDER BY start_date, title, id")]; }
+    try { return [_trip(row) for row in conn.execute("SELECT t.* FROM trips t JOIN trip_workspaces w ON w.trip_id=t.id WHERE w.owner=? ORDER BY t.start_date,t.title,t.id", (owner,))]; }
     finally { conn.close(); }
 }
 
-def:pub save_trip(title: str, destination: str, start_date: str, end_date: str,
+def:pub save_trip(workspace_key: str, title: str, destination: str, start_date: str, end_date: str,
     currency: str = "USD", budget: str = "0", notes: str = "", trip_id: str = "",
     departure_location: str | None = None, return_location: str | None = None) -> TripView {
     title = _text(title, "Trip name", 160, True);
@@ -662,7 +694,8 @@ def:pub save_trip(title: str, destination: str, start_date: str, end_date: str,
     }
     cents = _money(budget);
     notes = _text(notes, "Trip notes", 5000);
-    conn = _connect();
+    owner = _workspace_owner(workspace_key);
+    conn = _owned_connection(owner, trip_id) if trip_id else _connect();
     try {
         conn.execute("BEGIN IMMEDIATE");
         if trip_id {
@@ -680,6 +713,7 @@ def:pub save_trip(title: str, destination: str, start_date: str, end_date: str,
             trip_id = str(uuid.uuid4());
             conn.execute("INSERT INTO trips (id,title,destination,start_date,end_date,currency,budget_cents,notes,departure_location,return_location) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (trip_id, title, destination, start_date, end_date, currency, cents, notes, departure_location or "", return_location or ""));
+            conn.execute("INSERT INTO trip_workspaces VALUES (?,?)", (trip_id, owner));
         }
         route = journey_model.read(conn, trip_id);
         if route is not None {
@@ -695,16 +729,16 @@ def:pub save_trip(title: str, destination: str, start_date: str, end_date: str,
     } finally { conn.close(); }
 }
 
-def:pub list_items(trip_id: str) -> list[ItemView] {
-    conn = _connect();
+def:pub list_items(workspace_key: str, trip_id: str) -> list[ItemView] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         _require_trip(conn, trip_id);
         return [_item(row, conn) for row in conn.execute("SELECT * FROM items WHERE trip_id = ? ORDER BY date = '', date, time = '', time, title, id", (trip_id,))];
     } finally { conn.close(); }
 }
 
-def:pub preview_backups(trip_id: str, item_id: str, trigger: str) -> BackupPreview {
-    conn = _connect();
+def:pub preview_backups(workspace_key: str, trip_id: str, item_id: str, trigger: str) -> BackupPreview {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         # Read trip and items from the same SQLite snapshot; no itinerary writes.
         conn.execute("BEGIN");
@@ -714,7 +748,7 @@ def:pub preview_backups(trip_id: str, item_id: str, trigger: str) -> BackupPrevi
     } finally { conn.close(); }
 }
 
-def:pub save_item(trip_id: str, title: str, category: str = "activity", date: str = "",
+def:pub save_item(workspace_key: str, trip_id: str, title: str, category: str = "activity", date: str = "",
     time: str = "", location: str = "", reference: str = "", notes: str = "",
     cost: str = "0", item_id: str = "", journey: any = None, duration_minutes: int = 60) -> ItemView {
     title = _text(title, "Item title", 160, True);
@@ -734,7 +768,7 @@ def:pub save_item(trip_id: str, title: str, category: str = "activity", date: st
     location = _text(location, "Location", 300);
     reference = _text(reference, "Booking reference", 160);
     notes = _text(notes, "Item notes", 3000);
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         conn.execute("BEGIN IMMEDIATE");
         trip = _require_trip(conn, trip_id);
@@ -769,8 +803,8 @@ def:pub save_item(trip_id: str, title: str, category: str = "activity", date: st
     } finally { conn.close(); }
 }
 
-def:pub set_item_state(trip_id: str, item_id: str, done: bool, paid: bool) -> ItemView {
-    conn = _connect();
+def:pub set_item_state(workspace_key: str, trip_id: str, item_id: str, done: bool, paid: bool) -> ItemView {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         conn.execute("BEGIN IMMEDIATE");
         _require_trip(conn, trip_id);
@@ -783,8 +817,8 @@ def:pub set_item_state(trip_id: str, item_id: str, done: bool, paid: bool) -> It
     } finally { conn.close(); }
 }
 
-def:pub delete_item(trip_id: str, item_id: str) -> bool {
-    conn = _connect();
+def:pub delete_item(workspace_key: str, trip_id: str, item_id: str) -> bool {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         _require_trip(conn, trip_id);
         result = conn.execute("DELETE FROM items WHERE id=? AND trip_id=?", (item_id, trip_id));
@@ -793,8 +827,8 @@ def:pub delete_item(trip_id: str, item_id: str) -> bool {
     } finally { conn.close(); }
 }
 
-def:pub delete_trip(trip_id: str) -> bool {
-    conn = _connect();
+def:pub delete_trip(workspace_key: str, trip_id: str) -> bool {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         result = conn.execute("DELETE FROM trips WHERE id=?", (trip_id,));
         conn.commit();
@@ -804,31 +838,32 @@ def:pub delete_trip(trip_id: str) -> bool {
 
 
 # Replanning endpoints share the same SQLite connection and transaction boundary.
-def:pub replan_state(trip_id: str) -> dict[str, any] {
-    conn = _connect();
+def:pub replan_state(workspace_key: str, trip_id: str) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return snapshot(conn, trip_id); }
     finally { conn.close(); }
 }
-def:pub replan_save_rules(trip_id: str, item_id: str, duration_minutes: int = 60,
+def:pub replan_save_rules(workspace_key: str, trip_id: str, item_id: str, duration_minutes: int = 60,
     latest_start: str = "", fixed: bool = False) -> dict[str, any] {
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return save_rules(conn, trip_id, item_id, duration_minutes, latest_start, fixed); }
     finally { conn.close(); }
 }
-def:pub replan_save_dependency(trip_id: str, prerequisite_id: str, dependent_id: str,
+def:pub replan_save_dependency(workspace_key: str, trip_id: str, prerequisite_id: str, dependent_id: str,
     buffer_minutes: int = 0, remove: bool = False) -> dict[str, any] {
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return save_dependency(conn, trip_id, prerequisite_id, dependent_id, buffer_minutes, remove); }
     finally { conn.close(); }
 }
-def:pub replan_demo -> dict[str, any] {
+def:pub replan_demo(workspace_key: str) -> dict[str, any] {
+    owner = _workspace_owner(workspace_key);
     conn = _connect();
-    try { return seed_demo(conn); }
+    try { return seed_demo(conn, owner); }
     finally { conn.close(); }
 }
-def:pub propose_replan(trip_id: str, item_id: str, kind: str,
+def:pub propose_replan(workspace_key: str, trip_id: str, item_id: str, kind: str,
     delay_minutes: int = 120, event_id: str = "", use_llm: bool = False) -> dict[str, any] {
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         packet = prepare(conn, trip_id, item_id, kind, delay_minutes, event_id);
         (options, warnings) = candidates(packet);
@@ -850,14 +885,14 @@ def:pub propose_replan(trip_id: str, item_id: str, kind: str,
         return store_proposals(conn, packet, options, None, "", "mock", warnings);
     } finally { conn.close(); }
 }
-def:pub review_replan(trip_id: str, proposal_id: str, accept: bool) -> dict[str, any] {
-    conn = _connect();
+def:pub review_replan(workspace_key: str, trip_id: str, proposal_id: str, accept: bool) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return decide(conn, trip_id, proposal_id, accept); }
     finally { conn.close(); }
 }
 
-def:pub combine_replan(trip_id: str, event_id: str, choices: dict[str, str]) -> dict[str, any] {
-    conn = _connect();
+def:pub combine_replan(workspace_key: str, trip_id: str, event_id: str, choices: dict[str, str]) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return custom_proposal(conn, trip_id, event_id, choices); }
     finally { conn.close(); }
 }
@@ -876,15 +911,15 @@ def:pub load_recorded_flight_tracks(callsign: str, day: str) -> dict[str, any] {
     return map_providers.recorded_tracks(callsign, day);
 }
 
-def:pub resolve_trip_map_places(trip_id: str, retry: bool = False) -> dict[str, any] {
-    conn = _connect();
+def:pub resolve_trip_map_places(workspace_key: str, trip_id: str, retry: bool = False) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return map_enrichment.resolve_places(conn, trip_id, retry); }
     finally { conn.close(); }
 }
 
-def:pub save_trip_flight_track(trip_id: str, item_id: str, title: str, location: str, departure_date: str,
+def:pub save_trip_flight_track(workspace_key: str, trip_id: str, item_id: str, title: str, location: str, departure_date: str,
     callsign: str, day: str, track_id: str, expected_revision: int = 0) -> dict[str, any] {
-    conn = _connect();
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return map_enrichment.save_flight_track(conn, trip_id, item_id, title, location, departure_date, callsign, day, track_id, expected_revision); }
     finally { conn.close(); }
 }

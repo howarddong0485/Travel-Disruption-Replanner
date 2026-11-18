@@ -1,4 +1,5 @@
 """A route brief with ordered city stays and explicit transfer allowances."""
+import from workspace { workspaceKey }
 import from server.main { save_journey }
 
 def:pub journeyLabel(route: any) -> str {
@@ -67,7 +68,7 @@ def:pub RouteEditor(trip: any, data: any, onSaved: any, onPlan: any, disabled: b
     async def save(e: FormEvent) -> None {
         e.preventDefault(); if saving { return; } saving = True; error = "";
         try {
-            fresh = await save_journey(trip_id=trip.id, payload=draft, expected_version=version);
+            fresh = await save_journey(workspace_key=await workspaceKey(), trip_id=trip.id, payload=draft, expected_version=version);
             editing = False; onSaved(fresh);
         } except Exception as exc { error = str(exc); }
         finally { saving = False; }

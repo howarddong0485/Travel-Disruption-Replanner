@@ -1,4 +1,5 @@
 """Risk selection, traveler facts, plan comparison and explicit P4 review in Roam."""
+import from workspace { workspaceKey }
 import from server.main { ItemView, planning_state, save_planning_context, generate_backup_plans, review_backup_plan }
 import from itinerary.policy_review { PolicyReview }
 import from itinerary.policy_editor { PolicyEditor }
@@ -69,7 +70,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
     }
     async def reload -> None {
         sequence.current += 1; request = sequence.current; loading = True; failure = ""; notice = ""; clear();
-        try { data = await planning_state(trip_id=trip_id); if request == sequence.current { fill(data); } }
+        try { data = await planning_state(workspace_key=await workspaceKey(), trip_id=trip_id); if request == sequence.current { fill(data); } }
         except Exception { if request == sequence.current { failure = "Could not load trip facts. Reload and try again."; } }
         finally { if request == sequence.current { loading = False; } }
     }
@@ -95,7 +96,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         checkQueued.current = False;
         request = sequence.current;
         try {
-            fresh = await planning_state(trip_id=trip_id);
+            fresh = await planning_state(workspace_key=await workspaceKey(), trip_id=trip_id);
             if request == sequence.current and fresh["trip_version"] != state["trip_version"] {
                 clear(); fill(fresh); notice = "Your trip changed. Find fresh plans before choosing.";
             } elif request == sequence.current and result and any(fresh.get("review_statuses", {}).get(plan["id"]) != "proposed" or
@@ -185,7 +186,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                         "minutes": int(routes[key]), "evidence": proof});
                 }
             }
-            updated = await save_planning_context(trip_id=trip_id, payload=payload, expected_version=state["trip_version"]);
+            updated = await save_planning_context(workspace_key=await workspaceKey(), trip_id=trip_id, payload=payload, expected_version=state["trip_version"]);
             if request != sequence.current { return; }
             fill(updated); notifyTabs();
             notice = "Trip facts saved. Missing information will still need confirmation.";
@@ -212,11 +213,11 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                 if reason == "timing" and notBefore { manual["not_before"] = {"local": notBefore, "zone": state["facts"].get("zone", "")}; }
                 payload["contract_version"] = "roam.planning-context.v1";
                 payload["manual_risks"] = [r for r in payload.get("manual_risks", []) if r["id"] != riskId] + [manual];
-                current = await save_planning_context(trip_id=trip_id, payload=payload, expected_version=state["trip_version"]);
+                current = await save_planning_context(workspace_key=await workspaceKey(), trip_id=trip_id, payload=payload, expected_version=state["trip_version"]);
                 if request != sequence.current { return; }
                 state = current; ids = [riskId]; notifyTabs();
             }
-            response = await generate_backup_plans(trip_id=trip_id, expected_version=current["trip_version"], risk_ids=ids, max_plans=int(limit), use_llm=useAI, exclude_candidate_ids=excluded);
+            response = await generate_backup_plans(workspace_key=await workspaceKey(), trip_id=trip_id, expected_version=current["trip_version"], risk_ids=ids, max_plans=int(limit), use_llm=useAI, exclude_candidate_ids=excluded);
             if request != sequence.current { return; }
             result = response;
             if onGenerated and len(response["plans"]) > 0 { onGenerated(); }
@@ -227,7 +228,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         if busy { return; } busy = True; failure = "";
         request = sequence.current;
         try {
-            response = await review_backup_plan(trip_id=trip_id, proposal_id=id, accept=accept);
+            response = await review_backup_plan(workspace_key=await workspaceKey(), trip_id=trip_id, proposal_id=id, accept=accept);
             if request != sequence.current { return; }
             notice = response["message"]; notifyTabs();
             if accept { clear(); if onApplied { await onApplied(); } else { await reload(); } }

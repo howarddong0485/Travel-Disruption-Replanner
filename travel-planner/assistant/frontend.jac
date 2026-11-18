@@ -1,4 +1,5 @@
 """Persistent trip conversation sidebar and the unified AI plan review workspace."""
+import from workspace { workspaceKey }
 import from browser_ids { request_id }
 import from itinerary.flight_card { FlightCard }
 import from server.main { assistant_state, assistant_chat, assistant_review, assistant_confirm_map }
@@ -25,18 +26,29 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         busy: bool = False, loading: bool = True, failure: str = "", pendingText: str = "",
         alive: Ref[bool] = Ref(True), sequence: Ref[int] = Ref(0), scrollTarget: Ref[any] = Ref(None),
         poll: Ref[any] = Ref(None), reloadAction: Ref[any] = Ref(None), focusAction: Ref[any] = Ref(None);
+    composerKey = "jacroam.composer." + trip_id;
+    def rememberComposer(value: str) -> None {
+        try {
+            if value { browser.sessionStorage.setItem(composerKey, browser.JSON.stringify({"text":value, "mode":mode, "search":search})); }
+            else { browser.sessionStorage.removeItem(composerKey); }
+        } except Exception {}
+    }
     async def load -> None {
         if busy { return; }
         request = sequence.current;
         try {
-            fresh = await assistant_state(trip_id=trip_id);
-            if alive.current and request == sequence.current { data = fresh; onUpdate(fresh, False); failure = ""; }
+            fresh = await assistant_state(workspace_key=await workspaceKey(), trip_id=trip_id);
+            if alive.current and request == sequence.current and fresh.get("trip_id") == trip_id { data = fresh; onUpdate(fresh, False); failure = ""; }
         } except Exception { if alive.current { failure = "Could not load this conversation. Try Reload."; } }
         finally { if alive.current { loading = False; } }
     }
     reloadAction.current = lambda { load(); };
     can with entry {
         alive.current = True;
+        try {
+            saved = browser.JSON.parse(browser.sessionStorage.getItem(composerKey) or "null");
+            if saved { mode = saved["mode"]; text = saved["text"]; search = saved["search"]; }
+        } except Exception {}
         focusAction.current = lambda { if not browser.document.hidden { reloadAction.current(); } };
         poll.current = browser.setInterval(focusAction.current, 15000);
         browser.addEventListener("focus", focusAction.current);
@@ -47,8 +59,10 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         browser.clearInterval(poll.current);
         browser.removeEventListener("focus", focusAction.current);
         browser.document.removeEventListener("visibilitychange", focusAction.current);
+        if not busy { rememberComposer(text); }
         if onKeyChange { onKeyChange(""); } alive.current = False; sequence.current += 1;
     }
+    can with [text, mode, search] entry { if not busy { rememberComposer(text); } }
     can with [compose] entry {
         if compose > 0 {
             mode = composeMode; text = composeText;
@@ -64,7 +78,8 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         e.preventDefault(); if busy or externalBusy or loading or not text.strip() { return; }
         sequence.current += 1; busy = True; failure = ""; pendingText = text.strip(); request = sequence.current;
         try {
-            fresh = await assistant_chat(trip_id=trip_id, message=pendingText, mode=mode,
+            rememberComposer("");
+            fresh = await assistant_chat(workspace_key=await workspaceKey(), trip_id=trip_id, message=pendingText, mode=mode,
                 search=search, request_id=request_id(browser), api_key=apiKey);
             if alive.current and request == sequence.current {
                 previous = [draft["id"] for draft in data.get("drafts", [])];
@@ -72,16 +87,17 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                 data = fresh; text = ""; pendingText = ""; onUpdate(fresh, mode != "ask" or created);
             }
         } except Exception as error {
-            if alive.current and request == sequence.current { failure = assistantError(error); pendingText = ""; }
+            if alive.current and request == sequence.current { failure = assistantError(error); rememberComposer(pendingText); pendingText = ""; }
+            elif not browser.sessionStorage.getItem(composerKey) { rememberComposer(pendingText); }
         } finally { if alive.current and request == sequence.current { busy = False; } }
     }
     async def confirmMap(messageId: str, actionIndex: int, choiceIndex: int) -> None {
-        sequence.current += 1; busy = True; failure = "";
+        sequence.current += 1; request = sequence.current; busy = True; failure = "";
         try {
-            data = await assistant_confirm_map(trip_id=trip_id, message_id=messageId, action_index=actionIndex, choice_index=choiceIndex);
-            onUpdate(data, False);
-        } except Exception as error { failure = assistantError(error); }
-        finally { busy = False; }
+            fresh = await assistant_confirm_map(workspace_key=await workspaceKey(), trip_id=trip_id, message_id=messageId, action_index=actionIndex, choice_index=choiceIndex);
+            if alive.current and request == sequence.current and fresh.get("trip_id") == trip_id { data = fresh; onUpdate(fresh, False); }
+        } except Exception as error { if alive.current and request == sequence.current { failure = assistantError(error); } }
+        finally { if alive.current and request == sequence.current { busy = False; } }
     }
     def useKey(e: FormEvent) -> None {
         e.preventDefault();

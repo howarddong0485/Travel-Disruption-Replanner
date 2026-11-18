@@ -1,4 +1,5 @@
 /** Actual airport-label regression: visible map lines without AI or flight listings. */
+const {browserWorkspace} = require('./browser_workspace.cjs');
 const assert = require('node:assert/strict');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const appUrl = process.env.TRAVEL_APP_URL || 'http://127.0.0.1:8379';
@@ -7,6 +8,8 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
 (async () => {
   const browser = await chromium.launch({channel: process.env.TRAVEL_BROWSER_CHANNEL || 'chrome'});
   const page = await browser.newPage({viewport: {width: 1440, height: 1000}});
+  const workspace_key = await browserWorkspace(page);
+
   page.setDefaultTimeout(20000);
   const trips = [], journeys = new Map(), draftStates = new Map(), mapRequests = [], errors = [], mutations = [];
   let aiCalls = 0;
@@ -15,7 +18,7 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
     if (message.type() === 'error' && /ErrorBoundary|TypeError|ReferenceError/.test(message.text())) errors.push(message.text());
   });
   async function api(name, data) {
-    const response = await page.request.post(apiUrl + '/function/' + name, {data});
+    const response = await page.request.post(apiUrl + '/function/' + name, {data: {...data, workspace_key}});
     const payload = await response.json();
     assert(response.ok() && payload.ok, JSON.stringify(payload));
     return payload.data.result;

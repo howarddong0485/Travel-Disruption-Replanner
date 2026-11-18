@@ -11,6 +11,8 @@ import from urllib.parse { urlparse, urljoin }
 import from urllib.request { Request, urlopen }
 import from urllib.error { URLError }
 
+glob WORKSPACE = str(uuid.uuid4());
+
 def fetch(base: str, path: str, payload: any = None) -> tuple[str, str] {
     data = json.dumps(payload).encode() if payload is not None else None;
     request = Request(urljoin(base + "/", path), data=data,
@@ -22,7 +24,7 @@ def fetch(base: str, path: str, payload: any = None) -> tuple[str, str] {
 }
 
 def call(base: str, name: str, payload: dict[str, any]) -> any {
-    (body, _) = fetch(base, "/api/server/function/" + name, payload);
+    (body, _) = fetch(base, "/api/server/function/" + name, {"workspace_key": WORKSPACE, **payload});
     envelope = json.loads(body);
     assert envelope["ok"], body;
     return envelope["data"]["result"];
@@ -43,7 +45,7 @@ def generate(base: str, state: dict[str, any], limit: int) -> dict[str, any] {
 }
 
 def cli(jac: str, project: Path, base: str, args: list[str]) -> str {
-    env = dict(os.environ); env["JAC_APP_SERVER_URL"] = base + "/api/server";
+    env = dict(os.environ); env["ROAM_WORKSPACE_KEY"] = WORKSPACE; env["JAC_APP_SERVER_URL"] = base + "/api/server";
     result = subprocess.run([jac, "run", "cli", "--"] + args, cwd=project,
         env=env, text=True, capture_output=True, timeout=90);
     assert result.returncode == 0, result.stdout + result.stderr;

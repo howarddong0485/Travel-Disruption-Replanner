@@ -1,4 +1,5 @@
 """LiteAPI hotel drafts and Geoapify place suggestions, with independent keys."""
+import from workspace { workspaceKey }
 import from server.main { travel_provider_status, preview_liteapi_hotels, discover_travel_places }
 
 def:pub TravelDataPanel(trip: any, items: list[any], workflow: str = "backup") -> JsxElement {
@@ -13,7 +14,7 @@ def:pub TravelDataPanel(trip: any, items: list[any], workflow: str = "backup") -
     async def hotels(e: FormEvent) -> None {
         e.preventDefault(); if busy { return; } busy = True; result = None; error = "";
         try {
-            result = await preview_liteapi_hotels(trip_id=trip.id, item_id=item_id, checkout=checkout,
+            result = await preview_liteapi_hotels(workspace_key=await workspaceKey(), trip_id=trip.id, item_id=item_id, checkout=checkout,
                 city=city, destination_country=country, occupancy=occupancy, nationality=nationality,
                 mode=workflow, kind=kind, delay_minutes=int(delay) if kind == "delayed" else 0);
         } except Exception as exc { error = str(exc); }
@@ -21,7 +22,7 @@ def:pub TravelDataPanel(trip: any, items: list[any], workflow: str = "backup") -
     }
     async def discover(e: FormEvent) -> None {
         e.preventDefault(); if busy { return; } busy = True; places = None; error = "";
-        try { places = await discover_travel_places(trip_id=trip.id, destination=city, country=country, category=category); }
+        try { places = await discover_travel_places(workspace_key=await workspaceKey(), trip_id=trip.id, destination=city, country=country, category=category); }
         except Exception as exc { error = str(exc); }
         finally { busy = False; }
     }

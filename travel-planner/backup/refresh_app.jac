@@ -1,4 +1,5 @@
 """Standalone preview of the same Roam validation panel, without other feature UIs."""
+import from workspace { workspaceKey }
 import "../styles.css";
 import from backup.validation_frontend { ValidationLab }
 import from backup.frontend { BackupPanel }
@@ -11,14 +12,14 @@ def:pub app -> JsxElement {
         loading: bool = False, failure: str = "", source: str = "sample", sequence: Ref[int] = Ref(0);
     async def loadTrips -> None {
         loading = True; failure = "";
-        try { trips = await list_trips(); } except Exception { failure = "Could not load saved trips."; }
+        try { trips = await list_trips(workspace_key=await workspaceKey()); } except Exception { failure = "Could not load saved trips."; }
         finally { loading = False; }
     }
     async def chooseTrip(id: str) -> None {
         sequence.current += 1; request = sequence.current;
         selected = id; items = []; loading = True; failure = "";
         try {
-            latest = await list_items(trip_id=id) if id else [];
+            latest = await list_items(workspace_key=await workspaceKey(), trip_id=id) if id else [];
             if request == sequence.current { items = latest; }
         } except Exception { if request == sequence.current { failure = "Could not load this itinerary."; } }
         finally { if request == sequence.current { loading = False; } }

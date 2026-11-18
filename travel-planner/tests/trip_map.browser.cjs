@@ -1,4 +1,5 @@
 /** Exercise the real map, plan review and persisted route metadata in a disposable local app. */
+const {browserWorkspace} = require('./browser_workspace.cjs');
 const assert = require('node:assert/strict');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const path = require('node:path');
@@ -10,12 +11,14 @@ const screenshots = process.env.TRAVEL_MAP_SCREENSHOTS;
 (async () => {
   const browser = await chromium.launch({channel: process.env.TRAVEL_BROWSER_CHANNEL});
   const page = await browser.newPage({viewport: {width: 1440, height: 960}});
+  const workspace_key = await browserWorkspace(page);
+
   page.setDefaultTimeout(12000);
   const errors = [];
   const trips = [];
   page.on('pageerror', error => { errors.push(error.message); console.error(error.stack); });
   async function api(name, data, invalid = false) {
-    const response = await page.request.post(apiUrl + '/function/' + name, {data});
+    const response = await page.request.post(apiUrl + '/function/' + name, {data: {...data, workspace_key}});
     const payload = await response.json();
     if (invalid) {
       assert(!response.ok() || !payload.ok, JSON.stringify(payload));

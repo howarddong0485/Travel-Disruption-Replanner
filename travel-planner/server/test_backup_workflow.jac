@@ -1,4 +1,5 @@
 """Saved-trip pipeline HTTP lifecycle, staleness and database isolation."""
+import from tests.workspace_fixture { TEST_WORKSPACE }
 import os;
 import uuid;
 import sqlite3;
@@ -29,7 +30,7 @@ def workflow_client -> any {
 }
 
 def call(client: any, name: str, data: dict[str, any]) -> any {
-    response = client.post("/function/" + name, json=data);
+    response = client.post("/function/" + name, json={"workspace_key": TEST_WORKSPACE, **data});
     assert response.ok, str(response.data);
     return response.data["result"];
 }
@@ -92,10 +93,10 @@ test "saved backup retries concurrent revisions sessions and sample history stay
         assert call(client, "load_trip_backup_history", {"session_id": str(uuid.uuid4()), "trip_id": trip["id"]})["revision"] == 0;
         assert call(client, "load_backup_history", {"session_id": session})["revision"] == 0;
         wrong = request_for(client, session, other, other_item); wrong["item_id"] = activity["id"];
-        assert not client.post("/function/save_trip_backup_refresh", json=wrong).ok;
+        assert not client.post("/function/save_trip_backup_refresh", json={"workspace_key":TEST_WORKSPACE, **wrong}).ok;
         for value in [True, 1.0, "1", None, -1] {
             invalid = dict(payload); invalid["expected_revision"] = value;
-            assert not client.post("/function/save_trip_backup_refresh", json=invalid).ok;
+            assert not client.post("/function/save_trip_backup_refresh", json={"workspace_key":TEST_WORKSPACE, **invalid}).ok;
         }
     }
 }
@@ -132,7 +133,7 @@ test "editing the trip while the workflow runs prevents publication and storage"
             return r;
         }
         with patch("server.main.run_workflow", side_effect=edited) {
-            blocked = backup_service.save_trip_backup_refresh(**payload);
+            blocked = backup_service.save_trip_backup_refresh(TEST_WORKSPACE, **payload);
             assert blocked["outcome"] == "trip_changed" and blocked["report"] is None;
             assert blocked["history"]["revision"] == 0;
         }
@@ -162,16 +163,16 @@ test "wrong triggers completed undated and removed saved targets fail without hi
         for changes in [{"trigger": "snow"}, {"trigger": "arrival_delay"}, {"item_id": "missing"}, {"inventory_change": "bad"}] {
             payload = request_for(client, session, trip, activity); payload.update(changes);
             before = dump_travel();
-            assert not client.post("/function/save_trip_backup_refresh", json=payload).ok;
+            assert not client.post("/function/save_trip_backup_refresh", json={"workspace_key":TEST_WORKSPACE, **payload}).ok;
             assert dump_travel() == before;
         }
         call(client, "set_item_state", {"trip_id": trip["id"], "item_id": activity["id"], "done": True, "paid": False});
         payload = request_for(client, session, trip, activity);
-        assert not client.post("/function/save_trip_backup_refresh", json=payload).ok;
+        assert not client.post("/function/save_trip_backup_refresh", json={"workspace_key":TEST_WORKSPACE, **payload}).ok;
         undated = call(client, "save_item", {"trip_id": trip["id"], "title": "Undated", "category": "activity"});
-        assert not client.post("/function/save_trip_backup_refresh", json=request_for(client, session, trip, undated)).ok;
+        assert not client.post("/function/save_trip_backup_refresh", json={"workspace_key":TEST_WORKSPACE, **request_for(client, session, trip, undated)}).ok;
         call(client, "delete_item", {"trip_id": trip["id"], "item_id": dinner["id"]});
-        assert not client.post("/function/save_trip_backup_refresh", json=request_for(client, session, trip, dinner)).ok;
+        assert not client.post("/function/save_trip_backup_refresh", json={"workspace_key":TEST_WORKSPACE, **request_for(client, session, trip, dinner)}).ok;
         assert call(client, "load_trip_backup_history", {"session_id": session, "trip_id": trip["id"]})["revision"] == 0;
     }
 }

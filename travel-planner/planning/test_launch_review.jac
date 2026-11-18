@@ -1,4 +1,5 @@
 """Launch-guide acceptance: policy conclusions, evidence, recovery and protection."""
+import from tests.workspace_fixture { TEST_WORKSPACE }
 import os;
 import tempfile;
 import unittest;
@@ -61,22 +62,22 @@ test "free cancellation exclusions and incomplete or expired policies stay disti
 
 test "saving exact policy terms is versioned evidence-only and invalidates waiting drafts" {
     with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH":os.path.join(directory, "trip.sqlite3")}) {
-        trip = service.save_trip("Launch review", "Boston", "2027-01-01", "2027-01-02", "USD", "500");
-        item = service.save_item(trip.id, "Museum", "activity", "2027-01-01", "10:00", "Boston", cost="100");
+        trip = service.save_trip(TEST_WORKSPACE, "Launch review", "Boston", "2027-01-01", "2027-01-02", "USD", "500");
+        item = service.save_item(TEST_WORKSPACE, trip.id, "Museum", "activity", "2027-01-01", "10:00", "Boston", cost="100");
         raw = {"item_id":item.id, "title":item.title, "category":"activity", "date":item.date, "time":"11:00", "duration_minutes":60, "location":item.location, "cost_cents":10000, "notes":"Estimate"};
         response = {"answer":"Draft", "plans":[{"title":"Later museum", "summary":"Move", "changes":[raw]}]};
-        with patch.object(provider, "generate", return_value=response) { draft = service.assistant_chat(trip.id, "Move my museum visit", "replan", False, str(uuid4()))["drafts"][0]; }
-        before = [(i.id,i.time,i.cost_cents) for i in service.list_items(trip.id)];
-        version = service.planning_state(trip.id)["trip_version"];
+        with patch.object(provider, "generate", return_value=response) { draft = service.assistant_chat(TEST_WORKSPACE, trip.id, "Move my museum visit", "replan", False, str(uuid4()))["drafts"][0]; }
+        before = [(i.id,i.time,i.cost_cents) for i in service.list_items(TEST_WORKSPACE, trip.id)];
+        version = service.planning_state(TEST_WORKSPACE, trip.id)["trip_version"];
         terms = "Full refund less a $10 cancellation fee up to 2 days before check-in. No-shows are charged the full stay.";
-        result = service.save_policy_terms(trip.id, item.id, terms, "https://example.com/terms", "America/New_York", (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat(), version);
+        result = service.save_policy_terms(TEST_WORKSPACE, trip.id, item.id, terms, "https://example.com/terms", "America/New_York", (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat(), version);
         assert result["trip_version"] > version;
         assert result["policy_reviews"][0]["sources"][0]["excerpt"] in terms;
-        assert service.assistant_state(trip.id)["drafts"][0]["status"] == "stale";
+        assert service.assistant_state(TEST_WORKSPACE, trip.id)["drafts"][0]["status"] == "stale";
         check = unittest.TestCase();
-        with check.assertRaises(ValueError) { service.assistant_review(trip.id, draft["id"], True, True); }
-        assert [(i.id,i.time,i.cost_cents) for i in service.list_items(trip.id)] == before;
-        with check.assertRaises(ValueError) { service.save_policy_terms(trip.id, item.id, terms, "reference", "America/New_York", "2000-01-01T00:00:00Z", result["trip_version"]); }
-        with check.assertRaises(ValueError) { service.save_policy_terms(trip.id, "foreign", terms, "reference", "America/New_York", (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat(), result["trip_version"]); }
+        with check.assertRaises(ValueError) { service.assistant_review(TEST_WORKSPACE, trip.id, draft["id"], True, True); }
+        assert [(i.id,i.time,i.cost_cents) for i in service.list_items(TEST_WORKSPACE, trip.id)] == before;
+        with check.assertRaises(ValueError) { service.save_policy_terms(TEST_WORKSPACE, trip.id, item.id, terms, "reference", "America/New_York", "2000-01-01T00:00:00Z", result["trip_version"]); }
+        with check.assertRaises(ValueError) { service.save_policy_terms(TEST_WORKSPACE, trip.id, "foreign", terms, "reference", "America/New_York", (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat(), result["trip_version"]); }
     }
 }

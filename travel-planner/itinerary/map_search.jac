@@ -1,4 +1,5 @@
 """Confirm geographic matches and research exact dated flights from the map."""
+import from workspace { workspaceKey }
 import from server.main { search_map_places, get_place_details, save_place_details, search_map_flight, load_recorded_flight_tracks, save_trip_flight_track }
 
 def:pub MapPlaceSearch(trip_id: str, item: any, destination: str, onSaved: any, lookup: any = None) -> JsxElement {
@@ -16,9 +17,9 @@ def:pub MapPlaceSearch(trip_id: str, item: any, destination: str, onSaved: any, 
     async def choose(place: any) -> None {
         busy = True; error = "";
         try {
-            current = await get_place_details(trip_id=trip_id, item_id=item.id);
+            current = await get_place_details(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=item.id);
             if current["location"] != item.location { error = "This stop changed. Reopen it before locating it."; return; }
-            await save_place_details(trip_id=trip_id, item_id=item.id, location=item.location,
+            await save_place_details(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=item.id, location=item.location,
                 expected_revision=current["revision"], payload={"latitude": place["lat"], "longitude": place["lon"],
                     "photo_url": current["photo_url"], "photo_source": current["photo_source"]});
             matches = []; saved = True; await onSaved();
@@ -56,7 +57,7 @@ def:pub FlightSearch(trip_id: str, item: any, apiKey: str, onTrack: any, saved: 
     async def chooseTrack(value: any) -> None {
         busy = True; operation = "save"; error = "";
         try {
-            savedResult = await save_trip_flight_track(trip_id=trip_id, item_id=item.id, title=item.title, location=item.location,
+            savedResult = await save_trip_flight_track(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=item.id, title=item.title, location=item.location,
                 departure_date=item.date, callsign=callsign, day=trackDay, track_id=value["id"] if value else "", expected_revision=saved.get("revision", 0));
             await onSaved();
             if savedResult["track"] { onTrack(savedResult["track"]); }

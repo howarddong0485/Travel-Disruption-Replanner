@@ -1,8 +1,11 @@
+const {browserWorkspace} = require('./browser_workspace.cjs');
 const assert=require('node:assert/strict'),{chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const appUrl=process.env.TRAVEL_APP_URL || 'http://127.0.0.1:8379';
 const apiUrl=process.env.TRAVEL_API_URL || appUrl+'/api/server';
-(async()=>{const browser=await chromium.launch({channel:'chrome'}),page=await browser.newPage({viewport:{width:1600,height:1000}});let trip;
-const api=async(name,data)=>{const r=await page.request.post(apiUrl+'/function/'+name,{data});const p=await r.json();assert(p.ok,JSON.stringify(p));return p.data.result;};
+(async()=>{const browser=await chromium.launch({channel:'chrome'}),page=await browser.newPage({viewport:{width:1600,height:1000}});
+  const workspace_key = await browserWorkspace(page);
+let trip;
+const api=async(name,data)=>{const r=await page.request.post(apiUrl+'/function/'+name,{data: {...data, workspace_key}});const p=await r.json();assert(p.ok,JSON.stringify(p));return p.data.result;};
 try{trip=await api('save_trip',{title:'Recorded track UI '+Date.now(),destination:'New York',start_date:'2027-01-01',end_date:'2027-01-03',budget:'5000'});
 const flight=await api('save_item',{trip_id:trip.id,title:'Synthetic recorded flight',category:'transport',date:'2027-01-01',time:'10:00',location:'DTW to LGA'});
 const track={id:'test-record',callsign:'TST123',registration:'TEST',start:'2027-01-01T15:00:00Z',end:'2027-01-01T17:00:00Z',checked_at:'2027-01-02',source:'https://adsb.aero',segments:[[[-83.35,42.21],[-80,42]],[[-76,41],[-73.87,40.77]]],timestamps:[[1,2],[3,4]]};

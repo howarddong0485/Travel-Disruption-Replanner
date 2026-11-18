@@ -1,4 +1,5 @@
 /** Real UI + API regression; all schedules/prices are synthetic and no model is called. */
+const {browserWorkspace} = require('./browser_workspace.cjs');
 const assert = require('node:assert/strict');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const path = require('node:path');
@@ -9,13 +10,15 @@ const shots = process.env.TRAVEL_MAP_SCREENSHOTS;
 (async () => {
   const browser = await chromium.launch({channel: process.env.TRAVEL_BROWSER_CHANNEL});
   const page = await browser.newPage({viewport: {width: 1440, height: 1000}});
+  const workspace_key = await browserWorkspace(page);
+
   page.setDefaultTimeout(15000);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', msg => { if (msg.type() === 'error') console.error(msg.text()); });
   let trip;
   async function api(name, data) {
-    const response = await page.request.post(apiUrl + '/function/' + name, {data});
+    const response = await page.request.post(apiUrl + '/function/' + name, {data: {...data, workspace_key}});
     const payload = await response.json();
     assert(response.ok() && payload.ok, JSON.stringify(payload));
     return payload.data.result;

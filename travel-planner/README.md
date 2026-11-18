@@ -1,6 +1,6 @@
 # JacRoam — Travel Planner
 
-JacRoam is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Keep multiple trips, daily itineraries, reservations, packing lists, notes, and costs together in one workspace.
+JacRoam is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Each browser profile automatically opens its own private workspace. Each trip has its own itinerary, chat history, drafts and replanning state. Tabs can select different trips. Clearing site data removes access to that browser’s workspace.
 
 Application code, backend helpers, demos, and tests are written in `.jac` files. Jac imports Python standard-library modules for SQLite, dataclasses, date/time handling, and CLI argument parsing; no project-owned Python source files are required.
 
@@ -334,7 +334,7 @@ Internet access is required for street tiles, place searches, web research, and 
 
 Provider parsing, new-trip geocoding, ambiguity, cross-request persistence, coverage gaps, and stale edits can be checked with `jac test itinerary/test_map_enrichment.jac tools/test_map_providers.jac`.
 
-Map availability is independent of the sample/demo buttons and does not depend on a particular browser conversation. Searches use each saved stop’s city (or the trip destination), including cities outside the offline catalog. Ambiguous candidates and failed lookups are persisted for explicit confirmation/retry. All clients of the same instance share its configured SQLite database; separate local installations do not synchronize automatically. The current prototype has no per-user trip ownership layer, and this change does not publish it as a public multiuser service. A public deployment needs authentication, ownership checks, HTTPS, persistent storage and provider capacity appropriate to its traffic.
+Map availability is independent of the sample/demo buttons and does not depend on a particular browser conversation. Searches use each saved stop’s city (or the trip destination), including cities outside the offline catalog. Ambiguous candidates and failed lookups are persisted for explicit confirmation/retry. The server checks browser ownership on trip reads and writes, including map lookups, chat and Replan. Trips from the former shared list remain stored without an owner and do not appear in any browser. The CLI keeps a private workspace per service URL under `~/.jacroam/workspaces`. An API client must supply its own random UUIDv4 bearer credential as `workspace_key` on trip calls. Treat it as a secret.
 
 ### Launch review and cancellation evidence
 

@@ -1,4 +1,5 @@
 """Edit the geographic endpoints of a saved transport item."""
+import from workspace { workspaceKey }
 import from server.main { save_trip_map_route }
 import from itinerary.city_points { cityPoint }
 
@@ -24,7 +25,7 @@ def:pub MapRouteEditor(trip_id: str, item: any, data: any, onSaved: any, onCance
         if busy { return; }
         busy = True; failure = "";
         try {
-            await save_trip_map_route(trip_id=initialTrip, item_id=initialId, title=initialTitle, location=initialLocation,
+            await save_trip_map_route(workspace_key=await workspaceKey(), trip_id=initialTrip, item_id=initialId, title=initialTitle, location=initialLocation,
                 expected_revision=initialRevision, payload=payload);
             await onSaved();
         } except Exception as exc { failure = str(exc); }
