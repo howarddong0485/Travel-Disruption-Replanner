@@ -2,7 +2,7 @@
 import from "leaflet" { map, tileLayer, polyline, layerGroup }
 
 def:pub createStreetMap(element: any, onMove: any, onError: any) -> any {
-    result: any = map(element, {"zoomControl": False, "attributionControl": True,
+    result: any = map(element, {"zoomControl": False, "zoomAnimation": False, "attributionControl": True,
         "scrollWheelZoom": False, "worldCopyJump": True, "minZoom": 2, "maxZoom": 19});
     result.setView([25, 0], 2);
     tiles: any = tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
