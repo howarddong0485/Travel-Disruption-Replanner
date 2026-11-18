@@ -215,7 +215,7 @@ def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any
             detail = raw.get("journey") or {key: raw.get(key, "") for key in ["stop_id", "leg_id", "arrival_date", "arrival_time"]};
             base["journey"] = journey_model.bind(base, detail, journey);
         }
-        base["flight"] = flight_details.checked(raw.get("flight"), base, after_trip["currency"], flight_sources or []);
+        base["flight"] = flight_details.checked(raw.get("flight"), base, after_trip["currency"], flight_sources or [], journey);
         if not before { augmented["items"].append(copy.deepcopy(base)); }
         nodes[key] = base; changes.append({"item_id": key});
         displayed.append({"item_id": item_id, "before": before, "after": base, "price_unknown": cost is None});
