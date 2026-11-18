@@ -59,7 +59,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
         popup: any = None, cityId: str = "", dayFilter: str = "", categoryFilter: str = "",
         track: any = None, trackItem: Ref[str] = Ref(""), trackLayer: Ref[any] = Ref(None), viewRevision: int = 0, tilesFailed: bool = False, locating: bool = False, locateNotice: str = "",
         street: Ref[any] = Ref(None), fitted: Ref[bool] = Ref(False),
-        geometry: Ref[str] = Ref(""), savedView: Ref[any] = Ref(None),
+        geometry: Ref[str] = Ref(""), manualCamera: Ref[bool] = Ref(False), savedView: Ref[any] = Ref(None),
 
         popupTab: str = "plan", editing: bool = False,
         observer: Ref[any] = Ref(None), interval: Ref[int] = Ref(0),
@@ -127,7 +127,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
         if not street.current or not fitted.current or not geometry.current { return; }
         center = street.current.getCenter();
         try { browser.localStorage.setItem(viewKey, browser.JSON.stringify({
-            "geometry": geometry.current, "center": [center.lat, center.lng], "zoom": street.current.getZoom(),
+            "geometry": geometry.current, "manual": manualCamera.current, "center": [center.lat, center.lng], "zoom": street.current.getZoom(),
             "city": cityId, "category": categoryFilter, "day": dayFilter, "popup": popup, "tab": popupTab,
             "track": trackItem.current
         })); } except Exception {}
@@ -135,7 +135,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     def resize -> None {
         stage: any = document.getElementById(stageId);
         if stage {
-            if width != stage.clientWidth or height != stage.clientHeight { fitted.current = False; }
+            if not manualCamera.current and (width != stage.clientWidth or height != stage.clientHeight) { fitted.current = False; }
             width = stage.clientWidth; height = stage.clientHeight;
         }
         if street.current { street.current.invalidateSize(); }
@@ -145,12 +145,12 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
         track = None; trackItem.current = "";
     }
     def showTrack(value: any) -> None {
-        clearTrack(); trackItem.current = popup["id"] if popup else ""; track = value; cityId = ""; closePopup(False);
+        manualCamera.current = True; clearTrack(); trackItem.current = popup["id"] if popup else ""; track = value; cityId = ""; closePopup(False);
         trackLayer.current = drawRecordedTrack(street.current, value);
     }
-    def resetView -> None { clearTrack(); cityId = ""; dayFilter = ""; categoryFilter = ""; if onDay { onDay(""); } closePopup(False); fitStreetMap(street.current, pointList); }
+    def resetView -> None { manualCamera.current = False; clearTrack(); cityId = ""; dayFilter = ""; categoryFilter = ""; if onDay { onDay(""); } closePopup(False); fitStreetMap(street.current, pointList); }
     def enterCity(city: any) -> None {
-        clearTrack(); cityId = city["id"]; dayFilter = ""; categoryFilter = ""; closePopup(False);
+        manualCamera.current = True; clearTrack(); cityId = city["id"]; dayFilter = ""; categoryFilter = ""; closePopup(False);
         points = [pins[id] for id in city["items"] if id in pins];
         fitStreetMap(street.current, points if len(points) > 0 else [city["point"]], True);
     }
@@ -168,6 +168,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
         browser.addEventListener("pagehide", rememberView);
         street.current = createStreetMap(document.getElementById(stageId + "-tiles"),
             lambda { viewRevision += 1; }, lambda (failed: bool) { tilesFailed = failed; });
+        street.current.on("dragstart boxzoomstart", lambda { manualCamera.current = True; });
         resize();
         observer.current = new(browser.ResizeObserver, resize);
         observer.current.observe(document.getElementById(stageId));
@@ -222,9 +223,12 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             popup = prior.get("popup"); popupTab = prior.get("tab", "plan");
             storedTrack = savedTracks.get(prior.get("track", ""), {}).get("track");
             if storedTrack { track = storedTrack; trackItem.current = prior["track"]; trackLayer.current = drawRecordedTrack(street.current, track, False); }
-            street.current.setView(prior["center"], prior["zoom"], {"animate": False}); return;
+            manualCamera.current = prior.get("manual", False);
+            if manualCamera.current { street.current.setView(prior["center"], prior["zoom"], {"animate": False}); return; }
+            fitted.current = False;
         }
         if not fitted.current or geometry.current != shape {
+            if geometry.current != shape { manualCamera.current = False; }
             geometry.current = shape;
             if currentCity { fitStreetMap(street.current, [pins[id] for id in currentCity["items"] if id in pins] or [currentCity["point"]], True); }
             else { fitStreetMap(street.current, pointList); }
@@ -352,7 +356,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             {[<button type="button" className="map-stop-card" data-selected={activeId == item.id} key={item.id}
                 onClick={lambda {
                     openPopup("route" if item.category == "transport" else "place", item.id, stageId + "-details");
-                    if item.id in pins and street.current { street.current.setView([pins[item.id]["lat"], pins[item.id]["lon"]], 15); }
+                    if item.id in pins and street.current { manualCamera.current = True; street.current.setView([pins[item.id]["lat"], pins[item.id]["lon"]], 15); }
                 }}>
                 <span className="map-category-icon">{ "✈" if item.category == "transport" else "⌂" if item.category == "stay" else "♧" if item.category == "activity" else "♨"}</span>
                 <span><strong>{item.title}</strong><small>{itinerarySchedule(item.date, item.time)}</small><small>{item.location}</small>
@@ -453,8 +457,8 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             <button type="button" onClick={reload}>Retry</button></div>) if loadError else None}
         {(<div className="map-preview-tag" role="status">Plan B preview · Saved itinerary unchanged</div>) if preview and preview["choice"] else None}
         <div className="map-zoom" role="group" aria-label="Map view controls">
-            <button type="button" aria-label="Zoom in" onClick={lambda { if street.current { street.current.zoomIn(); } }}>+</button>
-            <button type="button" aria-label="Zoom out" onClick={lambda { if street.current { street.current.zoomOut(); } }}>−</button>
+            <button type="button" aria-label="Zoom in" onClick={lambda { if street.current { manualCamera.current = True; street.current.zoomIn(); } }}>+</button>
+            <button type="button" aria-label="Zoom out" onClick={lambda { if street.current { manualCamera.current = True; street.current.zoomOut(); } }}>−</button>
             <button type="button" aria-label="Fit all trip points" onClick={resetView}>⤢</button>
         </div>
         {(<div className="map-load-error" role="status">Street map tiles could not load. Check your connection.<button type="button" onClick={lambda { if street.current { street.current.eachLayer(lambda (layer: any) { if layer.redraw { layer.redraw(); } }); } }}>Retry</button></div>) if tilesFailed else None}
