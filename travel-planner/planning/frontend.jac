@@ -68,7 +68,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         selectedRisks = [risk["id"] for risk in data["risks"] if risk["status"] == "flagged"];
     }
     async def reload -> None {
-        sequence.current += 1; request = sequence.current; loading = True; clear();
+        sequence.current += 1; request = sequence.current; loading = True; failure = ""; notice = ""; clear();
         try { data = await planning_state(trip_id=trip_id); if request == sequence.current { fill(data); } }
         except Exception { if request == sequence.current { failure = "Could not load trip facts. Reload and try again."; } }
         finally { if request == sequence.current { loading = False; } }
