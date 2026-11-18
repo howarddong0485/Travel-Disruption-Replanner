@@ -284,7 +284,10 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
         editing = False;
         window.requestAnimationFrame(lambda { focusItineraryControl(closeId); });
     }
-    async def routeSaved -> None { await reload(); resetView(); closeEditor(); }
+    async def routeSaved -> None {
+        resetView(); closeEditor(); fitted.current = False;
+        await reload();
+    }
 
     <div className="trip-map-explorer">
         <div className="map-explorer-bar">

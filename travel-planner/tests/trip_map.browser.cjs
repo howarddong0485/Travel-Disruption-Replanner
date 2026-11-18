@@ -120,6 +120,7 @@ const screenshots = process.env.TRAVEL_MAP_SCREENSHOTS;
     const revised = after.find(item => item.id === flight.id);
     assert.equal(revised.title, flight.title);
     assert.notEqual(revised.time, flight.time);
+    await page.getByRole('navigation', {name: 'Choose a city'}).getByRole('button', {name: 'All cities', exact: true}).click();
     await map.locator('.map-route-pin[data-tone=planned]').waitFor();
     await page.setViewportSize({width: 1440, height: 960});
 
