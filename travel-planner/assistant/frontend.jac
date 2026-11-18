@@ -1,29 +1,32 @@
 """Persistent trip conversation sidebar and the unified AI plan review workspace."""
 import from browser_ids { request_id }
-import from server.main { assistant_state, assistant_chat, assistant_review }
+import from server.main { assistant_state, assistant_chat, assistant_review, assistant_confirm_map }
 import from journey.frontend { journeyLabel }
 import from itinerary.flight_card { FlightCard }
+import from itinerary.policy_review { PolicyReview }
 
 def:pub assistantError(error: any) -> str {
     browser: any = window;
-    message = str(error);
-    marker = "Function assistant_chat failed: ";
-    if marker in message { message = message.split(marker)[-1]; }
-    if message.startswith("{") {
-        try { message = browser.JSON.parse(message).error.message; }
-        except Exception { return "AI request failed. Try again."; }
+    text = str(error);
+    if "Could not reach OpenAI or read its response" in text { return "AI connection failed. Try again."; }
+    offset = text.find("{");
+    if offset >= 0 {
+        try {
+            payload = browser.JSON.parse(text[offset:]);
+            if payload.get("error", {}).get("message", "") { return payload["error"]["message"]; }
+        } except Exception { return "The request could not be completed. Reload the conversation and try again."; }
     }
-    if "Could not reach OpenAI or read its response" in message { return "AI connection failed. Try again."; }
-    return message;
+    return "The request could not be completed. Reload the conversation and try again." if "Function " in text else text;
 }
 
 def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int = 0,
-    compose: int = 0, composeMode: str = "ask", composeText: str = "", externalBusy: bool = False, autoRun: bool = False, onBusy: any = None, tripTitle: str = "") -> JsxElement {
+    compose: int = 0, composeMode: str = "ask", composeText: str = "", externalBusy: bool = False, autoRun: bool = False, onBusy: any = None, tripTitle: str = "", onKeyChange: any = None) -> JsxElement {
     browser: any = window;
     has data: dict[str, any] = {}, text: str = "", mode: str = "ask", search: bool = False, flights: bool = True,
         apiKey: str = "", keyInput: str = "", keyError: str = "",
         busy: bool = False, loading: bool = True, failure: str = "", pendingText: str = "",
-        alive: Ref[bool] = Ref(True), sequence: Ref[int] = Ref(0), handledCompose: Ref[int] = Ref(0), inFlight: Ref[bool] = Ref(False), scrollTarget: Ref[any] = Ref(None);
+        alive: Ref[bool] = Ref(True), sequence: Ref[int] = Ref(0), handledCompose: Ref[int] = Ref(0), inFlight: Ref[bool] = Ref(False), scrollTarget: Ref[any] = Ref(None),
+        poll: Ref[any] = Ref(None), reloadAction: Ref[any] = Ref(None), focusAction: Ref[any] = Ref(None);
     async def load -> None {
         if busy { return; }
         request = sequence.current;
@@ -33,9 +36,21 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         } except Exception { if alive.current { failure = "Could not load this conversation. Try Reload."; } }
         finally { if alive.current { loading = False; } }
     }
-    can with entry { alive.current = True; }
+    reloadAction.current = lambda { load(); };
+    can with entry {
+        alive.current = True;
+        focusAction.current = lambda { if not browser.document.hidden { reloadAction.current(); } };
+        poll.current = browser.setInterval(focusAction.current, 15000);
+        browser.addEventListener("focus", focusAction.current);
+        browser.document.addEventListener("visibilitychange", focusAction.current);
+    }
     can with [trip_id, reload] entry { load(); }
-    can with exit { alive.current = False; sequence.current += 1; }
+    can with exit {
+        browser.clearInterval(poll.current);
+        browser.removeEventListener("focus", focusAction.current);
+        browser.document.removeEventListener("visibilitychange", focusAction.current);
+        if onKeyChange { onKeyChange(""); } alive.current = False; sequence.current += 1;
+    }
     can with [compose, loading] entry {
         if compose > handledCompose.current and not loading {
             handledCompose.current = compose;
@@ -47,7 +62,8 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
             }
         }
     }
-    can with [data, busy] entry {
+    messageCount = len(data.get("messages", []));
+    can with [messageCount, busy] entry {
         if scrollTarget.current { scrollTarget.current.scrollIntoView({"block": "nearest", "behavior": "smooth"}); }
     }
     async def submit(message: str, task: str, automatic: bool = False) -> None {
@@ -55,6 +71,8 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         if task not in ["plan", "backup", "replan"] and not (apiKey or data.get("config", {}).get("configured", False)) {
             failure = "Add an OpenAI API key in the assistant to start planning."; return;
         }
+        # Invalidate any in-flight background reload so it cannot overwrite this result.
+        sequence.current += 1;
         inFlight.current = True; busy = True; mode = task; failure = "";
         pendingText = "" if automatic else message.strip(); request = sequence.current;
         if onBusy { onBusy(True, trip_id, task); }
@@ -80,13 +98,21 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
     async def send(e: FormEvent) -> None {
         e.preventDefault(); await submit(text, mode);
     }
+    async def confirmMap(messageId: str, actionIndex: int, choiceIndex: int) -> None {
+        sequence.current += 1; busy = True; failure = "";
+        try {
+            data = await assistant_confirm_map(trip_id=trip_id, message_id=messageId, action_index=actionIndex, choice_index=choiceIndex);
+            onUpdate(data, False);
+        } except Exception as error { failure = assistantError(error); }
+        finally { busy = False; }
+    }
     def useKey(e: FormEvent) -> None {
         e.preventDefault();
         value = keyInput.strip();
         if not value.startswith("sk-") or len(value) > 512 or not browser.RegExp("^sk-[!-~]+$").test(value) {
             keyError = "Enter an OpenAI API key beginning with sk- and without spaces."; return;
         }
-        apiKey = value; keyInput = ""; keyError = ""; failure = "";
+        apiKey = value; if onKeyChange { onKeyChange(value); } keyInput = ""; keyError = ""; failure = "";
     }
     <aside className="chat-sidebar" aria-label="Travel assistant">
         <header className="chat-heading"><div className="ai-monogram" aria-hidden="true">✦</div><div><h2>Travel assistant</h2>
@@ -100,7 +126,7 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                     maxLength={512} placeholder="sk-…" disabled={busy} required={True}
                     onChange={lambda (e: ChangeEvent) { keyInput = e.target.value; keyError = ""; }}/>
                 <div className="ai-key-actions"><button type="submit" className="secondary" disabled={busy or not keyInput.strip()}>Use key</button>
-                    {(<button type="button" className="text-button" disabled={busy} onClick={lambda { apiKey = ""; keyInput = ""; keyError = ""; failure = ""; }}>Clear key</button>) if apiKey else None}</div>
+                    {(<button type="button" className="text-button" disabled={busy} onClick={lambda { apiKey = ""; if onKeyChange { onKeyChange(""); } keyInput = ""; keyError = ""; failure = ""; }}>Clear key</button>) if apiKey else None}</div>
                 {(<p className="chat-error" role="alert">{keyError}</p>) if keyError else None}
             </form>
             <small>Your key stays in this tab's memory and is cleared when you refresh. Usage is billed to your OpenAI account.</small>
@@ -112,9 +138,17 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                 <small>Answers use this trip's details and your recent messages.</small></div>) if len(data.get("messages", [])) == 0 else None}
             {[
                 <article key={message["id"]} className={"chat-message " + message["role"]}>
-                    <p className="message-author">{"YOU" if message["role"] == "user" else "JACPLAN ASSISTANT"}
+                    <p className="message-author">{"YOU" if message["role"] == "user" else "JACROAM ASSISTANT"}
                         <span>{message.get("mode", "ask")}</span></p>
                     <div className="message-text">{message["text"]}</div>
+                    {[<div className="map-saved-flight" key={str(actionIndex)}><strong>{action["title"]}</strong>
+                        {(<p role="status">Location / track saved to this trip.</p>) if action.get("confirmed", False) else
+                            <div>{[<button type="button" className="map-list-row" disabled={busy or externalBusy or message.get("stale", False)} key={str(choiceIndex)}
+                                onClick={lambda { confirmMap(message["id"], actionIndex, choiceIndex); }}><span>
+                                <strong>{choice["label"] if action["kind"] == "place" else choice["callsign"] + " · " + choice["registration"]}</strong>
+                                {(<small>{choice["start"] + " — " + choice["end"] + " · UTC · adsb.aero"}</small>) if action["kind"] == "flight" else None}
+                                <small>Confirm &amp; save to map</small></span></button> for (choiceIndex, choice) in enumerate(action["choices"])]}</div>}
+                    </div> for (actionIndex, action) in enumerate(message.get("map_actions", []))]}
                     {(<p className="chat-caution">The trip changed during this request. Ask for a fresh plan before saving.</p>) if message.get("stale", False) else None}
                     {(<div className="chat-caution"><strong>Draft needs another pass</strong>{[<p key={issue}>{issue}</p> for issue in message.get("issues", [])]}</div>) if len(message.get("issues", [])) > 0 else None}
                     {(<div className="chat-sources" aria-label="Sources">{[
@@ -148,13 +182,22 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                 onChange={lambda (e: ChangeEvent) { flights = e.target.checked; }}/> Search flight listings</label>
             <small>Flight search checks dated web listings; confirm fares and availability with the airline.</small>
             <small>Fast drafts use estimated prices. Turn on web search for current sources; it takes longer.</small>
-            <small>Chat never books or changes anything. You review every draft first.</small>
+            <small>Chat never books or pays. Review plan drafts and track matches; unique place coordinates can be saved automatically.</small>
         </div>
     </aside>
 }
 
 def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview: any, onPrices: any, onPreferences: any, busy: bool, onRun: any) -> JsxElement {
-    has acknowledged: dict[str, bool] = {}, prices: dict[str, str] = {}, priceErrors: dict[str, str] = {};
+    browser: any = window;
+    has acknowledged: dict[str, bool] = {}, prices: dict[str, str] = {}, priceErrors: dict[str, str] = {},
+        tick: float = 0, timer: Ref[any] = Ref(None), clockOffset: Ref[float] = Ref(0);
+    can with [data] entry { if data.get("checked_at", "") { clockOffset.current = browser.Date.parse(data["checked_at"]) - browser.Date.now(); } tick = browser.Date.now(); }
+    can with entry { tick = browser.Date.now(); timer.current = browser.setInterval(lambda { tick = browser.Date.now(); }, 1000); }
+    can with exit { browser.clearInterval(timer.current); }
+    def status(draft: dict[str, any]) -> str {
+        if draft["status"] == "pending" and browser.Date.parse(draft["expires"]) <= tick + clockOffset.current { return "expired"; }
+        return draft["status"];
+    }
     async def savePrices(e: FormEvent, draft: dict[str, any]) -> None {
         e.preventDefault();
         values: dict[str, any] = {};
@@ -169,8 +212,8 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
     def money(value: any, unit: str = "") -> str { return "Unknown" if value is None else (unit or currency) + " " + (value / 100).toFixed(2); }
     def detail(value: any, field: str, unit: str) -> str { return money(value, unit) if field == "budget_cents" else str(value) or "Not set"; }
     def label(mode: str) -> str { return "Trip details" if mode == "edit" else "Trip plan" if mode == "plan" else "Alternative" if mode == "backup" else "Replan"; }
-    pending = [draft for draft in data.get("drafts", []) if draft["status"] == "pending"];
-    history = [draft for draft in data.get("drafts", []) if draft["status"] != "pending"];
+    pending = [draft for draft in data.get("drafts", []) if status(draft) == "pending"];
+    history = [draft for draft in data.get("drafts", []) if status(draft) != "pending"];
     preferences = data.get("preferences", {"pet_friendly": False, "pace": "balanced"});
     <section className="ai-planner" aria-label="AI planning workspace">
         <div className="card ai-planner-intro"><h2>Plan with the assistant</h2>
@@ -208,7 +251,7 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
                     for edit in draft.get("trip_edits", [])
                 ]}</div>) if len(draft.get("trip_edits", [])) > 0 else None}
                 <div className="ai-cost-comparison"><div><small>Current total, with reserve</small><strong>{money(draft["original_total_cents"], draft.get("trip_before", {}).get("currency", currency))}</strong></div><span>→</span><div><small>Proposed total, with reserve</small><strong>{money(draft["total_cents"], draft.get("trip_after", {}).get("currency", currency))}</strong></div></div>
-                <p className="ai-checks">{"Estimated itinerary · review times and costs before booking" if draft.get("relaxed") else "✓ " + draft["checks"].join(" · ")}</p>
+                <p className="ai-checks">{"Estimated itinerary · schedule, date and connection checks run when you save" if draft.get("relaxed") else "✓ " + draft["checks"].join(" · ")}</p>
                 {(<form className="ai-price-form" onSubmit={lambda (e: FormEvent) { savePrices(e, draft); }}>
                     <h4>Some prices are missing</h4>
                     <button type="button" className="secondary" disabled={busy} onClick={lambda { onCompose(draft["mode"], "Complete the exact draft titled " + draft["title"] + " with realistic numeric whole-party cost estimates for every item. Preserve its schedule and stay within my budget. Clearly mark approximate prices. I want a complete plan I can save and then edit."); }}>Ask AI to fill in prices ↗</button>
@@ -227,12 +270,13 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
                     <div key={str(index)} className="ai-change"><span className="change-type">{"EDIT" if change["item_id"] else "ADD"}</span><div>
                         {(<p className="ai-before">{change["before"]["title"] + " · " + change["before"]["date"] + " " + change["before"]["time"] + " · " + money(change["before"]["cost_cents"])}</p>) if change["before"] else None}
                         <h4>{change["after"]["title"]}</h4><p>{change["after"]["date"] + " · " + change["after"]["time"] + " · " + str(change["after"]["duration_minutes"]) + " min"}</p>
-                        {(<p>{change["after"]["journey"]["zone"] + " → " + change["after"]["journey"]["arrival_date"] + " " + change["after"]["journey"]["arrival_time"] + " " + change["after"]["journey"]["end_zone"]}</p>) if change["after"].get("journey") else None}
+                        {(<p>{change["after"]["journey"]["zone"] + " → " + change["after"]["journey"]["arrival_date"] + " " + change["after"]["journey"]["arrival_time"] + " " + change["after"]["journey"]["end_zone"]}</p>) if change["after"].get("journey", {}).get("zone", "") and change["after"].get("journey", {}).get("arrival_date", "") and change["after"].get("journey", {}).get("arrival_time", "") and change["after"].get("journey", {}).get("end_zone", "") else None}
                         {(<FlightCard flight={change["after"]["flight"]}/>) if change["after"].get("flight", {}).get("source_url") else None}
                         <p>{change["after"]["location"]}</p><strong>{"Unknown price" if change["price_unknown"] else money(change["after"]["cost_cents"], draft.get("trip_after", {}).get("currency", currency))}</strong>
                         {(<p className="ai-change-notes">{change["after"]["notes"]}</p>) if change["after"]["notes"] else None}
                     </div></div> for (index, change) in enumerate(draft["changes"])
                 ]}</div>
+                <PolicyReview rows={draft.get("policy_reviews", [])}/>
                 <div className="ai-draft-warning">{[<p key={warning}>{warning}</p> for warning in draft["warnings"]]}{[<p key={issue}>{issue}</p> for issue in draft["issues"]]}</div>
                 <label className="ai-ack"><input type="checkbox" checked={acknowledged.get(draft["id"], False)} disabled={busy or not draft["can_apply"]}
                     onChange={lambda (e: ChangeEvent) { acknowledged = {**acknowledged, draft["id"]: e.target.checked}; }}/>
@@ -245,8 +289,8 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
             </article> for draft in pending
         ]}</div>
         {(<details className="card ai-draft-history"><summary>Previous proposals ({str(len(history))})</summary>{[
-            <div key={draft["id"]}><strong>{draft["title"]}</strong><span>{draft["status"]}</span>
-                {(<small>Ask for a new draft based on your current trip.</small>) if draft["status"] in ["stale", "expired"] else None}</div> for draft in history
+            <div key={draft["id"]}><strong>{draft["title"]}</strong><span>{status(draft)}</span>
+                {(<small>Ask for a new draft based on your current trip.</small>) if status(draft) in ["stale", "expired"] else None}</div> for draft in history
         ]}</details>) if history else None}
     </section>
 }

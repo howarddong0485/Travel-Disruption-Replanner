@@ -15,8 +15,28 @@ import assistant.schedule as schedule;
 import assistant.draft_route as draft_route;
 import assistant.fallback as fallback_planner;
 import tools.flight_details as flight_details;
+import from policy.review { saved_policy_reviews }
 
 def now -> str { return datetime.now(timezone.utc).isoformat(); }
+
+def amount_text(value: any, currency: str) -> str {
+    return "Unknown" if value is None else currency + " " + format(Decimal(value) / 100, ".2f");
+}
+
+def checked_summary(draft: dict[str, any]) -> str {
+    lines = [];
+    for change in draft["changes"] {
+        item = change["after"]; before = change["before"];
+        proposed = item["title"] + " · " + item["date"] + " " + item["time"] + " · " + amount_text(None if change["price_unknown"] else item["cost_cents"], draft["trip_after"]["currency"]);
+        if before {
+            lines.append("Edit: " + before["title"] + " · " + before["date"] + " " + before["time"] + " · " + amount_text(before["cost_cents"], draft["trip_before"]["currency"]) + " → " + proposed);
+        } else { lines.append("Add: " + proposed); }
+    }
+    for edit in draft["trip_edits"] { lines.append("Update " + edit["label"] + "."); }
+    lines.append("Estimated total, including reserve: " + amount_text(draft["original_total_cents"], draft["trip_before"]["currency"]) + " → " + amount_text(draft["total_cents"], draft["trip_after"]["currency"]) + ".");
+    lines.append("Unlisted items stay unchanged. Review the assumptions and checks before saving.");
+    return "\n".join(lines);
+}
 
 def install(conn: any) -> None {
     conn.executescript("""
@@ -198,6 +218,7 @@ def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any
     if not isinstance(plan.get("summary"), str) or len(plan["summary"]) > 5000 { raise ValueError("Invalid plan explanation."); }
     original = {i["id"]: i for i in state["items"]}; nodes = copy.deepcopy(original);
     augmented = copy.deepcopy(state); augmented["trip"] = after_trip; augmented["journey"] = journey;
+    augmented["connection_facts"] = facts;
     changes = []; displayed = []; timing_adjustments = []; omitted_items = []; seen = `set(); missing_price = False;
     for (index, raw) in enumerate(plan["changes"]) {
         if not isinstance(raw, dict) { raise ValueError("Invalid itinerary change."); }
@@ -287,7 +308,8 @@ def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any
         draft_warnings.append("The estimated total exceeds your saved budget; adjust it before booking.");
     }
     labels = {"title": "Trip name", "destination": "Destination", "departure_location": "Departing from", "return_location": "Return to", "start_date": "Departure date", "end_date": "Return date", "currency": "Currency", "budget_cents": "Budget", "notes": "Trip notes"};
-    return {"title": plan["title"].strip(), "summary": plan["summary"], "changes": displayed,
+    displayed.sort(key=lambda (change: dict[str, any]) -> str { return change["after"]["date"] + "T" + change["after"]["time"]; });
+    draft = {"title": plan["title"].strip(), "summary": "", "changes": displayed,
         "journey": journey, "journey_changed": journey_changed, "preserve_budget": preserve_budget, "require_travel": require_travel, "flight_sources": flight_sources or [], "relaxed": relaxed,
         "trip_changes": delta, "trip_before": state["trip"], "trip_after": after_trip,
         "trip_edits": [{"field": key, "label": labels[key], "before": state["trip"][key], "after": value} for (key, value) in delta.items()],
@@ -297,6 +319,10 @@ def check_plan(state: dict[str, any], facts: dict[str, any], plan: dict[str, any
         "issues": ["Some prices are unknown. Ask for a revised estimate before saving."] if missing_price else [],
         "omitted_items": omitted_items, "timing_adjustments": timing_adjustments, "warnings": omitted_items + timing_adjustments + journey_issues + draft_warnings + ["AI prices are estimates, not live quotes. Confirm availability, opening hours, travel times and traveler eligibility before booking."] + (["Changing trip dates or locations requires fresh checks of hours, routes and reservations."] if any(key in delta for key in ["start_date", "end_date", "destination", "departure_location", "return_location"]) else []),
         "can_apply": not missing_price};
+    draft["summary"] = checked_summary(draft);
+    edited = {change["item_id"] for change in displayed if change["item_id"]};
+    draft["policy_reviews"] = [row for row in saved_policy_reviews(state, facts, datetime.now(timezone.utc)) if row["item_id"] in edited];
+    return draft;
 }
 
 def finish(conn: any, trip_id: str, request_id: str, message: str, mode: str,
@@ -346,27 +372,32 @@ def finish(conn: any, trip_id: str, request_id: str, message: str, mode: str,
                 json.dumps(draft), "stale" if stale else "pending", expires));
     }
     payload = {"sources": result.get("sources", []), "research": result.get("research", ""),
-        "mode": mode, "issues": [] if drafts else issues, "stale": stale};
-    answer = result["answer"];
-    if issues and not drafts {
-        answer = "I could not prepare a valid draft after checking the proposed changes. Your saved itinerary is unchanged. See the timing or constraint details below.";
-    } elif drafts and skipped {
-        answer = "Prepared " + str(len(drafts)) + " valid trip option(s) for review. Another option could not be completed and was left out; your saved itinerary is unchanged.";
+        "mode": mode, "issues": [] if drafts else issues, "stale": stale, "map_actions": result.get("map_actions", [])};
+    # A model's prose can disagree with its structured edits. Lead with a short
+    # status, then describe only the validated drafts; caveats stay in their fields.
+    status = "";
+    if drafts and skipped {
+        status = "Prepared " + str(len(drafts)) + " valid trip option(s) for review. Another option could not be completed and was left out.";
     } elif any(draft.get("omitted_items") for draft in drafts) {
-        answer = "Prepared a simplified trip draft with the required travel and feasible arrangements. Some optional meals or activities were left out to preserve travel buffers, saved arrangements and the budget. Review the omissions listed in the draft before saving.";
+        status = "Prepared a simplified trip draft with the required travel and feasible arrangements. Some optional meals or activities were left out to preserve travel buffers, saved arrangements and the budget. Review the omissions listed in the draft before saving.";
     } elif any(draft.get("timing_adjustments") for draft in drafts) {
-        answer = "Prepared a draft with timing adjustments calculated around the journey’s transport and transfer buffers. Review the changes and estimates before saving.";
+        status = "Prepared a draft with timing adjustments calculated around the journey’s transport and transfer buffers. Review the changes and estimates before saving.";
     }
     if drafts and captured["context"].get("search_flights") and captured["context"]["trip"].get("departure_location") {
         sourced = sum(1 for draft in drafts for change in draft["changes"] if change["after"].get("flight"));
-        answer = "Prepared a trip with web-sourced flight details; confirm fares and availability with the airline." if sourced else "Prepared a trip, but no matching dated flight listings were attached; flight schedules and fares remain estimates.";
-        if any(draft.get("timing_adjustments") for draft in drafts) { answer += " Timing adjustments were calculated for the trip."; }
-        if any(draft.get("omitted_items") for draft in drafts) { answer += " This is a simplified trip draft; optional omissions are listed below."; }
-        if skipped { answer += " Prepared " + str(len(drafts)) + " valid trip option(s); another option was left out."; }
+        status = "Prepared a trip with web-sourced flight details; confirm fares and availability with the airline." if sourced else "Prepared a trip, but no matching dated flight listings were attached; flight schedules and fares remain estimates.";
+        if any(draft.get("timing_adjustments") for draft in drafts) { status += " Timing adjustments were calculated for the trip."; }
+        if any(draft.get("omitted_items") for draft in drafts) { status += " This is a simplified trip draft; optional omissions are listed below."; }
+        if skipped { status += " Prepared " + str(len(drafts)) + " valid trip option(s); another option was left out."; }
     }
     if any(draft.get("fallback") for draft in drafts) {
-        answer = "Here’s a basic estimated trip based on your saved details. The AI could not finish its draft, so this gives you a starting itinerary to review and edit.";
+        status = "Here’s a basic estimated trip based on your saved details. The AI could not finish its draft, so this gives you a starting itinerary to review and edit.";
     }
+    answer = result["answer"];
+    if drafts {
+        answer = (status + "\n\n" if status else "") + "\n\n".join(draft["title"] + "\n" + draft["summary"] for draft in drafts) + "\nNo itinerary changes have been saved.";
+        if stale { answer += " Your trip changed while this draft was prepared. Request a fresh draft."; }
+    } elif issues { answer = "I could not prepare a valid draft after checking the proposed changes. Your saved itinerary is unchanged.\n" + "\n".join(issues); }
     messages = [("assistant", answer, payload)];
     if not captured.get("automatic", False) { messages.insert(0, ("user", message, {"mode": mode})); }
     for (role, text, data) in messages {
@@ -394,7 +425,9 @@ def update_prices(conn: any, trip_id: str, draft_id: str, prices: dict[str, any]
         change["after"]["cost_cents"] = int(amount); change["price_unknown"] = False;
         change["after"]["notes"] = (change["after"]["notes"][:2400] + "\nPrice supplied by traveler as an unverified estimate.");
     }
-    raw = {"title": draft["title"], "summary": draft["summary"], "trip_changes": draft.get("trip_changes", {}), "journey": draft.get("journey"), "changes": [
+    # check_plan regenerates the summary from validated changes. Passing back the
+    # stored one would apply the model-input limit to text the app generated.
+    raw = {"title": draft["title"], "summary": "", "trip_changes": draft.get("trip_changes", {}), "journey": draft.get("journey"), "changes": [
         {**change["after"], "item_id": change["item_id"], "cost_cents": None if change["price_unknown"] else change["after"]["cost_cents"]}
         for change in draft["changes"]]};
     checked = check_plan(state, facts, raw, draft.get("preserve_budget", False), False, draft.get("require_travel", False), draft.get("flight_sources", []), draft.get("relaxed", False)); checked["mode"] = draft["mode"];
@@ -415,10 +448,17 @@ def review(conn: any, trip_id: str, draft_id: str, accept: bool, acknowledged: b
         if not acknowledged { raise ValueError("Acknowledge the estimates and unverified travel details before saving."); }
         if row["expires"] <= now() or row["fingerprint"] != fingerprint(state, facts) { raise ValueError("Your trip or this draft changed. Ask for a fresh plan before saving."); }
         draft = json.loads(row["payload"]);
-        raw = {"title": draft["title"], "summary": draft["summary"], "trip_changes": draft.get("trip_changes", {}), "journey": draft.get("journey"), "changes": [
+        raw = {"title": draft["title"], "summary": "", "trip_changes": draft.get("trip_changes", {}), "journey": draft.get("journey"), "changes": [
             {**change["after"], "item_id": change["item_id"], "cost_cents": None if change["price_unknown"] else change["after"]["cost_cents"]}
             for change in draft["changes"]]};
-        checked = check_plan(state, facts, raw, draft.get("preserve_budget", False), False, draft.get("require_travel", False), draft.get("flight_sources", []), draft.get("relaxed", False));
+        # Relaxed drafts skip schedule checks so travelers always get something to
+        # review, but nothing is saved without the full strict validation.
+        try { checked = check_plan(state, facts, raw, draft.get("preserve_budget", False), False, draft.get("require_travel", False), draft.get("flight_sources", []), False); }
+        except ValueError as error {
+            if not draft.get("relaxed", False) { raise; }
+            reason = str(error).strip(); reason += "" if reason.endswith((".", "!", "?")) else ".";
+            raise ValueError("This estimated draft can't be saved yet: " + reason + " Ask the assistant to revise it, or adjust your itinerary and request a new draft.") from None;
+        }
         if not checked["can_apply"] { raise ValueError("Resolve unknown prices before saving this draft."); }
         if checked["trip_changes"] {
             trip = checked["trip_after"];

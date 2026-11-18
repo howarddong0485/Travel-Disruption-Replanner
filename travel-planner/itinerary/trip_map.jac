@@ -52,7 +52,7 @@ def savedLocationApplies(item: any, preview: any) -> bool {
 
 def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bool,
     onReview: any, onPlanB: any, onStop: any, onTimeline: any, onSample: any,
-    journey: any = None, draft: any = None, working: bool = False, day: str = "", onDay: any = None, onDraft: any = None) -> JsxElement {
+    journey: any = None, draft: any = None, working: bool = False, day: str = "", onDay: any = None, onDraft: any = None, apiKey: str = "") -> JsxElement {
     has data: any = {}, loadError: str = "", width: int = 800, height: int = 530,
         hoverRoute: str = "",
         popup: any = None, cityId: str = "", dayFilter: str = "", categoryFilter: str = "",
@@ -477,7 +477,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
                 </div>) if activeKind == "route" and selectedItem is not None and popupTab == "plan" and not editing else None}
                 {(<MapPlaceSearch key={selectedItem.id + selectedItem.location} trip_id={trip.id} item={selectedItem}
                     destination={selectedItem.journey.get("city", "") or (currentCity["point"]["label"] if currentCity else trip.destination)} lookup={data.get("lookups", {}).get(selectedItem.id, {})} onSaved={reload}/>) if activeKind == "place" and selectedItem and not selectedDraft and not selectedProvisional and popupTab == "plan" else None}
-                {(<FlightSearch key={selectedItem.id} trip_id={trip.id} item={selectedItem} apiKey={""} onTrack={showTrack}
+                {(<FlightSearch key={selectedItem.id} trip_id={trip.id} item={selectedItem} apiKey={apiKey} onTrack={showTrack}
                     saved={savedTracks.get(selectedItem.id, {})} onSaved={reload}/>) if activeKind == "route" and selectedItem and not selectedDraft and not selectedProvisional and popupTab == "plan" and not editing and (selectedRoute is None or selectedRoute["route"]["kind"] == "flight") else None}
                 {(<div className="map-popup-stack">
                     {(<p className="map-risk-copy">{str(len(relatedAlerts)) + (" alert on this plan" if len(relatedAlerts) == 1 else " alerts on this plan")}</p>) if len(relatedAlerts) > 0 else None}

@@ -62,7 +62,7 @@ const screenshots = process.env.TRAVEL_MAP_SCREENSHOTS;
     await screenshot('map-overview.png');
     await plane.click();
     const flightPopup = map.getByRole('dialog', {name: flight.title});
-    await flightPopup.getByText('Planned path · approximate').waitFor();
+    await flightPopup.getByText('Route endpoints · actual track pending').waitFor();
     assert.match(await flightPopup.locator('.map-endpoints').innerText(), /Chicago.*Boston/s);
     await flightPopup.getByText('Sample flight delay · 20 minutes').waitFor();
     await screenshot('map-flight.png');

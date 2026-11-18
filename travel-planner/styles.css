@@ -36,7 +36,7 @@
 .dependency-list { padding-left: 20px; }
 .dependency-list li { padding: 8px 0; }
 .dependency-list button { margin-left: 12px; }
-.backup-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.backup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; }
 .backup-chip { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
 .backup-chip small { color: var(--muted); }
 .replan-proposals { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
@@ -682,3 +682,15 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .flight-details small { display: block; opacity: .8; }
 .flight-details a { color: #2761a3; text-decoration: underline; }
 .map-popup .flight-details a { color: #9edcff; }
+/* Policy evidence remains readable in cards and the narrow itinerary sheet. */
+.policy-review { margin: 1rem 0; padding: .85rem; border: 1px solid var(--border, #dce2e7); border-radius: 10px; font-size: .85rem; overflow-wrap: anywhere; }
+.policy-review h4 { margin: 0 0 .5rem; }
+.policy-review > p { color: var(--muted, #56616b); }
+.policy-review-item { padding: .65rem 0; border-top: 1px solid var(--border, #dce2e7); }
+.policy-review-item summary { cursor: pointer; font-weight: 600; }
+.policy-source { margin-top: .75rem; }
+.policy-source blockquote { margin: .5rem 0; padding-left: .75rem; border-left: 3px solid #a7b7c6; white-space: pre-wrap; }
+.policy-source small, .policy-source strong { display: block; margin: .35rem 0; }
+.policy-editor label { display: grid; gap: .3rem; margin: .65rem 0; }
+.policy-editor textarea { min-height: 8rem; width: 100%; box-sizing: border-box; }
+.risk-evidence { margin: .4rem 0 .8rem 1.5rem; font-size: .85rem; overflow-wrap: anywhere; }

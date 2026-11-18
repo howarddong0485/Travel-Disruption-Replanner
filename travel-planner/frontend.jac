@@ -13,7 +13,7 @@ import from itinerary.trip_map { TripMap }
 import from journey.frontend { RouteEditor, journeyLabel, legLabel }
 import from journey.display { itineraryOrder, journeyCity }
 import from server.main { journey_state }
-import from assistant.frontend { ChatSidebar, AIPlanner }
+import from assistant.frontend { ChatSidebar, AIPlanner, assistantError }
 import from server.main { assistant_review, assistant_update_prices, assistant_save_preferences }
 
 def:pub app -> JsxElement {
@@ -31,7 +31,7 @@ def:pub app -> JsxElement {
         reviewRequest: any = None, itineraryPreview: any = None, reviewKey: Ref[int] = Ref(0),
         revisionNotice: str = "", revisionTimer: Ref[int] = Ref(0),
         railView: str = "auto", placeId: str = "", timelinePositions: Ref[any] = Ref({}),
-        mapChat: bool = True, mapRevision: int = 0, itineraryView: str = "map", journeyData: any = {},
+        mapChat: bool = True, mapApiKey: str = "", mapRevision: int = 0, itineraryView: str = "map", journeyData: any = {},
         item_stop: str = "", item_leg: str = "", arrival_date: str = "", arrival_time: str = "", item_duration: str = "60";
 
     activeAITrip.current = selected;
@@ -199,7 +199,7 @@ def:pub app -> JsxElement {
     }
     def receiveAI(data: dict[str, any], generated: bool) -> None {
         if data.get("trip_id") != activeAITrip.current { return; }
-        aiData = data;
+        aiData = data; mapRevision += 1;
         if generated { tab = "planner"; }
     }
     async def routeSaved(data: any) -> None { journeyData = data; await refresh(); }
@@ -210,7 +210,7 @@ def:pub app -> JsxElement {
             if accept { await refresh(); }
             aiReload += 1;
             notice = "Plan saved to your itinerary. No bookings or payments were made." if accept else "Your current itinerary is unchanged.";
-        } except Exception as exc { error = str(exc); aiReload += 1; }
+        } except Exception as exc { error = assistantError(exc); aiReload += 1; }
         finally { busy = False; }
     }
     async def priceAI(draft_id: str, prices: dict[str, any]) -> str {
@@ -220,7 +220,7 @@ def:pub app -> JsxElement {
             aiReload += 1;
             notice = "Prices checked. Review the total, then tick the checkbox to save the plan.";
             return "";
-        } except Exception as exc { error = str(exc); return str(exc); }
+        } except Exception as exc { error = assistantError(exc); return error; }
         finally { busy = False; }
     }
     async def savePreferences(pet: bool, pace: str) -> None {
@@ -403,7 +403,7 @@ def:pub app -> JsxElement {
                     <TripMap key={selected} trip={current} items={itineraryItems} revision={mapRevision}
                         journey={savedRoute} draft={mapDraft if tab in ["planner", "backups", "replan"] else None}
                         working={aiWorking and aiMode in ["plan", "backup", "replan"]} day={day} onDay={lambda (value: str) { day = value; }}
-                        preview={itineraryPreview} disabled={busy or aiWorking or loading}
+                        preview={itineraryPreview} disabled={busy or aiWorking or loading} apiKey={mapApiKey}
                         onReview={openReview} onPlanB={openMapReview} onStop={jumpStop} onTimeline={jumpTimeline} onDraft={jumpDraft}
                         onSample={lambda { createIntegratedDemo("map"); }}/>
                 </div>) if tab in ["planner", "backups", "replan"] or mapVisible else None}
@@ -522,6 +522,7 @@ def:pub app -> JsxElement {
             <button type="button" className="itinerary-chip" aria-label="Dismiss saved revision message" onClick={lambda { revisionNotice = ""; }}>×</button>
         </div>) if revisionNotice else None}
         {(<ChatSidebar key={selected} trip_id={selected} destination={current.destination} onUpdate={receiveAI} reload={aiReload}
-            compose={aiCompose if aiComposeTrip == selected else 0} composeMode={aiMode} composeText={aiText} externalBusy={busy or loading or trip_form} autoRun={aiAutoRun} onBusy={receiveAIBusy} tripTitle={current.title}/>) if current else None}
+            compose={aiCompose if aiComposeTrip == selected else 0} composeMode={aiMode} composeText={aiText} externalBusy={busy or loading or trip_form} autoRun={aiAutoRun} onBusy={receiveAIBusy} tripTitle={current.title}
+            onKeyChange={lambda (value: str) { mapApiKey = value; }}/>) if current else None}
     </div>
 }

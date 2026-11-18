@@ -29,8 +29,11 @@ import from itinerary.map_data { install_map_schema, save_map_route, map_points,
 import from itinerary.map_locations { location_points }
 import assistant.workflow as ai_workflow;
 import assistant.provider as ai_provider;
+import assistant.map_actions as ai_maps;
 import assistant.preferences as ai_preferences;
 import journey.model as journey_model;
+import from policy.agent { PolicyRequest, extract_policy }
+import from schema.common { to_plain, Origin, valid_zone }
 
 def:pub journey_state(trip_id: str) -> dict[str, any] {
     conn = _connect();
@@ -43,6 +46,39 @@ def:pub journey_state(trip_id: str) -> dict[str, any] {
         }
         return {"journey": journey, "version": state["version"], "issues": issues};
     } finally { conn.close(); }
+}
+
+def:pub save_policy_terms(trip_id: str, item_id: str, terms: str, source: str, zone: str,
+    expires_at: str, expected_version: int) -> dict[str, any] {
+    terms = _text(terms, "Cancellation terms", 20000, True);
+    source = _text(source, "Policy source", 1000, True);
+    if not valid_zone(zone) { raise ValueError("Enter an IANA policy timezone, such as America/Chicago."); }
+    now = clock();
+    try { expires = datetime.datetime.fromisoformat(expires_at); }
+    except ValueError { raise ValueError("Enter the policy evidence expiry with a UTC offset.") from None; }
+    if expires.utcoffset() is None or expires <= now { raise ValueError("Policy evidence expiry must be in the future and include a UTC offset."); }
+    conn = _connect();
+    try {
+        state = snapshot(conn, trip_id); facts = read_facts(conn, trip_id);
+        if state["version"] != expected_version { raise ValueError("Your trip changed. Reload before saving these terms."); }
+        context = build_context(state, facts, now);
+        booking = context["bundle"].itinerary.find_node(item_id);
+        if booking is None { raise ValueError("Choose a scheduled item from this trip."); }
+        policy_id = "saved-policy:" + item_id;
+        extracted = extract_policy(PolicyRequest(policy_id, booking, terms, source, now.isoformat(),
+            scope="Traveler-supplied booking terms", tz=zone, origin=Origin.USER), use_llm=False);
+        facts["contract_version"] = CONTEXT_VERSION;
+        facts["items"] = facts.get("items", {});
+        facts["items"][item_id] = {**facts["items"].get(item_id, {}), "policy_id":policy_id, "zone":zone};
+        facts["policies"] = [p for p in facts.get("policies", []) if p["booking_node_id"] != item_id] + [to_plain(extracted.policy)];
+        ids = {e.id for e in extracted.evidence};
+        facts["evidence"] = [e for e in facts.get("evidence", []) if e["id"] not in ids] + [to_plain(e) for e in extracted.evidence];
+        facts["evidence_deadlines"] = {**facts.get("evidence_deadlines", {}), **{key:expires.isoformat() for key in ids}};
+    } finally { conn.close(); }
+    # The existing versioned facts endpoint revalidates under a write lock.
+    result = save_planning_context(trip_id, facts, expected_version);
+    result["policy_notes"] = extracted.notes;
+    return result;
 }
 
 def:pub save_journey(trip_id: str, payload: dict[str, any], expected_version: any) -> dict[str, any] {
@@ -89,6 +125,15 @@ def:pub assistant_chat(trip_id: str, message: str, mode: str, search: any, reque
         except Exception {
             if not simple_draft { raise; }
             result = {"answer": "", "plans": []};
+        }
+        if isinstance(result, dict) and result.get("map_requests") {
+            conn = _connect();
+            try {
+                if ai_workflow.fingerprint(snapshot(conn, trip_id), ai_workflow.planning_facts(conn, trip_id)) != captured["fingerprint"] {
+                    result["answer"] = "Your trip changed. Ask for a fresh map lookup.";
+                } else { result.update(ai_maps.execute(conn, trip_id, result["map_requests"])); }
+            }
+            finally { conn.close(); }
         }
         failures: list[str] = []; valid_plans = []; invalid_plans = [];
         for plan in ([] if simple_draft else result.get("plans", [])) {
@@ -138,7 +183,24 @@ def:pub assistant_update_prices(trip_id: str, draft_id: str, prices: dict[str, a
 
 def:pub assistant_review(trip_id: str, draft_id: str, accept: any, acknowledged: any = False) -> dict[str, any] {
     conn = _connect();
-    try { return ai_workflow.review(conn, trip_id, draft_id, accept, acknowledged); }
+    try {
+        result = ai_workflow.review(conn, trip_id, draft_id, accept, acknowledged);
+        if accept {
+            # The accepted AI itinerary uses exactly the same real-place resolver as chat.
+            located = ai_maps.execute(conn, trip_id, [{"name": "locate_itinerary_places", "arguments": {}}]);
+            conn.execute("INSERT INTO assistant_messages VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), trip_id, "assistant",
+                located["answer"], json.dumps({"mode": "ask", "map_actions": located["map_actions"]}), ai_workflow.now()));
+            conn.commit(); result = ai_workflow.read(conn, trip_id);
+        }
+        return result;
+    }
+    except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
+
+def:pub assistant_confirm_map(trip_id: str, message_id: str, action_index: int, choice_index: int) -> dict[str, any] {
+    conn = _connect();
+    try { ai_maps.confirm(conn, trip_id, message_id, action_index, choice_index); return ai_workflow.read(conn, trip_id); }
     except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
 }
@@ -384,6 +446,7 @@ def:pub save_planning_context(trip_id: str, payload: dict[str, any], expected_ve
         facts = check_payload(payload, state);
         build_context(state, facts, clock());
         conn.execute("DELETE FROM planning_fact_invalidations WHERE trip_id=?", (trip_id,));
+        conn.execute("DELETE FROM planning_route_invalidations WHERE trip_id=?", (trip_id,));
         conn.execute("INSERT INTO planning_contexts VALUES (?,?) ON CONFLICT(trip_id) DO UPDATE SET payload=excluded.payload",
             (trip_id, json.dumps(facts, sort_keys=True, allow_nan=False)));
         result = public_context(build_context(snapshot(conn, trip_id), facts, clock()));

@@ -66,48 +66,61 @@ def delay_impact(bundle: TripBundle, node_id: str, delay_minutes: int, config: R
     late_end = scheduled_end + timedelta(minutes=delay_minutes) if scheduled_end is not None else None;
     impact = DelayImpact(node_id=delayed.id, delay_minutes=delay_minutes,
         new_end_local=_local(late_end, delayed.end_zone()) if late_end is not None else "");
-    ends: dict[str, datetime | None] = {delayed.id: late_end};
-    queue: list[str] = [delayed.id];
+    nodes = {n.id:n for n in bundle.itinerary.nodes};
+    links = [e for e in bundle.itinerary.edges if e.relation != EdgeRelation.ALTERNATIVE and
+        e.source_id in nodes and e.target_id in nodes and _active(nodes[e.source_id]) and _active(nodes[e.target_id])];
+    reachable = {node_id}; queue = [node_id];
     while queue {
-        src = bundle.itinerary.find_node(queue.pop(0));
-        if src is None { continue; }
-        for link in bundle.itinerary.edges {
-            if link.source_id != src.id or link.relation == EdgeRelation.ALTERNATIVE or link.target_id in ends { continue; }
-            dst = bundle.itinerary.find_node(link.target_id);
-            if dst is None or not _active(dst) { continue; }
-            effect = DelayEffect(node_id=dst.id, title=dst.title, status="unresolved", after_id=src.id);
-            start = local_to_instant(dst.start_local, dst.tz);
-            src_end = ends[src.id];
-            ends[dst.id] = None;
-            queue.append(dst.id);
-            if src_end is None {
-                effect.reason = f"{src.title} has no known end time, so the effect on {dst.title} can't be checked.";
-            } elif start is None {
-                effect.reason = f"{dst.title} has no start time, so the effect of the delay can't be checked.";
-            } else {
-                (need, evidence) = _needed(bundle, link, src, cfg);
-                earliest = src_end + timedelta(minutes=need);
-                late = minutes_between(start, earliest);
-                end = local_to_instant(dst.end_local, dst.end_zone());
-                effect.evidence_ids = sorted(set(evidence));
-                if late > 0 {
-                    effect.status = "pushed";
-                    effect.minutes_late = late;
-                    effect.new_start_local = _local(earliest, dst.tz);
-                    effect.reason = (f"{dst.title} can't start until {effect.new_start_local[11:]}, "
-                        + f"{late} min late ({need} min needed after {src.title}).");
-                    # A stay checks in later but keeps its checkout; anything else keeps its length.
-                    ends[dst.id] = end if dst.kind == NodeKind.STAY or end is None else end + timedelta(minutes=late);
-                } else {
-                    effect.status = "on_time";
-                    effect.minutes_late = 0;
-                    effect.spare_minutes = -late;
-                    effect.reason = f"{dst.title} still starts on time with {-late} min to spare.";
-                    ends[dst.id] = end;
-                }
+        source = queue.pop(0);
+        for link in links {
+            if link.source_id == source and link.target_id not in reachable {
+                reachable.add(link.target_id); queue.append(link.target_id);
             }
-            impact.effects.append(effect);
         }
+    }
+    # Resolve every affected predecessor before a shared successor. Unaffected
+    # incoming prerequisites still constrain that successor's earliest start.
+    pending = set(reachable); order: list[str] = [];
+    while pending {
+        ready = sorted(key for key in pending if not any(e.target_id == key and e.source_id in pending for e in links));
+        if not ready { raise ValueError("The affected itinerary has a dependency cycle. Correct its links before checking a delay."); }
+        order.extend(ready); pending.difference_update(ready);
+    }
+    ends: dict[str, datetime | None] = {node_id:late_end};
+    for key in order {
+        if key == node_id { continue; }
+        dst = nodes[key]; start = local_to_instant(dst.start_local, dst.tz);
+        effect = DelayEffect(node_id=dst.id, title=dst.title, status="unresolved");
+        earliest: datetime | None = None; missing: list[str] = []; evidence_ids: list[str] = []; need = 0;
+        for link in links {
+            if link.target_id != key { continue; }
+            src = nodes[link.source_id];
+            src_end = ends.get(src.id) if src.id in reachable else local_to_instant(src.end_local, src.end_zone());
+            if src_end is None { missing.append(src.title); continue; }
+            (minutes, evidence) = _needed(bundle, link, src, cfg); evidence_ids.extend(evidence);
+            boundary = src_end + timedelta(minutes=minutes);
+            if earliest is None or boundary > earliest {
+                earliest = boundary; need = minutes; effect.after_id = src.id;
+            }
+        }
+        ends[key] = None; effect.evidence_ids = sorted(set(evidence_ids));
+        if missing { effect.reason = ", ".join(missing) + " has no known end time, so the effect on " + dst.title + " can't be checked."; }
+        elif start is None { effect.reason = dst.title + " has no start time, so the effect of the delay can't be checked."; }
+        elif earliest is not None {
+            late = minutes_between(start, earliest);
+            end = local_to_instant(dst.end_local, dst.end_zone());
+            if late > 0 {
+                effect.status = "pushed"; effect.minutes_late = late;
+                effect.new_start_local = _local(earliest, dst.tz);
+                effect.reason = dst.title + " can't start until " + effect.new_start_local[11:] + ", " + str(late) + " min late (" + str(need) + " min needed after " + nodes[effect.after_id].title + ").";
+                ends[key] = end if dst.kind == NodeKind.STAY or end is None else end + timedelta(minutes=late);
+            } else {
+                effect.status = "on_time"; effect.minutes_late = 0; effect.spare_minutes = -late;
+                effect.reason = dst.title + " still starts on time with " + str(-late) + " min to spare.";
+                ends[key] = end;
+            }
+        }
+        impact.effects.append(effect);
     }
     if scheduled_end is not None {
         day = _local(scheduled_end, delayed.end_zone())[:10];

@@ -358,7 +358,7 @@ The trip overview includes a compact route illustration. For geographic detail, 
 
 - The map uses Leaflet and OpenStreetMap street tiles. Click a city to see its itinerary places, filter by day or category, and select a card or marker for details. **All cities** restores the trip overview. **Travel assistant** opens the chat alongside the map.
 - Opening **Itinerary → Map** automatically searches missing place coordinates for any saved trip, including a newly accepted AI plan. Unique matches are saved in the shared trip database. **Retry missing locations** retries unresolved searches. For ambiguous results, select a stop, search a more specific address, and confirm a location. Existing saved coordinates and photos are preserved. Nominatim queries are serialized, cached for 24 hours, and identified with the project User-Agent. `MAP_GEOCODER_URL` can switch the server to another compatible search endpoint.
-- Select a flight, enter its flight number and departure date, and choose **Search flight & track**. This uses the app’s configured OpenAI key or a temporary key entered in the map dialog and returns cited web research. The assistant key and conversation remain independent. No FlightAware key is required.
+- Select a flight, enter its flight number and departure date, and choose **Search flight & track**. This uses a temporary key entered in the map dialog, otherwise the OpenAI key entered in the assistant, otherwise the app’s configured key, and returns cited web research. No FlightAware key is required.
 - To display the observed path, enter the verified **ICAO callsign** and the UTC date of its first recorded position under **Recorded ADS-B track**. Select a match after checking its registration and times. Public [adsb.aero](https://adsb.aero/api/docs) coordinates are drawn in separate coverage segments; missing coverage is left disconnected. Airport endpoints alone never produce a claimed actual track. Availability depends on the archive, and **Save & show recorded track** stores the provider record with the trip. It is restored on refresh or in another browser using the same server and database. Changing the flight date, title or location invalidates its saved track.
 
 Internet access is required for street tiles, place searches, web research, and recorded tracks. Public services can return no coverage or rate-limit requests. Search results and flight tracks show their sources; OpenAI search does not produce map coordinates.
@@ -367,4 +367,14 @@ Provider parsing, new-trip geocoding, ambiguity, cross-request persistence, cove
 
 Map availability is independent of the sample/demo buttons and does not depend on a particular browser conversation. Searches use each saved stop’s city (or the trip destination), including cities outside the offline catalog. Ambiguous candidates and failed lookups are persisted for explicit confirmation/retry. All clients of the same instance share its configured SQLite database; separate local installations do not synchronize automatically. The current prototype has no per-user trip ownership layer, and this change does not publish it as a public multiuser service. A public deployment needs authentication, ownership checks, HTTPS, persistent storage and provider capacity appropriate to its traffic.
 
-PR #56 map integration preserves the assistant code, prompts, and plan/backup/replan behavior. Estimated outbound and return arcs remain visible on the street map without a flight listing. Optional map flight research uses the app configuration or a temporary key entered in the map dialog; it does not read or change the assistant’s key or conversation.
+Estimated outbound and return arcs remain visible on the street map without a flight listing.
+
+### Launch review and cancellation evidence
+
+In **Backup plans**, open **Add or update cancellation terms** to save the exact
+rate terms, source, booking/policy timezone and a recheck deadline. The existing
+policy extractor validates clauses against that source; missing inputs remain
+unresolved. Cancellation fee, potential refund, deadline and excerpts appear on
+candidate cards and in itinerary/AI review. Saving a plan does not cancel or book
+with the supplier, and potential refunds are not deducted from the trip total.
+See [Launch-guide status and hosted handoff](../docs/LAUNCH_GUIDE_STATUS.md).

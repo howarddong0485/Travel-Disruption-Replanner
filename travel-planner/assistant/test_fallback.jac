@@ -164,3 +164,22 @@ test "relaxed drafts retain overlapping overbudget items without running strict 
         assert not draft["omitted_items"];
     }
 }
+
+test "relaxed drafts are fully validated when saved and an invalid one leaves the trip unchanged" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": directory + "/trip.db"}) {
+        id = api.save_trip("Japan", "Tokyo", "2027-01-01", "2027-01-07", "USD", "8000",
+            departure_location="Detroit", return_location="Detroit").id;
+        proposal = plan(); proposal["changes"][2]["date"] = "2027-01-02"; proposal["changes"][2]["time"] = "18:00";
+        response = {"answer": "Review this estimated itinerary.", "sources": [], "plans": [proposal]};
+        with patch.object(provider, "generate", return_value=response), patch.object(provider, "repair") as repair {
+            state = api.assistant_chat(id, "Prepare my trip", "plan", False, str(uuid4()), automatic=True, draft_only=True);
+            assert repair.call_count == 0;
+        }
+        draft = state["drafts"][0];
+        assert draft["relaxed"] and draft["can_apply"];
+        check = unittest.TestCase();
+        with check.assertRaisesRegex(ValueError, "can't be saved yet") { api.assistant_review(id, draft["id"], True, True); }
+        assert api.list_items(id) == [];
+        assert api.assistant_state(id)["drafts"][0]["status"] == "pending";
+    }
+}
