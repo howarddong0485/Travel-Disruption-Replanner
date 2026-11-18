@@ -1,5 +1,9 @@
 """Projection, viewport and drawing for the trip map."""
-def:pub cityPoint(name: str) -> any {
+def:pub cityPoint(name: str, known: any = None) -> any {
+    supplied = known.get(name) if known else None;
+    if supplied and supplied.get("lat") is not None and supplied.get("lon") is not None {
+        return {"label": name, "lat": supplied["lat"], "lon": supplied["lon"]};
+    }
     cities = {
         "amsterdam": [52.37, 4.90], "ann arbor": [42.28, -83.74], "atlanta": [33.75, -84.39],
         "bangkok": [13.76, 100.50], "barcelona": [41.39, 2.17], "beijing": [39.90, 116.41],
@@ -16,6 +20,7 @@ def:pub cityPoint(name: str) -> any {
         "washington": [38.91, -77.04]
     };
     city = name.split(",")[0].strip();
+    if city.lower() == "nyc" { city = "New York City"; }
     coords = cities.get(city.lower());
     return {"label": city, "lat": coords[0], "lon": coords[1]} if coords is not None else None;
 }
@@ -26,6 +31,9 @@ def wrapped(lon: float, center: float) -> float {
 
 def:pub mapViewport(points: any, width: float, height: float, zoom: float, panX: float, panY: float) -> any {
     lon = 0.0; lat = 15.0; ratio = 1.0;
+    top = min(172.0, height * 0.36); bottom = max(top + 120.0, height - 84.0);
+    plotWidth = max(150.0, width - (96.0 if width < 560 else 148.0));
+    plotHeight = max(120.0, bottom - top);
     scale = min(width / 365.0, height / 175.0);
     if len(points) > 0 {
         first = points[0]["lon"];
@@ -36,11 +44,12 @@ def:pub mapViewport(points: any, width: float, height: float, zoom: float, panX:
         lat = (south + north) / 2.0;
         browser: any = window;
         ratio = max(0.28, browser.Math.cos(lat * browser.Math.PI / 180.0));
-        scale = min(28.0, width * 0.70 / max(16.0, (east - west) * ratio),
-            height * 0.53 / max(10.0, north - south));
+        # Leave space around the endpoints for labels and around the line for its arc.
+        scale = min(30.0, plotWidth / (max(8.0, (east - west) * ratio) * 1.35),
+            plotHeight / (max(6.0, north - south) * 1.35));
     }
     return {"lon": lon, "lat": lat, "scale": scale * zoom, "ratio": ratio,
-        "x": width / 2.0 + panX, "y": height * 0.53 + panY};
+        "x": width / 2.0 + panX, "y": (top + bottom) / 2.0 + panY};
 }
 
 def:pub screenPoint(point: any, view: any) -> any {
@@ -50,13 +59,18 @@ def:pub screenPoint(point: any, view: any) -> any {
 
 def:pub screenRoute(route: any, view: any) -> any {
     start = screenPoint(route["from"], view); end = screenPoint(route["to"], view);
-    end["x"] = start["x"] + wrapped(route["to"]["lon"], route["from"]["lon"]) * view["scale"] * view["ratio"];
     browser: any = window;
-    distance = browser.Math.hypot(end["x"] - start["x"], end["y"] - start["y"]);
-    lift = min(105.0, distance * 0.24) if route["kind"] == "flight" else 0.0;
+    dx = end["x"] - start["x"]; dy = end["y"] - start["y"];
+    distance = browser.Math.hypot(dx, dy);
+    lift = min(82.0, max(22.0, distance * 0.18)) if route["kind"] == "flight" and distance > 1 else 0.0;
+    # A perpendicular bend naturally puts each travel direction on its own side,
+    # including north/south legs. Project both endpoints in the same wrapped view.
+    normalX = dy / max(1.0, distance); normalY = -dx / max(1.0, distance);
     middle = {"x": (start["x"] + end["x"]) / 2.0, "y": (start["y"] + end["y"]) / 2.0};
-    return {"start": start, "end": end, "control": {"x": middle["x"], "y": middle["y"] - lift * 2.0},
-        "marker": {"x": middle["x"], "y": middle["y"] - lift}};
+    return {"start": start, "end": end,
+        "control": {"x": middle["x"] + normalX * lift * 2.0, "y": middle["y"] + normalY * lift * 2.0},
+        "marker": {"x": middle["x"] + normalX * lift, "y": middle["y"] + normalY * lift},
+        "angle": browser.Math.atan2(dy, dx) * 180.0 / browser.Math.PI};
 }
 
 def:pub mapColor(tone: str) -> str {
@@ -70,7 +84,7 @@ def:pub drawTripMap(canvas: any, land: any, view: any, routes: any, width: int, 
     canvas.width = int(width * density); canvas.height = int(height * density);
     ctx = canvas.getContext("2d"); ctx.scale(density, density);
     gradient = ctx.createRadialGradient(width * 0.55, height * 0.43, 12, width * 0.55, height * 0.43, max(width, height) * 0.72);
-    gradient.addColorStop(0, "#153249"); gradient.addColorStop(1, "#0b1726");
+    gradient.addColorStop(0, "#132f44"); gradient.addColorStop(1, "#091928");
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
     scaleX = view["scale"] * view["ratio"]; scaleY = view["scale"];
     ctx.beginPath();
@@ -82,7 +96,7 @@ def:pub drawTripMap(canvas: any, land: any, view: any, routes: any, width: int, 
         y = view["y"] - (lat - view["lat"]) * scaleY;
         ctx.moveTo(0, y); ctx.lineTo(width, y);
     }
-    ctx.lineWidth = 1; ctx.strokeStyle = "#75bad018"; ctx.stroke();
+    ctx.lineWidth = 1; ctx.strokeStyle = "#75bad012"; ctx.stroke();
     ctx.beginPath();
     for shift in [-360, 0, 360] {
         offset = view["x"] + (shift - view["lon"]) * scaleX;
@@ -95,15 +109,32 @@ def:pub drawTripMap(canvas: any, land: any, view: any, routes: any, width: int, 
             ctx.closePath();
         }
     }
-    ctx.fillStyle = "#28485a"; ctx.fill("evenodd"); ctx.strokeStyle = "#53788a"; ctx.lineWidth = 0.85; ctx.stroke();
+    ctx.fillStyle = "#203c4e"; ctx.fill("evenodd"); ctx.strokeStyle = "#3d5c70"; ctx.lineWidth = 0.75; ctx.stroke();
     for record in routes {
         curve = record["curve"]; start = curve["start"]; end = curve["end"]; control = curve["control"];
         ctx.beginPath(); ctx.moveTo(start["x"], start["y"]); ctx.quadraticCurveTo(control["x"], control["y"], end["x"], end["y"]);
         active = record["id"] == selected;
-        ctx.strokeStyle = mapColor(record["tone"]);
-        ctx.lineWidth = 11 if active else 7; ctx.globalAlpha = 0.19; ctx.stroke();
-        ctx.globalAlpha = 1; ctx.lineWidth = 3.4 if active else 2.4;
-        ctx.setLineDash([8, 5] if record["tone"] == "disruption" or record["tone"] == "check" else []);
+        color = mapColor(record["tone"]) if record["tone"] in ["disruption", "check", "preview"] else
+            "#bea6ff" if record.get("direction") == "Return" else "#7de3f4" if record["route"]["kind"] == "flight" else "#9bb9ca";
+        ctx.lineCap = "round"; ctx.strokeStyle = color;
+        ctx.lineWidth = 10 if active else 6; ctx.globalAlpha = 0.18 if active else 0.09; ctx.stroke();
+        ctx.globalAlpha = 1; ctx.lineWidth = 3.2 if active else 2.2;
+        dashed = record.get("estimated", False) or (record["route"]["kind"] != "flight" and record["tone"] in ["disruption", "check"]);
+        ctx.setLineDash([6, 5] if dashed else []);
         ctx.stroke(); ctx.setLineDash([]);
+        if record["route"]["kind"] == "flight" {
+            t = 0.70; other = 1.0 - t;
+            arrowX = other * other * start["x"] + 2.0 * other * t * control["x"] + t * t * end["x"];
+            arrowY = other * other * start["y"] + 2.0 * other * t * control["y"] + t * t * end["y"];
+            tangentX = other * (control["x"] - start["x"]) + t * (end["x"] - control["x"]);
+            tangentY = other * (control["y"] - start["y"]) + t * (end["y"] - control["y"]);
+            ctx.save(); ctx.translate(arrowX, arrowY); ctx.rotate(browser.Math.atan2(tangentY, tangentX));
+            ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -3.8); ctx.lineTo(-1.8, 0); ctx.lineTo(-4, 3.8); ctx.closePath();
+            ctx.fillStyle = color; ctx.strokeStyle = "#102536"; ctx.lineWidth = 1.1; ctx.stroke(); ctx.fill(); ctx.restore();
+            for endpoint in [start, end] {
+                ctx.beginPath(); ctx.arc(endpoint["x"], endpoint["y"], 2.6, 0, browser.Math.PI * 2.0);
+                ctx.fillStyle = color; ctx.fill();
+            }
+        }
     }
 }

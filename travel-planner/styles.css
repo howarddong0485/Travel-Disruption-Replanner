@@ -677,6 +677,11 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 }
 @media (max-width: 650px) { .route-editor .form-pair { grid-template-columns: minmax(0,1fr); } }
 
+.flight-details { display: grid; gap: 6px; padding: 12px; border: 1px solid #b8cce0; border-radius: 10px; margin: 8px 0; overflow-wrap: anywhere; }
+.flight-details p { margin: 0; }
+.flight-details small { display: block; opacity: .8; }
+.flight-details a { color: #2761a3; text-decoration: underline; }
+.map-popup .flight-details a { color: #9edcff; }
 /* Policy evidence remains readable in cards and the narrow itinerary sheet. */
 .policy-review { margin: 1rem 0; padding: .85rem; border: 1px solid var(--border, #dce2e7); border-radius: 10px; font-size: .85rem; overflow-wrap: anywhere; }
 .policy-review h4 { margin: 0 0 .5rem; }

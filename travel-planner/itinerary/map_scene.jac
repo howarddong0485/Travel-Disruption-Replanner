@@ -43,6 +43,13 @@ def:pub mapScene(destination: str, items: any, data: any, preview: any) -> any {
         }
     }
     for item in items {
+        flight = data.get("flights", {}).get(item.id);
+        if flight and flight.get("departure_point") and flight.get("arrival_point") {
+            routes[item.id] = {"revision": routes.get(item.id, {}).get("revision", 0), "route": {
+                "from": flight["departure_point"], "to": flight["arrival_point"], "kind": "flight"}};
+        }
+    }
+    for item in items {
         route = routes.get(item.id, {}).get("route");
         if route is not None {
             start = cityId(route["from"]); end = cityId(route["to"]);

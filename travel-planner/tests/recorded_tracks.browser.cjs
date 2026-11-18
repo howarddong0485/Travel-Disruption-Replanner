@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),{chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const appUrl=process.env.TRAVEL_APP_URL || 'http://127.0.0.1:8379';
+const apiUrl=process.env.TRAVEL_API_URL || appUrl+'/api/server';
+(async()=>{const browser=await chromium.launch({channel:'chrome'}),page=await browser.newPage({viewport:{width:1600,height:1000}});let trip;
+const api=async(name,data)=>{const r=await page.request.post(apiUrl+'/function/'+name,{data});const p=await r.json();assert(p.ok,JSON.stringify(p));return p.data.result;};
+try{trip=await api('save_trip',{title:'Recorded track UI '+Date.now(),destination:'New York',start_date:'2027-01-01',end_date:'2027-01-03',budget:'5000'});
+const flight=await api('save_item',{trip_id:trip.id,title:'Synthetic recorded flight',category:'transport',date:'2027-01-01',time:'10:00',location:'DTW to LGA'});
+const track={id:'test-record',callsign:'TST123',registration:'TEST',start:'2027-01-01T15:00:00Z',end:'2027-01-01T17:00:00Z',checked_at:'2027-01-02',source:'https://adsb.aero',segments:[[[-83.35,42.21],[-80,42]],[[-76,41],[-73.87,40.77]]],timestamps:[[1,2],[3,4]]};
+await page.route('**/function/load_trip_map',async r=>{const response=await r.fetch();const p=await response.json();if(r.request().postDataJSON().trip_id===trip.id)p.data.result.tracks={[flight.id]:{revision:1,track}};await r.fulfill({response,json:p});});
+await page.route('**/function/assistant_chat',()=>{throw Error('No AI calls allowed');});
+await page.goto(appUrl);await page.locator('.trip-card').filter({hasText:trip.title}).click();await page.locator('.leaflet-overlay-pane path').first().waitFor();
+await page.locator('.map-stop-card').filter({hasText:flight.title}).click();await page.getByRole('button',{name:'Show saved track',exact:true}).click();await page.locator('.map-recorded-track').waitFor();assert.match(await page.locator('.map-recorded-track').innerText(),/TST123/);assert.equal(await page.locator('.leaflet-overlay-pane path').count(),2);
+await page.getByRole('button',{name:'Back to itinerary',exact:true}).click();await page.locator('.map-recorded-track').waitFor({state:'hidden'});console.log('Passed: recorded-track overlay keeps coverage segments separate and restores the itinerary.');
+}finally{if(trip)await api('delete_trip',{trip_id:trip.id});await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

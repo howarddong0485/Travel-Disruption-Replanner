@@ -1,6 +1,8 @@
 """Trip records and travel items persisted in an independent SQLite database."""
 import os;
 import tools.map_providers as map_providers;
+import tools.flight_details as flight_details;
+import from itinerary.map_locations { location_points }
 import itinerary.map_enrichment as map_enrichment;
 import re;
 import uuid;
@@ -380,7 +382,7 @@ def:pub save_place_details(trip_id: str, item_id: str, location: str,
     finally { conn.close(); }
 }
 
-def:pub load_trip_map(trip_id: str) -> dict[str, any] {
+def:pub load_trip_map(trip_id: str, preview_journey: any = None) -> dict[str, any] {
     conn = _connect();
     try {
         conn.execute("BEGIN");
@@ -389,6 +391,8 @@ def:pub load_trip_map(trip_id: str) -> dict[str, any] {
         context = build_context(state, read_facts(conn, trip_id), now);
         (pins, routes) = map_points(conn, trip_id);
         return {"trip_version": state["version"], "pins": pins, "routes": routes, "journey": state["journey"],
+            "location_points": {**location_points(state["trip"], state["journey"]), **location_points(state["trip"], preview_journey)},
+            "flights": flight_details.read_for_items(conn, state["items"]),
             "lookups": map_enrichment.lookup_states(conn, trip_id), "tracks": map_enrichment.flight_tracks(conn, trip_id),
             "dependencies": state["dependencies"], "risks": [risk for risk in context["risks"] if risk["node_ids"]],
             "plans": current_map_plans(conn, trip_id, state["version"], VALIDATION_VERSION, now)};

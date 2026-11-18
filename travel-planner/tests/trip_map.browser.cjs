@@ -140,7 +140,7 @@ const screenshots = process.env.TRAVEL_MAP_SCREENSHOTS;
     await edit.getByRole('button', {name: 'Save route', exact: true}).click();
     await map.getByRole('button', {name: 'Flight route: Flight to Seattle'}).waitFor();
     await map.getByRole('button', {name: 'Flight route: Flight to Seattle'}).click();
-    await edit.getByText('Route endpoints · actual track pending').waitFor();
+    await edit.getByText('Planned path · approximate').waitFor();
     const state = await api('load_trip_map', {trip_id: regular.id});
     assert.equal(state.routes[item.id].route.from.label, 'Chicago');
     assert.equal(state.trip_version, version);

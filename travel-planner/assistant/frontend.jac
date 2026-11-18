@@ -1,5 +1,6 @@
 """Persistent trip conversation sidebar and the unified AI plan review workspace."""
 import from browser_ids { request_id }
+import from itinerary.flight_card { FlightCard }
 import from server.main { assistant_state, assistant_chat, assistant_review, assistant_confirm_map }
 import from journey.frontend { journeyLabel }
 import from itinerary.policy_review { PolicyReview }
@@ -244,6 +245,7 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
                         {(<p className="ai-before">{change["before"]["title"] + " · " + change["before"]["date"] + " " + change["before"]["time"] + " · " + money(change["before"]["cost_cents"])}</p>) if change["before"] else None}
                         <h4>{change["after"]["title"]}</h4><p>{change["after"]["date"] + " · " + change["after"]["time"] + " · " + str(change["after"]["duration_minutes"]) + " min"}</p>
                         {(<p>{change["after"]["journey"]["zone"] + " → " + change["after"]["journey"]["arrival_date"] + " " + change["after"]["journey"]["arrival_time"] + " " + change["after"]["journey"]["end_zone"]}</p>) if change["after"].get("journey", {}).get("zone", "") and change["after"].get("journey", {}).get("arrival_date", "") and change["after"].get("journey", {}).get("arrival_time", "") and change["after"].get("journey", {}).get("end_zone", "") else None}
+                        {(<FlightCard flight={change["after"]["flight"]}/>) if change["after"].get("flight", {}).get("source_url") else None}
                         <p>{change["after"]["location"]}</p><strong>{"Unknown price" if change["price_unknown"] else money(change["after"]["cost_cents"], draft.get("trip_after", {}).get("currency", currency))}</strong>
                         {(<p className="ai-change-notes">{change["after"]["notes"]}</p>) if change["after"]["notes"] else None}
                     </div></div> for (index, change) in enumerate(draft["changes"])
