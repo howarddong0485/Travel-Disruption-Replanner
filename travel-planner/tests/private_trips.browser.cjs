@@ -34,6 +34,10 @@ const api = process.env.TRAVEL_API_URL || app + '/api/server';
     });
     const [key, otherKey] = await Promise.all([openPage(page), openPage(other)]);
     assert(key && otherKey && key !== otherKey);
+    for (const fresh of [page, other]) {
+      await fresh.getByRole('heading', {name:'Create your first trip'}).waitFor();
+      assert.equal(await fresh.getByRole('alert').count(), 0, 'a new workspace should open cleanly');
+    }
     const suffix = Date.now();
     for (const destination of ['Boston', 'Seattle']) {
       const trip = await call(page, key, 'save_trip', {title: destination + ' ' + suffix,

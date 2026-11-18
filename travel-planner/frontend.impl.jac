@@ -43,7 +43,7 @@ impl app.refresh -> None {
     try {
         fresh_trips = await list_trips(workspace_key=await workspaceKey());
         if target not in [trip.id for trip in fresh_trips] {
-            target = fresh_trips[0].id if not target and fresh_trips else "";
+            target = fresh_trips[0].id if not target and len(fresh_trips) > 0 else "";
         }
         fresh_items: list[ItemView] = [];
         fresh_journey: any = {};
@@ -66,7 +66,7 @@ impl app.activateTrip(trip_id: str) -> None {
         tripViews.current[selected] = {"items": items, "journey": journeyData, "ai": aiData, "day": day, "chat": mapChat};
     }
     views: any = tripViews.current; prior: any = views.get(trip_id, {});
-    resetReview(); selected = trip_id; loadedTrip = trip_id if prior else "";
+    resetReview(); selected = trip_id; loadedTrip = trip_id if trip_id in views else "";
     items = prior.get("items", []); journeyData = prior.get("journey", {}); day = prior.get("day", "");
     aiData = prior.get("ai", {}); aiCompose = 0; aiText = ""; aiMode = "ask"; mapApiKey = ""; mapChat = prior.get("chat", False);
     revisionNotice = ""; notice = ""; error = ""; railView = "auto"; placeId = "";
