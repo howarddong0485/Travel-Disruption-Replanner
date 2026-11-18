@@ -213,7 +213,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     cityItems = [item for item in visibleItems if currentCity is None or item.id in currentCity["items"]];
     filteredItems = [item for item in cityItems if (not dayFilter or item.date == dayFilter) and (not categoryFilter or item.category == categoryFilter)];
     can with [data, width, height, draft, journey] entry {
-        if not street.current or not data.get("trip_version") or not pointList { return; }
+        if not street.current or not data.get("trip_version") or len(pointList) == 0 { return; }
         shape = browser.JSON.stringify([[p["lat"], p["lon"]] for p in pointList]);
         prior = savedView.current;
         if prior and prior.get("geometry") == shape {
