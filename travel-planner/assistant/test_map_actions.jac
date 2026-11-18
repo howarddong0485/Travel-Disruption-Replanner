@@ -62,5 +62,9 @@ test "accepting an AI itinerary resolves its new venue without opening the map" 
         }
         assert len(api.load_trip_map(trip.id)["pins"]) == 1;
         assert "1 places located" in saved["messages"][-1]["text"];
+        with patch.object(maps, "search_places", side_effect=AssertionError("replayed accept must not geocode")) {
+            replay = api.assistant_review(trip.id, state["drafts"][0]["id"], True, True);
+        }
+        assert len(replay["messages"]) == len(saved["messages"]);
     }
 }

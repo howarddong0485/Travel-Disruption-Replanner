@@ -184,8 +184,11 @@ def:pub assistant_update_prices(trip_id: str, draft_id: str, prices: dict[str, a
 def:pub assistant_review(trip_id: str, draft_id: str, accept: any, acknowledged: any = False) -> dict[str, any] {
     conn = _connect();
     try {
+        prior = conn.execute("SELECT status FROM assistant_drafts WHERE id=? AND trip_id=?", (draft_id, trip_id)).fetchone();
         result = ai_workflow.review(conn, trip_id, draft_id, accept, acknowledged);
-        if accept {
+        # A repeated accept (double-click or retry) is a no-op in review(); do not
+        # geocode again or post a duplicate map message for it.
+        if accept is True and prior is not None and prior["status"] == "pending" {
             # The accepted AI itinerary uses exactly the same real-place resolver as chat.
             located = ai_maps.execute(conn, trip_id, [{"name": "locate_itinerary_places", "arguments": {}}]);
             conn.execute("INSERT INTO assistant_messages VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), trip_id, "assistant",
