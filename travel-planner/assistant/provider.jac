@@ -229,7 +229,7 @@ def generate(context: dict[str, any], history: list[dict[str, any]], message: st
         + "All dates must fit the trip. Include realistic transfer gaps; avoid overlap with unchanged items and respect dependencies/latest_start. "
         + "Every item MUST have an integer cost_cents: a reasonable whole-party planning estimate in the trip currency's hundredths, including likely fees. "
         + "If no verified quote is available, provide a realistic approximate allowance and label it as an estimate in notes. Reserve zero for genuinely free items; never use zero for unknown paid services. "
-        + "For initial planning, cover the trip's days with a practical schedule, meals and transport allowances where needed, while keeping existing arrangements. "
+        + "For initial planning, cover the trip's days with a practical schedule, meals and actual transport segments where needed, while keeping existing arrangements. Do not represent all transfers with one timed transport allowance: place each necessary journey between the relevant stops, with its duration and estimated cost. Distinguish estimates from verified routing. "
         + "Clearly label assumed party size, approximate prices and unverified opening hours, transfers, eligibility and availability. Do not claim estimates are verified. "
         + "Keep within the whole-trip budget, including existing items and reserve. At most 40 changes per draft and 3 drafts. "
         + "Keep summaries brief and item notes to the essential assumptions, fees and policy caveats. Do not repeat the complete itinerary in the answer. "

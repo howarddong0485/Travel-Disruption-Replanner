@@ -67,3 +67,16 @@ test "unknown items and negative delays are rejected" {
     with testraises(ValueError) { delay_impact(load_bundle(FIXTURE), "ghost", 30); }
     with testraises(ValueError) { delay_impact(load_bundle(FIXTURE), "flight-01", -5); }
 }
+
+test "a shared successor waits for its latest predecessor regardless of edge order" {
+    data = fixture_data();
+    direct = {"source_id":"flight-01", "target_id":"hotel-01", "relation":"depends_on", "min_transition_minutes":0};
+    data["itinerary"]["edges"].insert(0, direct);
+    first = by_id(delay_impact(bundle_from_dict(data), "flight-01", 180))["hotel-01"];
+    data["itinerary"]["edges"].reverse();
+    second = by_id(delay_impact(bundle_from_dict(data), "flight-01", 180))["hotel-01"];
+    assert first.status == "pushed" and first.new_start_local == "2026-10-30T15:30";
+    assert first.after_id == "car-01" and second.after_id == "car-01";
+    assert first.new_start_local == second.new_start_local and first.minutes_late == second.minutes_late;
+    assert first.status == second.status and first.evidence_ids == second.evidence_ids;
+}

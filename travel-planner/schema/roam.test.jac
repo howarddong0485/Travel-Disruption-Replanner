@@ -12,7 +12,7 @@ def item(category: str, extra: dict[str, any] = {}) -> dict[str, any] {
 test "Roam items map to nodes, keeping unknowns unknown" {
     items = [
         item("stay", {"date": "2026-11-01", "time": "15:00", "cost_cents": 90000, "done": True, "paid": True}),
-        item("activity", {"date": "2026-11-02", "cost_cents": 1250}),
+        item("activity", {"date": "2026-11-02", "cost_cents": 125000}),
         item("packing"),
         item("expense", {"cost_cents": 6500})
     ];
@@ -22,7 +22,7 @@ test "Roam items map to nodes, keeping unknowns unknown" {
     stay = g.nodes[0];
     assert stay.kind == NodeKind.STAY and stay.booking_status == BookingStatus.BOOKED;
     assert stay.start_local == "2026-11-01T15:00" and stay.end_local == "";
-    assert stay.paid_minor == 90000 and stay.currency == "JPY" and stay.area == "Kyoto, Japan";
+    assert stay.paid_minor == 900 and stay.currency == "JPY" and stay.area == "Kyoto, Japan";
     activity = g.nodes[1];
     assert activity.start_local == "" and activity.paid_minor == 0 and activity.price_minor == 1250;
 }
@@ -32,4 +32,9 @@ test "a done activity is completed and a zero cost is unknown" {
     assert g.nodes[0].booking_status == BookingStatus.COMPLETED;
     assert g.nodes[0].price_minor is None and g.nodes[0].paid_minor is None;
     assert g.nodes[0].tz == "";
+}
+
+test "a fractional yen is unknown rather than silently rounded or inflated" {
+    g = graph_from_roam(TRIP, [item("activity", {"cost_cents":1250, "paid":True})]);
+    assert g.nodes[0].price_minor is None and g.nodes[0].paid_minor is None;
 }

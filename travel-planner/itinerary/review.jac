@@ -2,6 +2,7 @@
 import from server.main { replan_state, planning_state, report_itinerary_change, generate_backup_plans, review_backup_plan }
 import from itinerary.presentation { affectedItemIds, planTitle, shiftLabel, differenceLabel }
 import from itinerary.evidence { EvidencePopover, planSources }
+import from itinerary.policy_review { PolicyReview }
 
 def:pub itinerarySchedule(date: str, time: str) -> str {
     return date + (" · " + time if time else " · Flexible time") if date else "Date to be decided";
@@ -320,6 +321,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
                         {(<small>Ready for review</small>) if option["selectable"] else None}
                     </span>
                     </label>
+                    <PolicyReview rows={option["comparison"].get("policy_reviews", [])}/>
                     {(<EvidencePopover id={"evidence-" + option["id"]}
                         checks={[check for check in option["validation"]["checks"] if check["status"] == "unknown"]}
                         sources={planSources(option, facts)} onFacts={onFacts}/>) if not option["selectable"] else None}

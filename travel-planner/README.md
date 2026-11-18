@@ -335,3 +335,13 @@ Internet access is required for street tiles, place searches, web research, and 
 Provider parsing, new-trip geocoding, ambiguity, cross-request persistence, coverage gaps, and stale edits can be checked with `jac test itinerary/test_map_enrichment.jac tools/test_map_providers.jac`.
 
 Map availability is independent of the sample/demo buttons and does not depend on a particular browser conversation. Searches use each saved stop’s city (or the trip destination), including cities outside the offline catalog. Ambiguous candidates and failed lookups are persisted for explicit confirmation/retry. All clients of the same instance share its configured SQLite database; separate local installations do not synchronize automatically. The current prototype has no per-user trip ownership layer, and this change does not publish it as a public multiuser service. A public deployment needs authentication, ownership checks, HTTPS, persistent storage and provider capacity appropriate to its traffic.
+
+### Launch review and cancellation evidence
+
+In **Backup plans**, open **Add or update cancellation terms** to save the exact
+rate terms, source, booking/policy timezone and a recheck deadline. The existing
+policy extractor validates clauses against that source; missing inputs remain
+unresolved. Cancellation fee, potential refund, deadline and excerpts appear on
+candidate cards and in itinerary/AI review. Saving a plan does not cancel or book
+with the supplier, and potential refunds are not deducted from the trip total.
+See [Launch-guide status and hosted handoff](../docs/LAUNCH_GUIDE_STATUS.md).

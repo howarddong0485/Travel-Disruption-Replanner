@@ -20,6 +20,7 @@ obj ComparisonResult {
         eligible_cash_refund_minor: int | None, eligible_credit_minor: int | None,
         confirmed_refund_minor: int, refund_loss_minor: int | None,
         time_changes: list[dict[str, any]], changed_item_count: int, unknowns: list[str], notice: str;
+    has policy_reviews: list[dict[str, any]] = [];
 }
 
 obj AlternativePlan {

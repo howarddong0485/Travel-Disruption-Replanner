@@ -1,5 +1,7 @@
 """Risk selection, traveler facts, plan comparison and explicit P4 review in Roam."""
 import from server.main { ItemView, planning_state, save_planning_context, generate_backup_plans, review_backup_plan }
+import from itinerary.policy_review { PolicyReview }
+import from itinerary.policy_editor { PolicyEditor }
 
 def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = None, onApplied: any = None) -> JsxElement {
     browser: any = window;
@@ -283,6 +285,9 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                     <button type="submit" className="secondary" disabled={busy}>Save requirements and facts</button></fieldset>
                 </form>
             </details>
+            <PolicyReview rows={state.get("policy_reviews", [])}/>
+            <PolicyEditor trip_id={trip_id} items={items} version={state["trip_version"]} disabled={busy}
+                onSaved={lambda (fresh: any) { clear(); fill(fresh); notifyTabs(); }}/>
             <div className="validation-controls">
                 <label>What should the plans address?<select value={reason} disabled={busy} onChange={lambda (e: ChangeEvent) { reason = e.target.value; clear(); }}>
                     <option value="detected">Detected risks</option>{[<option key={value} value={value}>{label(value)}</option> for value in ["weather", "timing", "closure", "cancellation", "long_drive", "opening_hours", "booking_terms", "traveler_change", "budget_change", "inventory_change"]]}</select></label>
@@ -296,6 +301,14 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
             {(<div className="planning-risk-list">{[<label className="replan-check" key={risk["id"]}><input type="checkbox" checked={risk["id"] in selectedRisks} disabled={busy}
                 onChange={lambda (e: ChangeEvent) { selectedRisks = selectedRisks + [risk["id"]] if e.target.checked else [key for key in selectedRisks if key != risk["id"]]; clear(); }}/>
                 {risk["summary"] + (" · Not confirmed" if risk["status"] != "flagged" else "")}</label> for risk in state["risks"]]}
+                {[<details className="risk-evidence" key={risk["id"]}><summary>{"Evidence and next step: " + risk["summary"]}</summary>
+                    <p>{risk.get("mitigation", "Confirm the reported condition before changing your trip.")}</p>
+                    <p>{"Unresolved: do not treat this risk as checked." if risk["status"] == "unresolved" else "Recorded risk; review the evidence validity below."}</p>
+                    {[<div key={source["id"]}><blockquote>{source["excerpt"]}</blockquote><p>{source["source_ref"]}</p>
+                        <small>{"Checked " + source["retrieved_at"] + " · Expires " + (source["expires_at"] or "Unknown")}</small>
+                    </div> for source in risk.get("sources", [])]}
+                    {(<p>No supporting source is recorded.</p>) if not risk.get("sources", []) else None}
+                </details> for risk in state["risks"]]}
                 {(<p>No risks found yet. Add traveler details or report a change.</p>) if len(state["risks"]) == 0 else None}</div>) if reason == "detected" else None}
             <label className="replan-check"><input type="checkbox" checked={useAI} disabled={busy} onChange={lambda (e: ChangeEvent) { useAI = e.target.checked; clear(); }}/>Let AI choose among plans that pass the checks</label>
             <button type="button" className="primary" disabled={busy or (reason == "detected" and len(selectedRisks) == 0)} onClick={lambda { findPlans(); }}>{"Preparing plans…" if busy else "Find alternative plans"}</button>
@@ -313,6 +326,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                         <div><dt>Potential cash not refunded</dt><dd>{money(plan["comparison"]["refund_loss_minor"])}</dd></div>
                         <div><dt>Potential credit</dt><dd>{money(plan["comparison"]["eligible_credit_minor"])}</dd></div></dl>
                     <p className="muted">No refunds assumed. Quotes are not amounts due now.</p>
+                    <PolicyReview rows={plan["comparison"].get("policy_reviews", [])}/>
                     {(<ul>{[<li key={message}>{message}</li> for message in missingReasons(plan)]}</ul>) if not plan["selectable"] else None}
                     <button type="button" className="primary" disabled={busy or not plan["selectable"]} onClick={lambda { review(plan["id"], True); }}>Accept this plan</button>
                     <button type="button" className="secondary" disabled={busy} onClick={lambda { review(plan["id"], False); }}>Keep current plan</button>

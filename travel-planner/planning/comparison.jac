@@ -4,8 +4,9 @@ import from backup.validation { instant, evidence_problem }
 import from backup.validation_models { Replacement, Evidence }
 import from policy.cancellation { evaluate_cancellation, tier_deadline }
 import from schema.common { local_to_instant }
-import from schema.common { to_plain }
+import from schema.common { to_plain, minor_to_roam }
 import from backup.changes { quote_problem }
+import from policy.review { cancellation_review }
 
 def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...], checked: dict[str, any], now: datetime) -> dict[str, any] {
     originals = {item.id: item for item in context["trip"].items};
@@ -29,8 +30,8 @@ def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...],
                 }
                 if fresh and not cancel.unknowns and cancel.currency == context["trip"].currency and cancel.refund_if_cancel_now_minor is not None and
                     cancel.refund_form.value in ("cash", "credit", "none") {
-                    refunds.append(cancel.refund_if_cancel_now_minor if cancel.refund_form.value == "cash" else 0);
-                    credits.append(cancel.refund_if_cancel_now_minor if cancel.refund_form.value == "credit" else 0);
+                    refunds.append(minor_to_roam(cancel.refund_if_cancel_now_minor, cancel.currency) if cancel.refund_form.value == "cash" else 0);
+                    credits.append(minor_to_roam(cancel.refund_if_cancel_now_minor, cancel.currency) if cancel.refund_form.value == "credit" else 0);
                 }
                 else { unknowns.append("Refund entitlement needs current policy evidence"); }
             } elif old.paid_minor { unknowns.append("Refund terms for an original payment are unknown"); }
@@ -55,6 +56,7 @@ def compare_plan(context: dict[str, any], replacements: tuple[Replacement, ...],
         "retained_paid_minor": None if any("payment" in reason for reason in unknowns) else retained,
         "eligible_refund_minor": eligible, "eligible_cash_refund_minor": eligible, "eligible_credit_minor": sum(credits) if refund_known else None, "confirmed_refund_minor": 0,
         "refund_loss_minor": retained - eligible if eligible is not None else None,
+        "policy_reviews": [{**cancellation_review(context["bundle"], context["bundle"].itinerary.find_node(c.replaces_id), context["facts"].get("evidence_deadlines", {}), now), "action":c.action} for c in replacements],
         "time_changes": times, "changed_item_count": len(replacements), "unknowns": unknowns + ["Payment timing is not supplied; new purchase quotes are not an amount due now"],
         "notice": "Synthetic quotes only. Eligible refunds have not been received and are not deducted from total cost or cash needs."};
 }
