@@ -11,4 +11,4 @@ await page.route('**/function/assistant_chat',()=>{throw Error('No AI calls allo
 await page.goto(appUrl);await page.locator('.trip-card').filter({hasText:trip.title}).click();await page.locator('.leaflet-overlay-pane path').first().waitFor();
 await page.locator('.map-stop-card').filter({hasText:flight.title}).click();await page.getByRole('button',{name:'Show saved track',exact:true}).click();await page.locator('.map-recorded-track').waitFor();assert.match(await page.locator('.map-recorded-track').innerText(),/TST123/);assert.equal(await page.locator('.leaflet-overlay-pane path').count(),2);
 await page.getByRole('button',{name:'Back to itinerary',exact:true}).click();await page.locator('.map-recorded-track').waitFor({state:'hidden'});console.log('Passed: recorded-track overlay keeps coverage segments separate and restores the itinerary.');
-}finally{if(trip)await api('delete_trip',{trip_id:trip.id});await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
+}finally{await page.unrouteAll({behavior:'wait'});if(trip)await api('delete_trip',{trip_id:trip.id});await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

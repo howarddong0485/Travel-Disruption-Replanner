@@ -106,6 +106,7 @@ def:pub app -> JsxElement {
     }
     def openMapReview(item_id: str, risks: any, options: any, option: str, control: str) -> None {
         if busy or loading { return; }
+        if tab != "itinerary" { chooseTab("itinerary"); }
         resetReview(); day = "";
         reviewRequest = {"item": item_id, "reason": "", "control": control, "risks": risks,
             "options": options, "option": option};
@@ -118,6 +119,7 @@ def:pub app -> JsxElement {
         });
     }
     def jumpTimeline -> None {
+        if tab != "itinerary" { chooseTab("itinerary"); }
         window.requestAnimationFrame(lambda { focusItineraryControl("itinerary-timeline"); });
     }
     def showItineraryControls -> None {
@@ -131,6 +133,7 @@ def:pub app -> JsxElement {
         window.requestAnimationFrame(lambda { showItineraryControls(); });
     }
     def jumpStop(id: str) -> None {
+        if tab != "itinerary" { chooseTab("itinerary"); }
         day = "";
         window.requestAnimationFrame(lambda {
             control: any = document.getElementById("place-details-" + id);

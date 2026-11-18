@@ -258,7 +258,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     def showAlert(record: any) -> None {
         risk = record["risk"]; control = popup["control"];
         closePopup(False);
-        onReview(risk["node_ids"][0], risk.get("summary", "A reported trip disruption"), control);
+        onPlanB(risk["node_ids"][0], [risk["id"]], [], "", control);
     }
     def showPlan(option: any) -> None {
         control = popup["control"];
@@ -273,7 +273,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
         else { onStop(id); }
     }
     def findAlternative(id: str) -> None {
-        control = popup["control"]; closePopup(False); onPlanB(id, [], [], "", control);
+        reviewStop(id, "traveler_change");
     }
     def inspectStop(item: any) -> None {
         openPopup("route" if item.category == "transport" else "place", item.id, stageId + "-details");
@@ -292,12 +292,12 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             {(<div className="map-working-note" role="status">Preparing your trip… You can keep exploring.</div>) if working else None}
             {(<button className="map-draft-link" type="button" onClick={onDraft}>Review this draft ↗</button>) if draft and not working and onDraft else None}
         </div>
-        {(<div className="map-days" role="group" aria-label="Map days">
+        {(<div key="map-days" className="map-days" role="group" aria-label="Map days">
             <button type="button" aria-pressed={not day} onClick={lambda { chooseDay(""); }}>All days</button>
             {[<button type="button" key={date} aria-label={"Map day " + date} aria-pressed={day == date}
                 onClick={lambda { chooseDay(date); }}>{new(browser.Date, date + "T12:00:00").toLocaleDateString("en-US", {"weekday": "short", "month": "short", "day": "numeric"})}</button> for date in dates]}
         </div>) if len(dates) > 0 and onDay else None}
-    <div className="map-explorer">
+    <div key="map-explorer" className="map-explorer">
     <aside className="map-stop-list" aria-label="Map itinerary">
         <div className="map-explorer-heading"><h2>{currentCity["point"]["label"] if currentCity else "Explore your trip"}</h2>
             <p>{str(len(cityItems)) + " itinerary stops"}</p></div>
