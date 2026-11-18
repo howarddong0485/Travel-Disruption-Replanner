@@ -8,13 +8,6 @@ def:pub journeyLabel(route: any) -> str {
     return " → ".join(names);
 }
 
-def:pub legLabel(route: any, leg: any) -> str {
-    names = {stop["id"]: stop["city"] for stop in route["stops"]};
-    names["origin"] = route["origin"]["city"];
-    if route["return_to"] { names["return"] = route["return_to"]["city"]; }
-    return names[leg["from_id"]] + " → " + names[leg["to_id"]];
-}
-
 def point(city: str) -> any {
     return {"city": city, "zone": "", "lat": None, "lon": None};
 }

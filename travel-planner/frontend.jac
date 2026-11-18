@@ -11,11 +11,18 @@ import from itinerary.motion { animateTimeline }
 import from itinerary.presentation { shiftLabel }
 import from itinerary.place_popover { PlacePopover }
 import from itinerary.trip_map { TripMap }
-import from journey.frontend { RouteEditor, journeyLabel, legLabel }
+import from journey.frontend { RouteEditor, journeyLabel }
 import from journey.display { itineraryOrder, journeyCity }
 import from server.main { journey_state }
 import from assistant.frontend { ChatSidebar, AIPlanner, assistantError }
 import from server.main { assistant_review, assistant_update_prices, assistant_save_preferences }
+
+def legLabel(route: any, leg: any) -> str {
+    names = {stop["id"]: stop["city"] for stop in route["stops"]};
+    names["origin"] = route["origin"]["city"];
+    if route["return_to"] { names["return"] = route["return_to"]["city"]; }
+    return names[leg["from_id"]] + " → " + names[leg["to_id"]];
+}
 
 def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
