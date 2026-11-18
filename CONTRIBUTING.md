@@ -6,7 +6,7 @@ The project has runnable Jac mock workflows and proposed shared contracts. The c
 
 The basic travel planner is a shared foundation, built first by a temporary lead or pair as a separately scoped task. Manual trip CRUD and itinerary views are implemented; initial generation remains tracked in #5. This foundation task does not occupy one of the five ongoing feature-owner assignments.
 
-Confirmed owners are P1 Daniel Hu (`daniel24608`), P2 `czhobro`, P3 Gehao Dong (`howarddong0485`) and P4 Zhanhao Liu (`JackyLiuhh`). P5 remains the comparison/review role. P5 is Mohymin Islam (`mohymini`). See the [current status and implementation attribution](docs/MVP_STATUS.md); responsibility and implementation authorship are recorded separately.
+Confirmed owners are P1 Daniel Hu (`daniel24608`), P2 `czhobro`, P3 Gehao Dong (`howarddong0485`) and P4 Zhanhao Liu (`JackyLiuhh`). P5 remains the comparison/review role. P5 is Mohymin Islam (uniqname `mohymini`, GitHub `mohymin-i`). See the [current status and implementation attribution](docs/MVP_STATUS.md); responsibility and implementation authorship are recorded separately.
 
 | Owner | Owns | Proposed directories |
 | --- | --- | --- |
