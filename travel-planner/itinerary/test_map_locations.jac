@@ -54,3 +54,15 @@ test "load trip map supplies DTW points before any flights or itinerary are save
         assert api.journey_state(trip.id) == before and api.list_items(trip.id) == [];
     }
 }
+
+test "a pending draft's proposed departure and return cities resolve without changing the saved trip" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": directory + "/trip.db"}) {
+        trip = api.save_trip("Draft endpoints", "New York City, New York", "2027-01-01", "2027-01-03", "USD", "5000", departure_location="DTW", return_location="DTW");
+        proposed = {"departure_location": "ORD", "return_location": "ORD", "destination": "New York City, New York"};
+        draft_map = api.load_trip_map(trip.id, None, proposed);
+        assert draft_map["location_points"]["ORD"] == airport("ORD");
+        assert "ORD" not in api.load_trip_map(trip.id)["location_points"];
+        assert api.load_trip_map(trip.id, None, "not a trip")["location_points"]["DTW"] == airport("DTW");
+        assert [saved.departure_location for saved in api.list_trips() if saved.id == trip.id] == ["DTW"];
+    }
+}

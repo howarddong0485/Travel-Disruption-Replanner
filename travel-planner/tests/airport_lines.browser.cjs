@@ -60,6 +60,7 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
       ['DTW', 'Kyoto, Japan', true],
       ['dtw', 'New York City, New York', false],
       ['Detroit (DTW)', 'Kyoto, Japan', false],
+      ['DTW', 'New York City, New York', false],
       ['DTW', 'New York City, New York', false]
     ]) {
       const trip = await api('save_trip', {title: 'Airport line ' + trips.length + ' ' + suffix,
@@ -110,6 +111,15 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
       ]};
     draftStates.set(draftTrip.id, {...await api('assistant_state', {trip_id: draftTrip.id}), pending: false,
       config: {configured: true}, drafts: [draft]});
+    // A trip-only draft moves departure and return to ORD; the map must preview the proposed endpoints.
+    const movedTrip = trips[5], movedAfter = {...movedTrip, departure_location: 'ORD', return_location: 'ORD'};
+    draftStates.set(movedTrip.id, {...await api('assistant_state', {trip_id: movedTrip.id}), pending: false,
+      config: {configured: true}, drafts: [{...draft, id: 'airport-moved-' + suffix, title: 'Leave from Chicago O\'Hare',
+        journey: null, trip_before: movedTrip, trip_after: movedAfter,
+        trip_changes: {departure_location: 'ORD', return_location: 'ORD'}, changes: [], total_cents: 0}]});
+    const movedPreview = await api('load_trip_map', {trip_id: movedTrip.id, preview_trip: movedAfter});
+    assert(movedPreview.location_points?.ORD?.lat > 41 && movedPreview.location_points.ORD.lon < -87,
+      'The real backend must resolve airport labels introduced only by draft trip changes');
     const preview = await api('load_trip_map', {trip_id: draftTrip.id, preview_journey: draftJourney});
     assert(preview.location_points?.LGA?.lat > 40 && preview.location_points.LGA.lon < -73,
       'The real backend must resolve airport labels introduced only in a draft');
@@ -132,10 +142,11 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
     for (let index = 0; index < trips.length; index++) {
       await select(index);
       const trip = trips[index];
-      const mappedDestination = draftStates.has(trip.id) ? 'LGA' : trip.destination;
+      const shown = draftStates.get(trip.id)?.drafts[0].trip_after || trip;
+      const mappedDestination = draftStates.get(trip.id)?.drafts[0].journey ? 'LGA' : shown.destination;
       for (const [direction, from, to] of [
-        ['Departure', trip.departure_location, mappedDestination],
-        ['Return', mappedDestination, trip.return_location]
+        ['Departure', shown.departure_location, mappedDestination],
+        ['Return', mappedDestination, shown.return_location]
       ]) {
         await map().getByRole('button', {name: direction + ' flight: ' + from + ' → ' + to, exact: true}).click();
         const popup = map().getByRole('dialog');
@@ -158,6 +169,8 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
     assert(mapRequests.some(request => request.trip_id === draftTrip.id &&
       request.preview_journey?.stops?.some(stop => stop.city === 'LGA')),
       'The map must ask the backend to resolve newly proposed airport labels');
+    assert(mapRequests.some(request => request.trip_id === trips[5].id && request.preview_trip?.departure_location === 'ORD'),
+      'The map must ask the backend to resolve airports from proposed trip changes');
     assert.equal(aiCalls, 0, 'Airport coordinate resolution must not trigger AI');
     assert.deepEqual(mutations, [], 'Reading maps must not write itinerary, journey or AI data');
     for (const trip of trips) {
@@ -165,7 +178,7 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
       assert.equal((await api('journey_state', {trip_id: trip.id})).journey, null);
     }
     assert.deepEqual(errors, []);
-    console.log('Passed: DTW/airport aliases and draft-only LGA draw both colored flight lines without searches or listings, including null-coordinate journeys, clickable details, mobile rendering and no writes.');
+    console.log('Passed: DTW/airport aliases and draft-only LGA/ORD endpoints draw both colored flight lines without searches or listings, including null-coordinate journeys, clickable details, mobile rendering and no writes.');
   } catch (error) {
     if (errors.length) console.error('Browser render errors:', errors);
     throw error;

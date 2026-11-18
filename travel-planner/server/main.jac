@@ -382,7 +382,7 @@ def:pub save_place_details(trip_id: str, item_id: str, location: str,
     finally { conn.close(); }
 }
 
-def:pub load_trip_map(trip_id: str, preview_journey: any = None) -> dict[str, any] {
+def:pub load_trip_map(trip_id: str, preview_journey: any = None, preview_trip: any = None) -> dict[str, any] {
     conn = _connect();
     try {
         conn.execute("BEGIN");
@@ -391,7 +391,7 @@ def:pub load_trip_map(trip_id: str, preview_journey: any = None) -> dict[str, an
         context = build_context(state, read_facts(conn, trip_id), now);
         (pins, routes) = map_points(conn, trip_id);
         return {"trip_version": state["version"], "pins": pins, "routes": routes, "journey": state["journey"],
-            "location_points": {**location_points(state["trip"], state["journey"]), **location_points(state["trip"], preview_journey)},
+            "location_points": {**location_points(state["trip"], state["journey"]), **location_points(preview_trip if isinstance(preview_trip, dict) else state["trip"], preview_journey)},
             "flights": flight_details.read_for_items(conn, state["items"]),
             "lookups": map_enrichment.lookup_states(conn, trip_id), "tracks": map_enrichment.flight_tracks(conn, trip_id),
             "dependencies": state["dependencies"], "risks": [risk for risk in context["risks"] if risk["node_ids"]],

@@ -66,15 +66,18 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     browser: any = window;
     stageId = "trip-map-" + trip.id;
     closeId = stageId + "-close";
+    # A pending draft may move the departure, return or destination; preview its proposed trip, not the saved one.
+    planned: any = {**trip, **draft["trip_after"]} if draft and draft.get("trip_after") else trip;
     async def reload -> None {
         sequence.current += 1; token = sequence.current;
         try {
-            fresh = await load_trip_map(trip_id=trip.id, preview_journey=draft.get("journey") if draft and draft.get("journey") else journey);
+            fresh = await load_trip_map(trip_id=trip.id, preview_journey=draft.get("journey") if draft and draft.get("journey") else journey,
+                preview_trip=planned if draft else None);
             if alive.current and sequence.current == token { data = fresh; loadError = ""; }
-            names = [trip.destination, trip.departure_location, trip.return_location];
+            names = [planned.destination, planned.departure_location, planned.return_location];
             mapJourney = draft.get("journey") if draft and draft.get("journey") else journey or fresh.get("journey");
             if mapJourney {
-                names = [trip.departure_location or mapJourney["origin"]["city"], trip.return_location or trip.departure_location] + [stop["city"] for stop in mapJourney["stops"]];
+                names = [planned.departure_location or mapJourney["origin"]["city"], planned.return_location or planned.departure_location] + [stop["city"] for stop in mapJourney["stops"]];
             }
             resolved: any = {};
             for name in names {
@@ -169,7 +172,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     can with [items, revision] entry { locateStops(False); }
     can with [popup] entry { if popup is not None { focusItineraryControl(closeId); } }
 
-    overview = mapOverview(trip, items, data, journey, draft);
+    overview = mapOverview(planned, items, data, journey, draft);
     mapItems = overview["items"]; mapData = overview["data"];
     travel = overview.get("travel", []);
     visibleItems = [item for item in mapItems if not day or item.date == day];
@@ -178,7 +181,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     for item in mapItems { if item.date and item.date not in dates { dates.append(item.date); } }
     dates = sorted(dates);
     locatedItems = [item for item in mapItems if item.id in mapData.get("pins", {}) or not any(item.journey.get("stop_id") == place["id"] for place in overview["unlocated"])];
-    scene = mapScene(trip.destination, locatedItems, mapData, preview);
+    scene = mapScene(planned.destination, locatedItems, mapData, preview);
     cities = scene["cities"]; pins = scene["pins"]; routeData = scene["routes"];
     mappedRoutes: any = [{"id": item.id, "item": item, "route": routeData[item.id]["route"], "tone": scene["tones"][item.id],
         "direction": routeDirection(item.id, travel), "estimated": routeEstimated(item.id, mapData.get("flights", {}))}
