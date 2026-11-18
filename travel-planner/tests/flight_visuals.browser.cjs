@@ -34,7 +34,12 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
   async function assertLayout(estimated) {
     await page.waitForFunction(value => {
       const markers = Array.from(document.querySelectorAll('.map-route-pin[data-direction="Departure"], .map-route-pin[data-direction="Return"]'));
-      return markers.length === 2 && markers.every(marker => marker.getAttribute('data-estimated') === String(value));
+      const map = document.querySelector('.trip-map').getBoundingClientRect();
+      return markers.length === 2 && markers.every(marker => {
+        const box = marker.getBoundingClientRect();
+        return marker.getAttribute('data-estimated') === String(value) &&
+          box.left >= map.left && box.right <= map.right + 1 && box.top >= map.top && box.bottom <= map.bottom + 1;
+      });
     }, estimated);
     const region = await map().boundingBox();
     const outgoing = await marker('Departure').boundingBox();
