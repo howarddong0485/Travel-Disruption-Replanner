@@ -1,4 +1,5 @@
 """Place preview with optional user-supplied photo and map pin."""
+import from workspace { workspaceKey }
 import from server.main { get_place_details, save_place_details }
 import from itinerary.actions { focusItineraryControl }
 import from itinerary.places { itineraryMapLink }
@@ -17,7 +18,7 @@ def:pub PlacePreview(trip_id: str, item: any, destination: str, control: str,
     async def load -> None {
         failure = "";
         try {
-            fresh = await get_place_details(trip_id=trip_id, item_id=item.id);
+            fresh = await get_place_details(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=item.id);
             if alive.current {
                 if fresh["location"] != item.location {
                     data = None; failure = "This address changed. Refresh the trip before opening its place details.";
@@ -31,7 +32,7 @@ def:pub PlacePreview(trip_id: str, item: any, destination: str, control: str,
         try {
             payload = {"latitude": float(latitude) if latitude.strip() else None, "longitude": float(longitude) if longitude.strip() else None,
                 "photo_url": photo, "photo_source": credit};
-            fresh = await save_place_details(trip_id=trip_id, item_id=item.id, location=data["location"],
+            fresh = await save_place_details(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=item.id, location=data["location"],
                 expected_revision=data["revision"], payload=payload);
             if alive.current { fill(fresh); onSaved(); }
         } except Exception as exc { if alive.current { failure = str(exc); } }

@@ -1,4 +1,5 @@
 """Read impact from saved dependencies and review connected plans in the itinerary."""
+import from workspace { workspaceKey }
 import from server.main { replan_state, planning_state, report_itinerary_change, generate_backup_plans, review_backup_plan }
 import from itinerary.presentation { affectedItemIds, planTitle, shiftLabel, differenceLabel }
 import from itinerary.evidence { EvidencePopover, planSources }
@@ -76,12 +77,12 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
     async def load -> None {
         reset(); loading = True;
         try {
-            fresh = await replan_state(trip_id=trip_id);
+            fresh = await replan_state(workspace_key=await workspaceKey(), trip_id=trip_id);
             if not alive.current { return; }
             snapshot = fresh;
             prior = request.get("options", []);
             if len(prior) > 0 {
-                state = await planning_state(trip_id=trip_id);
+                state = await planning_state(workspace_key=await workspaceKey(), trip_id=trip_id);
                 if not alive.current { return; }
                 current = [p for p in prior if p["base_version"] == state["trip_version"] and
                     state["review_statuses"].get(p["id"]) == "proposed" and Date.parse(p["expires_at"]) > Date.now()];
@@ -101,7 +102,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
         token = operation.current;
         checking = True;
         try {
-            fresh = await planning_state(trip_id=trip_id);
+            fresh = await planning_state(workspace_key=await workspaceKey(), trip_id=trip_id);
             if alive.current and token == operation.current and (
                 fresh["trip_version"] != result["base_version"] or any(
                     fresh["review_statuses"].get(p["id"]) != "proposed" or Date.parse(p["expires_at"]) <= Date.now() for p in result["plans"]
@@ -171,7 +172,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
         try {
             version = snapshot["version"]; risks = recordedRisks;
             if not recordedMode {
-                recorded = await report_itinerary_change(trip_id=trip_id, item_id=target, reason=reason,
+                recorded = await report_itinerary_change(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=target, reason=reason,
                     expected_version=version, delay_minutes=int(delay) if reason == "timing" else 0);
                 if not alive.current { return; }
                 version = recorded["trip_version"]; risks = [recorded["risk_id"]];
@@ -179,7 +180,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
                 moment = recorded.get("not_before");
                 if moment { earliest = moment["local"].replace("T", " ") + " · " + moment["zone"]; }
             }
-            generated = await generate_backup_plans(trip_id=trip_id, expected_version=version,
+            generated = await generate_backup_plans(workspace_key=await workspaceKey(), trip_id=trip_id, expected_version=version,
                 risk_ids=risks, max_plans=4);
             if not alive.current { return; }
             result = generated;
@@ -195,7 +196,7 @@ def:pub ItineraryReview(trip_id: str, currency: str, items: any, request: any,
         }
         busy = True; failure = "";
         try {
-            response = await review_backup_plan(trip_id=trip_id, proposal_id=plan["id"], accept=True);
+            response = await review_backup_plan(workspace_key=await workspaceKey(), trip_id=trip_id, proposal_id=plan["id"], accept=True);
             if alive.current {
                 if response["status"] == "accepted" { await onApplied(response["message"]); }
                 else { clear(); failure = "This option was not saved. Reload and review fresh options."; }

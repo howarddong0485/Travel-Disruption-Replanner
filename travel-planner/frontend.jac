@@ -1,4 +1,5 @@
 """JacRoam's responsive trip workspace."""
+import from workspace { workspaceKey }
 import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip,
     list_items, save_item, set_item_state, delete_item, replan_demo, create_planning_demo }
 import from backup.frontend { BackupPanel }
@@ -28,7 +29,7 @@ def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
         tab: str = "planner", aiData: dict[str, any] = {}, aiReload: int = 0, aiCompose: int = 0,
         aiMode: str = "ask", aiText: str = "", day: str = "", loading: bool = True, busy: bool = False,
-        error: str = "", notice: str = "", requestRef: Ref[int] = Ref(0),
+        error: str = "", notice: str = "", requestRef: Ref[int] = Ref(0), tripViews: Ref[any] = Ref({}), loadedTrip: str = "",
         trip_form: bool = False, trip_review: bool = False, editing_trip: str = "", trip_title: str = "",
         departure_location: str = "", return_location: str = "",
         destination: str = "", start_date: str = "", end_date: str = "",
@@ -165,6 +166,7 @@ def:pub app -> JsxElement {
     def editItem(item: ItemView) -> None;
     def chooseTab(value: str) -> None;
     async def refresh -> None;
+    def activateTrip(trip_id: str) -> None;
     async def chooseTrip(trip_id: str) -> None;
     async def submitTrip(e: FormEvent) -> None;
     async def submitItem(e: FormEvent) -> None;
@@ -183,14 +185,15 @@ def:pub app -> JsxElement {
         aiMode = mode; aiText = text; aiCompose += 1; tab = "planner";
     }
     def receiveAI(data: dict[str, any], generated: bool) -> None {
+        if data.get("trip_id") != selected { return; }
         aiData = data; mapRevision += 1;
         if generated { tab = "planner"; }
     }
-    async def routeSaved(data: any) -> None { journeyData = data; await refresh(); }
+    async def routeSaved(trip_id: str) -> None { if trip_id == selected { await refresh(); } }
     async def reviewAI(draft_id: str, accept: bool, acknowledged: bool) -> None {
         if busy { return; } busy = True; error = ""; notice = "";
         try {
-            aiData = await assistant_review(trip_id=selected, draft_id=draft_id, accept=accept, acknowledged=acknowledged);
+            aiData = await assistant_review(workspace_key=await workspaceKey(), trip_id=selected, draft_id=draft_id, accept=accept, acknowledged=acknowledged);
             if accept { await refresh(); }
             aiReload += 1;
             notice = "Plan saved to your itinerary. No bookings or payments were made." if accept else "Your current itinerary is unchanged.";
@@ -200,7 +203,7 @@ def:pub app -> JsxElement {
     async def priceAI(draft_id: str, prices: dict[str, any]) -> str {
         if busy { return "A review is already running. Please wait."; } busy = True; error = ""; notice = "";
         try {
-            aiData = await assistant_update_prices(trip_id=selected, draft_id=draft_id, prices=prices);
+            aiData = await assistant_update_prices(workspace_key=await workspaceKey(), trip_id=selected, draft_id=draft_id, prices=prices);
             aiReload += 1;
             notice = "Prices checked. Review the total, then tick the checkbox to save the plan.";
             return "";
@@ -211,7 +214,7 @@ def:pub app -> JsxElement {
         if busy or not aiData.get("trip_version", 0) { return; }
         busy = True; error = ""; notice = "";
         try {
-            aiData = await assistant_save_preferences(trip_id=selected, pet_friendly=pet, pace=pace, expected_version=aiData["trip_version"]);
+            aiData = await assistant_save_preferences(workspace_key=await workspaceKey(), trip_id=selected, pet_friendly=pet, pace=pace, expected_version=aiData["trip_version"]);
             aiReload += 1;
             notice = "Preferences saved. AI drafts for this trip will use them.";
         } except Exception as exc { error = str(exc); aiReload += 1; }
@@ -221,7 +224,7 @@ def:pub app -> JsxElement {
         document.title = "JacRoam";
         try {
             if browser.localStorage.getItem("roam.itinerary-view") == "list" { itineraryView = "list"; }
-            saved_workspace: any = browser.JSON.parse(browser.localStorage.getItem("roam.workspace") or "null");
+            saved_workspace: any = browser.JSON.parse(browser.sessionStorage.getItem("roam.workspace") or "null");
             if saved_workspace and saved_workspace["tab"] in ["planner", "journey", "itinerary", "backups", "replan", "bookings", "packing", "budget"] {
                 selected = saved_workspace["trip_id"]; tab = saved_workspace["tab"];
             }
@@ -230,7 +233,7 @@ def:pub app -> JsxElement {
     }
     can with [selected, tab, loading] entry {
         if selected and not loading {
-            try { browser.localStorage.setItem("roam.workspace", browser.JSON.stringify({"trip_id": selected, "tab": tab})); }
+            try { browser.sessionStorage.setItem("roam.workspace", browser.JSON.stringify({"trip_id": selected, "tab": tab})); }
             except Exception {}
         }
     }
@@ -242,6 +245,7 @@ def:pub app -> JsxElement {
     }
 
     mapVisible = tab == "itinerary" and itineraryView == "map";
+    renderedTripId = selected;
     matching = [trip for trip in trips if trip.id == selected];
     current: TripView | None = matching[0] if matching else None;
     total = sum([item.cost_cents for item in items]);
@@ -275,9 +279,9 @@ def:pub app -> JsxElement {
                             preview={itineraryPreview} disabled={busy or loading} apiKey={mapApiKey}
                             onReview={openReview} onPlanB={openMapReview} onStop={jumpStop} onTimeline={jumpTimeline}
                             onSample={lambda { createIntegratedDemo("map"); }}/>
-                    </div>) if current and (mapVisible or tab == "planner") else None;
+                    </div>) if current and loadedTrip == selected and (mapVisible or tab == "planner") else None;
 
-    <div className={"app-shell" + (" with-assistant" if current else "")} data-reviewing={bool(reviewRequest)} data-map-focus={mapVisible and not mapChat}>
+    <div className={"app-shell" + (" with-assistant" if current and not trip_form else "")} data-reviewing={bool(reviewRequest)} data-map-focus={mapVisible and not mapChat}>
         <aside className="sidebar">
             <a className="brand" href="#"><span className="brand-icon">↗</span>JacRoam</a>
             <p className="brand-caption">Plan trips and handle disruptions.</p>
@@ -373,7 +377,7 @@ def:pub app -> JsxElement {
                         {"AI planner" if value == "planner" else "Itinerary" if value == "itinerary" else "Route" if value == "journey" else "Backup plans" if value == "backups" else "Replan" if value == "replan" else "Bookings" if value == "bookings" else "Packing list" if value == "packing" else "Budget"}
                     </button> for value in ["planner", "journey", "itinerary", "backups", "replan", "bookings", "packing", "budget"]
                 ]}</nav>
-                {(<RouteEditor key={selected} trip={current} data={journeyData} onSaved={routeSaved} onPlan={composeAI} disabled={busy or loading}/>) if tab in ["planner", "journey"] else None}
+                {(<RouteEditor key={selected} trip={current} data={journeyData} onSaved={lambda (data: any) { return routeSaved(renderedTripId); }} onPlan={composeAI} disabled={busy or loading}/>) if tab in ["planner", "journey"] else None}
                 <div id="itinerary-view-toolbar" className={"itinerary-view-toolbar" if tab == "itinerary" else ""}>
                     {(<div className="itinerary-view-controls" role="group" aria-label="Itinerary view">
                         <button type="button" id="itinerary-view-map" aria-pressed={itineraryView == "map"}
@@ -397,7 +401,7 @@ def:pub app -> JsxElement {
                     <BackupPanel key={selected} trip={current} items={items} onApplied={backupApplied}/>
                 </section>) if not loading and tab == "backups" else None}
                 {mapWorkspace if tab == "planner" else None}
-                {(<AIPlanner data={aiData} currency={current.currency} onCompose={composeAI} onReview={reviewAI} onPrices={priceAI} onPreferences={savePreferences} busy={busy}/>) if tab == "planner" else None}
+                {(<AIPlanner key={"planner:" + selected} data={aiData if aiData.get("trip_id") == selected else {}} currency={current.currency} onCompose={composeAI} onReview={reviewAI} onPrices={priceAI} onPreferences={savePreferences} busy={busy}/>) if tab == "planner" else None}
                 {(<section className="budget-overview card"><div><h2>Budget summary</h2>
                     <p>All amounts are in {current.currency}. Mark items paid as you pay them.</p></div><div className="budget-numbers">
                     <p><span>Budget</span><strong>{money(current.budget_cents, current.currency) if current.budget_cents else "Not set"}</strong></p>
@@ -512,6 +516,6 @@ def:pub app -> JsxElement {
             <button type="button" className="itinerary-chip" aria-label="Dismiss saved revision message" onClick={lambda { revisionNotice = ""; }}>×</button>
         </div>) if revisionNotice else None}
         {(<ChatSidebar key={selected} trip_id={selected} destination={current.destination} onUpdate={receiveAI} reload={aiReload}
-            compose={aiCompose} composeMode={aiMode} composeText={aiText} externalBusy={busy} onKeyChange={lambda (value: str) { mapApiKey = value; }}/>) if current else None}
+            compose={aiCompose} composeMode={aiMode} composeText={aiText} externalBusy={busy} onKeyChange={lambda (value: str) { mapApiKey = value; }}/>) if current and not trip_form else None}
     </div>
 }

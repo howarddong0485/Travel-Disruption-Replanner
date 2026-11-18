@@ -1,4 +1,5 @@
 /** Synthetic date-line itinerary; no live model or inventory calls. */
+const {browserWorkspace} = require('./browser_workspace.cjs');
 const assert = require('node:assert/strict');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const appUrl = process.env.TRAVEL_APP_URL || 'http://localhost:8000';
@@ -8,10 +9,12 @@ const apiUrl = process.env.TRAVEL_API_URL || 'http://localhost:8001/api/server';
   const browser = await chromium.launch({channel: process.env.TRAVEL_BROWSER_CHANNEL});
   // A browser zone different from every route zone must not change the order.
   const page = await browser.newPage({viewport: {width: 1440, height: 1000}, timezoneId: 'Europe/Paris'});
+  const workspace_key = await browserWorkspace(page);
+
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   async function api(name, data) {
-    const response = await page.request.post(apiUrl + '/function/' + name, {data});
+    const response = await page.request.post(apiUrl + '/function/' + name, {data: {...data, workspace_key}});
     const payload = await response.json();
     assert(response.ok() && payload.ok, JSON.stringify(payload));
     return payload.data.result;

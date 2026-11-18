@@ -63,9 +63,9 @@ entry point is `bash scripts/start_hosted.sh`; set `ROAM_BIND_HOST=0.0.0.0` only
 inside the host's protected network when its reverse proxy requires it. Health
 check: `/healthz/ready`. An alternate bundle path uses `ROAM_APP_BUNDLE`.
 
-The prototype shares one store between its clients and has no per-user ownership
-layer. Use a restricted team preview behind the host's authentication and HTTPS;
-a public multi-user product requires ownership/authentication work first.
+Each browser profile owns a private workspace. The server checks ownership on
+trip reads and mutations. Existing rows from the shared prototype remain
+unassigned. Use HTTPS and persistent storage for visitor workspaces.
 
 Once the target is supplied, verify on that actual host:
 

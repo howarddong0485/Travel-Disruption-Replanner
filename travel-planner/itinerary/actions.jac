@@ -1,4 +1,5 @@
 """Contextual itinerary actions and read-only delay impact."""
+import from workspace { workspaceKey }
 import from server.main { replan_state }
 import from itinerary.presentation { affectedItemIds }
 
@@ -33,7 +34,7 @@ def:pub ItemActions(trip_id: str, item_id: str, title: str, category: str, disab
         sequence.current += 1; token = sequence.current;
         window.requestAnimationFrame(lambda { focusItineraryControl(panel + "-delay"); });
         try {
-            fresh = await replan_state(trip_id=trip_id);
+            fresh = await replan_state(workspace_key=await workspaceKey(), trip_id=trip_id);
             if alive.current and token == sequence.current { snapshot = fresh; }
         } except Exception {
             if alive.current and token == sequence.current { failure = "Open the review to check the latest trip."; }

@@ -1,4 +1,5 @@
 /** Static flight-route design checks with synthetic trips; never requests AI. */
+const {browserWorkspace} = require('./browser_workspace.cjs');
 const assert = require('node:assert/strict');
 const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const appUrl = process.env.TRAVEL_APP_URL || 'http://127.0.0.1:8379';
@@ -7,6 +8,8 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
 (async () => {
   const browser = await chromium.launch({channel: process.env.TRAVEL_BROWSER_CHANNEL || 'chrome'});
   const page = await browser.newPage({viewport: {width: 1440, height: 1000}});
+  const workspace_key = await browserWorkspace(page, '1baff734-c2ee-44b6-a731-580ac85eb2de');
+
   page.setDefaultTimeout(20000);
   const trips = [], errors = [];
   let aiCalls = 0;
@@ -15,7 +18,7 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
     if (message.type() === 'error' && /ErrorBoundary|TypeError|ReferenceError/.test(message.text())) errors.push(message.text());
   });
   async function api(name, data) {
-    const response = await page.request.post(apiUrl + '/function/' + name, {data});
+    const response = await page.request.post(apiUrl + '/function/' + name, {data: {...data, workspace_key}});
     const payload = await response.json();
     assert(response.ok() && payload.ok, JSON.stringify(payload));
     return payload.data.result;

@@ -1,4 +1,5 @@
 """Refresh API checks against an isolated saved-trip database."""
+import from tests.workspace_fixture { TEST_WORKSPACE }
 import os;
 import sqlite3;
 import tempfile;
@@ -15,9 +16,9 @@ test "refresh transitions are serialized and never change saved trips" {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
         client = JacTestClient.from_file(os.path.join(os.path.dirname(__file__), "main.jac"), base_path=os.path.join(directory, "store"));
         try {
-            trip = client.post("/function/save_trip", json={"title": "Refresh isolation", "destination": "Boston",
+            trip = client.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, "title": "Refresh isolation", "destination": "Boston",
                 "start_date": "2026-11-17", "end_date": "2026-11-18", "budget": "600"}).data["result"];
-            client.post("/function/save_item", json={"trip_id": trip["id"], "title": "Keep me", "date": "2026-11-17", "cost": "15"});
+            client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "title": "Keep me", "date": "2026-11-17", "cost": "15"});
             before = refresh_storage_snapshot();
             last_id = "";
             for (change, passes, rejected, unknown) in [

@@ -1,4 +1,9 @@
 """Terminal access to the same Roam travel service as the web app."""
+import os;
+import tempfile;
+import from pathlib { Path }
+import from hashlib { sha256 }
+import from uuid { uuid4 }
 import argparse;
 import asyncio;
 import sys;
@@ -49,14 +54,33 @@ def print_item(item: ItemView, unit: str) -> None {
     if item.notes { print("  Notes: " + item.notes); }
 }
 
+def privateWorkspace -> str {
+    provided = os.environ.get("ROAM_WORKSPACE_KEY", "");
+    if provided { return provided; }
+    origin = os.environ.get("JAC_APP_SERVER_URL", "local");
+    directory = Path.home() / ".jacroam" / "workspaces";
+    directory.mkdir(mode=448, parents=True, exist_ok=True);
+    path = directory / sha256(origin.encode()).hexdigest();
+    if not path.exists() {
+        with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as tmp {
+            tmp.write(str(uuid4())); tmp_path = tmp.name;
+        }
+        try {
+            try { os.link(tmp_path, path); } except FileExistsError {}
+        } finally { os.unlink(tmp_path); }
+    }
+    return path.read_text().strip();
+}
+
 async def dispatch(args: argparse.Namespace) -> int {
+    owner = privateWorkspace();
     if args.command == "new" {
-        trip = await save_trip(title=args.title, destination=args.destination, start_date=args.start,
+        trip = await save_trip(workspace_key=owner, title=args.title, destination=args.destination, start_date=args.start,
             end_date=args.end, currency=args.currency, budget=args.budget, notes=args.notes, trip_id="",
             departure_location=args.depart_from, return_location=args.return_to);
         print("Created " + trip.title + " | " + trip.id); return 0;
     }
-    trips = await list_trips();
+    trips = await list_trips(workspace_key=owner);
     if args.command == "trips" {
         if not trips { print("No trips yet. Use new to create one."); }
         for trip in trips {
@@ -68,15 +92,15 @@ async def dispatch(args: argparse.Namespace) -> int {
     trip = next(trip for trip in trips if trip.id == trip_id);
     if args.command == "delete-trip" {
         if not args.yes { raise ValueError("Add --yes to confirm deleting the trip and all its records."); }
-        await delete_trip(trip_id=trip_id); print("Deleted trip " + trip.title); return 0;
+        await delete_trip(workspace_key=owner, trip_id=trip_id); print("Deleted trip " + trip.title); return 0;
     }
     if args.command == "add" {
-        item = await save_item(trip_id=trip_id, title=args.title, category=args.category,
+        item = await save_item(workspace_key=owner, trip_id=trip_id, title=args.title, category=args.category,
             date=args.date, time=args.time, location=args.location, reference=args.reference,
             notes=args.notes, cost=args.cost, item_id="", journey=None, duration_minutes=60);
         print_item(item, trip.currency); return 0;
     }
-    items = await list_items(trip_id=trip_id);
+    items = await list_items(workspace_key=owner, trip_id=trip_id);
     if args.command == "show" {
         print(trip.title + " — " + trip.destination + f" ({trip.start_date} to {trip.end_date})");
         print("Departing from: " + (trip.departure_location or "Not set") + " | Return to: " + (trip.return_location or "Not set"));
@@ -91,9 +115,9 @@ async def dispatch(args: argparse.Namespace) -> int {
     item_id = resolve(args.item_id, [item.id for item in items], "item");
     item = next(item for item in items if item.id == item_id);
     if args.command == "delete-item" {
-        await delete_item(trip_id=trip_id, item_id=item_id); print("Deleted " + item.title); return 0;
+        await delete_item(workspace_key=owner, trip_id=trip_id, item_id=item_id); print("Deleted " + item.title); return 0;
     }
-    updated = await set_item_state(trip_id=trip_id, item_id=item_id,
+    updated = await set_item_state(workspace_key=owner, trip_id=trip_id, item_id=item_id,
         done=True if args.command == "done" else False if args.command == "reopen" else item.done,
         paid=True if args.command == "paid" else False if args.command == "unpaid" else item.paid);
     print_item(updated, trip.currency); return 0;

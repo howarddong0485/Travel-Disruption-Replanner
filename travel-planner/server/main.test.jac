@@ -1,5 +1,7 @@
 """Travel endpoint tests use isolated temporary databases, never saved trip data."""
+import from tests.workspace_fixture { TEST_WORKSPACE }
 import os;
+import unittest;
 import tempfile;
 import sqlite3;
 import from jaclang.testing.testing { JacTestClient }
@@ -14,23 +16,23 @@ test "trip lifecycle, editing, exact currency amounts, state and cascade deletio
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
         client = JacTestClient.from_file(SERVER, base_path=os.path.join(directory, "store"));
         try {
-            trip = client.post("/function/save_trip", json={"title": "Kyoto week", "destination": "Kyoto, Japan", "start_date": "2026-11-01", "end_date": "2026-11-07", "budget": "2500.10"}).data["result"];
+            trip = client.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, "title": "Kyoto week", "destination": "Kyoto, Japan", "start_date": "2026-11-01", "end_date": "2026-11-07", "budget": "2500.10"}).data["result"];
             assert trip["budget_cents"] == 250010;
-            booking = client.post("/function/save_item", json={"trip_id": trip["id"], "title": "Hotel", "category": "stay", "date": "2026-11-01", "reference": "ABC123", "cost": "900.99"}).data["result"];
+            booking = client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "title": "Hotel", "category": "stay", "date": "2026-11-01", "reference": "ABC123", "cost": "900.99"}).data["result"];
             assert booking["cost_cents"] == 90099;
-            updated = client.post("/function/set_item_state", json={"trip_id": trip["id"], "item_id": booking["id"], "done": True, "paid": True}).data["result"];
+            updated = client.post("/function/set_item_state", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "item_id": booking["id"], "done": True, "paid": True}).data["result"];
             assert updated["done"] and updated["paid"];
-            edited = client.post("/function/save_item", json={"trip_id": trip["id"], "item_id": booking["id"], "title": "Hotel, updated", "category": "stay", "date": "2026-11-02", "cost": "950.50"}).data["result"];
+            edited = client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "item_id": booking["id"], "title": "Hotel, updated", "category": "stay", "date": "2026-11-02", "cost": "950.50"}).data["result"];
             assert edited["id"] == booking["id"] and edited["cost_cents"] == 95050;
             assert edited["done"] and edited["paid"];
-            cleared = client.post("/function/save_item", json={"trip_id": trip["id"], "item_id": booking["id"], "title": "Hotel, free", "category": "stay", "cost": "0"}).data["result"];
+            cleared = client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "item_id": booking["id"], "title": "Hotel, free", "category": "stay", "cost": "0"}).data["result"];
             assert cleared["paid"] is False;
-            packed = client.post("/function/save_item", json={"trip_id": trip["id"], "title": "Passport", "category": "packing"}).data["result"];
+            packed = client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "title": "Passport", "category": "packing"}).data["result"];
             assert packed["cost_cents"] == 0;
-            assert client.post("/function/delete_item", json={"trip_id": trip["id"], "item_id": packed["id"]}).data["result"] is True;
-            assert client.post("/function/delete_item", json={"trip_id": trip["id"], "item_id": packed["id"]}).data["result"] is False;
-            assert client.post("/function/delete_trip", json={"trip_id": trip["id"]}).data["result"] is True;
-            assert client.post("/function/list_trips", json={}).data["result"] == [];
+            assert client.post("/function/delete_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "item_id": packed["id"]}).data["result"] is True;
+            assert client.post("/function/delete_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "item_id": packed["id"]}).data["result"] is False;
+            assert client.post("/function/delete_trip", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"]}).data["result"] is True;
+            assert client.post("/function/list_trips", json={"workspace_key":TEST_WORKSPACE}).data["result"] == [];
             conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
             try { assert conn.execute("SELECT count(*) FROM items").fetchone()[0] == 0; }
             finally { conn.close(); }
@@ -49,11 +51,11 @@ test "validation rejects invalid dates amounts trip bounds and foreign item IDs"
                 {"budget": "-1"}, {"budget": "1.234"}, {"budget": "NaN"}, {"currency": "XYZ"}
             ] {
                 body = base.copy(); body.update(invalid);
-                response = client.post("/function/save_trip", json=body);
+                response = client.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, **body});
                 assert not response.ok, str(body);
             }
-            trip = client.post("/function/save_trip", json=base).data["result"];
-            second = client.post("/function/save_trip", json=base).data["result"];
+            trip = client.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, **base}).data["result"];
+            second = client.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, **base}).data["result"];
             for invalid_item in [
                 {"date": "2026-10-16"}, {"date": "2026-10-09"}, {"time": "09:00"},
                 {"date": "2026-10-10", "time": "24:00"}, {"cost": "-1"},
@@ -61,17 +63,17 @@ test "validation rejects invalid dates amounts trip bounds and foreign item IDs"
                 {"category": "unknown"}, {"title": " "}, {"trip_id": "missing"}
             ] {
                 body = {"trip_id": trip["id"], "title": "An item"}; body.update(invalid_item);
-                assert not client.post("/function/save_item", json=body).ok, str(body);
+                assert not client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, **body}).ok, str(body);
             }
-            item = client.post("/function/save_item", json={"trip_id": trip["id"], "title": "Museum", "date": "2026-10-14", "cost": "0.10"}).data["result"];
-            assert not client.post("/function/set_item_state", json={"trip_id": second["id"], "item_id": item["id"], "done": True, "paid": True}).ok;
-            assert not client.post("/function/save_item", json={"trip_id": second["id"], "item_id": item["id"], "title": "Moved"}).ok;
+            item = client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "title": "Museum", "date": "2026-10-14", "cost": "0.10"}).data["result"];
+            assert not client.post("/function/set_item_state", json={"workspace_key":TEST_WORKSPACE, "trip_id": second["id"], "item_id": item["id"], "done": True, "paid": True}).ok;
+            assert not client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": second["id"], "item_id": item["id"], "title": "Moved"}).ok;
             edit_trip = base.copy(); edit_trip.update({"trip_id": trip["id"], "end_date": "2026-10-12"});
-            assert not client.post("/function/save_trip", json=edit_trip).ok;
+            assert not client.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, **edit_trip}).ok;
             edit_trip["end_date"] = "2026-10-15"; edit_trip["currency"] = "EUR";
-            assert not client.post("/function/save_trip", json=edit_trip).ok;
-            assert client.post("/function/delete_item", json={"trip_id": second["id"], "item_id": item["id"]}).data["result"] is False;
-            assert len(client.post("/function/list_items", json={"trip_id": trip["id"]}).data["result"]) == 1;
+            assert not client.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, **edit_trip}).ok;
+            assert client.post("/function/delete_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": second["id"], "item_id": item["id"]}).data["result"] is False;
+            assert len(client.post("/function/list_items", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"]}).data["result"]) == 1;
         } finally { client.close(); }
     }
 }
@@ -81,15 +83,15 @@ test "independent server sessions preserve data and itinerary ordering" {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
         first = JacTestClient.from_file(SERVER, base_path=os.path.join(directory, "first"));
         try {
-            trip = first.post("/function/save_trip", json={"title": "Weekend", "destination": "Chicago", "start_date": "2026-12-01", "end_date": "2026-12-03", "notes": "Remember the train tickets"}).data["result"];
+            trip = first.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, "title": "Weekend", "destination": "Chicago", "start_date": "2026-12-01", "end_date": "2026-12-03", "notes": "Remember the train tickets"}).data["result"];
             for (title, date, time) in [("Undated idea", "", ""), ("Flexible", "2026-12-02", ""), ("Morning", "2026-12-02", "09:00"), ("Earlier", "2026-12-01", "18:00")] {
-                first.post("/function/save_item", json={"trip_id": trip["id"], "title": title, "date": date, "time": time});
+                first.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "title": title, "date": date, "time": time});
             }
         } finally { first.close(); }
         second = JacTestClient.from_file(SERVER, base_path=os.path.join(directory, "second"));
         try {
-            assert second.post("/function/list_trips", json={}).data["result"][0]["notes"] == "Remember the train tickets";
-            items = second.post("/function/list_items", json={"trip_id": trip["id"]}).data["result"];
+            assert second.post("/function/list_trips", json={"workspace_key":TEST_WORKSPACE}).data["result"][0]["notes"] == "Remember the train tickets";
+            items = second.post("/function/list_items", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"]}).data["result"];
             assert [item["title"] for item in items] == ["Earlier", "Morning", "Flexible", "Undated idea"];
         } finally { second.close(); }
     }
@@ -101,24 +103,24 @@ test "independent server sessions preserve data and itinerary ordering" {
 test "delay combines backups and acceptance preserves fixed items and boundaries" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        trip = replan_demo()["trip_id"];
-        before = replan_state(trip);
+        trip = replan_demo(TEST_WORKSPACE)["trip_id"];
+        before = replan_state(TEST_WORKSPACE, trip);
         disrupted = [i for i in before["items"] if i["title"] == "Flight arrival"][0];
         fixed = [i for i in before["items"] if i["fixed"]][0];
-        result = propose_replan(trip, disrupted["id"], "delayed", 180);
+        result = propose_replan(TEST_WORKSPACE, trip, disrupted["id"], "delayed", 180);
         assert len(result["proposals"]) == 3;
-        assert replan_state(trip)["version"] == before["version"];
-        assert replan_state(trip)["items"] == before["items"];
+        assert replan_state(TEST_WORKSPACE, trip)["version"] == before["version"];
+        assert replan_state(TEST_WORKSPACE, trip)["items"] == before["items"];
         first = result["proposals"][0];
         assert len([c for c in first["changes"] if c["backup_id"]]) == 2;
         assert fixed["id"] not in [c["item_id"] for c in first["changes"]];
-        assert review_replan(trip, first["id"], True)["status"] == "accepted";
-        after = replan_state(trip);
+        assert review_replan(TEST_WORKSPACE, trip, first["id"], True)["status"] == "accepted";
+        after = replan_state(TEST_WORKSPACE, trip);
         assert after["version"] > before["version"];
         assert [i for i in after["items"] if i["id"] == fixed["id"]][0] == fixed;
         assert sum([i["cost_cents"] for i in after["items"]]) == first["projected_total_cents"];
         caught = False;
-        try { review_replan(trip, first["id"], True); } except ValueError { caught = True; }
+        try { review_replan(TEST_WORKSPACE, trip, first["id"], True); } except ValueError { caught = True; }
         assert caught;
     }
 }
@@ -126,39 +128,39 @@ test "delay combines backups and acceptance preserves fixed items and boundaries
 test "reject and manual combination never mutate the active itinerary until acceptance" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        trip = replan_demo()["trip_id"]; before = replan_state(trip);
+        trip = replan_demo(TEST_WORKSPACE)["trip_id"]; before = replan_state(TEST_WORKSPACE, trip);
         disrupted = [i for i in before["items"] if i["category"] == "food"][0];
-        result = propose_replan(trip, disrupted["id"], "interrupted");
+        result = propose_replan(TEST_WORKSPACE, trip, disrupted["id"], "interrupted");
         assert len(result["proposals"]) == 3;
-        assert review_replan(trip, result["proposals"][0]["id"], False)["status"] == "rejected";
-        assert replan_state(trip)["items"] == before["items"];
+        assert review_replan(TEST_WORKSPACE, trip, result["proposals"][0]["id"], False)["status"] == "rejected";
+        assert replan_state(TEST_WORKSPACE, trip)["items"] == before["items"];
         selected = result["backups"][0];
-        custom = combine_replan(trip, result["event_id"], {disrupted["id"]: selected["id"]});
+        custom = combine_replan(TEST_WORKSPACE, trip, result["event_id"], {disrupted["id"]: selected["id"]});
         assert custom["mode"] == "custom";
         assert custom["proposals"][0]["changes"][0]["backup_id"] == selected["id"];
-        assert replan_state(trip)["version"] == before["version"];
+        assert replan_state(TEST_WORKSPACE, trip)["version"] == before["version"];
         caught = False;
-        try { combine_replan(trip, result["event_id"], {disrupted["id"]: "invented-backup"}); } except ValueError { caught = True; }
+        try { combine_replan(TEST_WORKSPACE, trip, result["event_id"], {disrupted["id"]: "invented-backup"}); } except ValueError { caught = True; }
         assert caught;
-        assert review_replan(trip, custom["proposals"][0]["id"], True)["status"] == "accepted";
+        assert review_replan(TEST_WORKSPACE, trip, custom["proposals"][0]["id"], True)["status"] == "accepted";
     }
 }
 
 test "manual edits invalidate patches and duplicate event IDs cannot apply twice" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        trip = replan_demo()["trip_id"]; state = replan_state(trip);
+        trip = replan_demo(TEST_WORKSPACE)["trip_id"]; state = replan_state(TEST_WORKSPACE, trip);
         disrupted = [i for i in state["items"] if i["title"] == "Flight arrival"][0];
-        old = propose_replan(trip, disrupted["id"], "delayed", 180, "event-one");
-        set_item_state(trip, disrupted["id"], False, True);
+        old = propose_replan(TEST_WORKSPACE, trip, disrupted["id"], "delayed", 180, "event-one");
+        set_item_state(TEST_WORKSPACE, trip, disrupted["id"], False, True);
         caught = False;
-        try { review_replan(trip, old["proposals"][0]["id"], True); } except ValueError { caught = True; }
+        try { review_replan(TEST_WORKSPACE, trip, old["proposals"][0]["id"], True); } except ValueError { caught = True; }
         assert caught;
-        fresh = propose_replan(trip, disrupted["id"], "delayed", 180, "event-one");
+        fresh = propose_replan(TEST_WORKSPACE, trip, disrupted["id"], "delayed", 180, "event-one");
         assert fresh["event_id"] == old["event_id"];
-        assert review_replan(trip, fresh["proposals"][0]["id"], True)["status"] == "accepted";
+        assert review_replan(TEST_WORKSPACE, trip, fresh["proposals"][0]["id"], True)["status"] == "accepted";
         caught = False;
-        try { propose_replan(trip, disrupted["id"], "delayed", 180, "event-one"); } except ValueError { caught = True; }
+        try { propose_replan(TEST_WORKSPACE, trip, disrupted["id"], "delayed", 180, "event-one"); } except ValueError { caught = True; }
         assert caught;
     }
 }
@@ -166,23 +168,23 @@ test "manual edits invalidate patches and duplicate event IDs cannot apply twice
 test "fixed conflicts, cycles, invalid inputs and unknown timestamps are rejected" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        trip = replan_demo()["trip_id"]; state = replan_state(trip);
+        trip = replan_demo(TEST_WORKSPACE)["trip_id"]; state = replan_state(TEST_WORKSPACE, trip);
         disrupted = [i for i in state["items"] if i["title"] == "Flight arrival"][0];
         car = [i for i in state["items"] if i["title"] == "Rental-car pickup"][0];
-        replan_save_rules(trip, car["id"], 30, "2026-11-01T17:00", True);
-        conflict = propose_replan(trip, disrupted["id"], "delayed", 180);
+        replan_save_rules(TEST_WORKSPACE, trip, car["id"], 30, "2026-11-01T17:00", True);
+        conflict = propose_replan(TEST_WORKSPACE, trip, disrupted["id"], "delayed", 180);
         assert conflict["proposals"] == [];
         assert "is fixed or completed" in conflict["warnings"][0];
         caught = False;
-        try { replan_save_dependency(trip, car["id"], disrupted["id"], 0); } except ValueError { caught = True; }
+        try { replan_save_dependency(TEST_WORKSPACE, trip, car["id"], disrupted["id"], 0); } except ValueError { caught = True; }
         assert caught;
-        assert len(replan_state(trip)["dependencies"]) == 4;
-        undated = save_item(trip, "Unscheduled idea");
+        assert len(replan_state(TEST_WORKSPACE, trip)["dependencies"]) == 4;
+        undated = save_item(TEST_WORKSPACE, trip, "Unscheduled idea");
         caught = False;
-        try { propose_replan(trip, undated.id, "delayed", 10); } except ValueError { caught = True; }
+        try { propose_replan(TEST_WORKSPACE, trip, undated.id, "delayed", 10); } except ValueError { caught = True; }
         assert caught;
         caught = False;
-        try { propose_replan(trip, disrupted["id"], "delayed", -10); } except ValueError { caught = True; }
+        try { propose_replan(TEST_WORKSPACE, trip, disrupted["id"], "delayed", -10); } except ValueError { caught = True; }
         assert caught;
     }
 }
@@ -190,14 +192,14 @@ test "fixed conflicts, cycles, invalid inputs and unknown timestamps are rejecte
 test "paid interrupted items retain prior payments and do not invent refunds" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        trip = replan_demo()["trip_id"]; state = replan_state(trip);
+        trip = replan_demo(TEST_WORKSPACE)["trip_id"]; state = replan_state(TEST_WORKSPACE, trip);
         dinner = [i for i in state["items"] if i["category"] == "food"][0];
-        set_item_state(trip, dinner["id"], False, True);
-        result = propose_replan(trip, dinner["id"], "interrupted");
+        set_item_state(TEST_WORKSPACE, trip, dinner["id"], False, True);
+        result = propose_replan(TEST_WORKSPACE, trip, dinner["id"], "interrupted");
         proposal = result["proposals"][0];
         assert proposal["retained_paid_cents"] == dinner["cost_cents"];
-        review_replan(trip, proposal["id"], True);
-        after = replan_state(trip);
+        review_replan(TEST_WORKSPACE, trip, proposal["id"], True);
+        after = replan_state(TEST_WORKSPACE, trip);
         expenses = [i for i in after["items"] if i["category"] == "expense"];
         assert len(expenses) == 1 and expenses[0]["paid"];
         assert sum([i["cost_cents"] for i in after["items"]]) == proposal["projected_total_cents"];
@@ -208,16 +210,16 @@ test "paid interrupted items retain prior payments and do not invent refunds" {
 test "Jac by llm selects supplied combinations and rejects hallucinated IDs" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        trip = replan_demo()["trip_id"];
-        dinner = [i for i in replan_state(trip)["items"] if i["category"] == "food"][0];
+        trip = replan_demo(TEST_WORKSPACE)["trip_id"];
+        dinner = [i for i in replan_state(TEST_WORKSPACE, trip)["items"] if i["category"] == "food"][0];
         original_model = replan_agent.replan_model;
         try {
             replan_agent.replan_model = MockLLM(outputs=[ReplanSelection(combination_ids=["combination-1", "combination-3"], explanation="Two supplied mock backup combinations.")]);
-            result = propose_replan(trip, dinner["id"], "interrupted", use_llm=True);
+            result = propose_replan(TEST_WORKSPACE, trip, dinner["id"], "interrupted", use_llm=True);
             assert result["mode"] == "llm", str(result["warnings"]);
             assert len(result["proposals"]) == 2;
             replan_agent.replan_model = MockLLM(outputs=[ReplanSelection(combination_ids=["invented"], explanation="Unsupported")]);
-            fallback = propose_replan(trip, dinner["id"], "interrupted", use_llm=True);
+            fallback = propose_replan(TEST_WORKSPACE, trip, dinner["id"], "interrupted", use_llm=True);
             assert fallback["mode"] == "mock";
             assert "LLM selection unavailable or invalid" in fallback["warnings"][-1];
         } finally { replan_agent.replan_model = original_model; }
@@ -227,22 +229,22 @@ test "Jac by llm selects supplied combinations and rejects hallucinated IDs" {
 test "budget violations and independent fixed timing boundaries block repairs" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        trip = replan_demo()["trip_id"]; state = replan_state(trip);
+        trip = replan_demo(TEST_WORKSPACE)["trip_id"]; state = replan_state(TEST_WORKSPACE, trip);
         dinner = [i for i in state["items"] if i["category"] == "food"][0];
         conn = _connect();
         try { conn.execute("UPDATE trips SET budget_cents=1 WHERE id=?", (trip,)); conn.commit(); }
         finally { conn.close(); }
-        impossible = propose_replan(trip, dinner["id"], "interrupted");
+        impossible = propose_replan(TEST_WORKSPACE, trip, dinner["id"], "interrupted");
         assert impossible["proposals"] == [];
         assert "This plan goes over the trip budget" in impossible["warnings"];
         conn = _connect();
         try { conn.execute("UPDATE trips SET budget_cents=150000 WHERE id=?", (trip,)); conn.commit(); }
         finally { conn.close(); }
         # This item has no dependency edge: full-trip validation must still catch the overlap.
-        boundary = save_item(trip, "Independent fixed show", "activity", "2026-11-01", "20:00");
-        replan_save_rules(trip, boundary.id, 60, "2026-11-01T20:00", True);
+        boundary = save_item(TEST_WORKSPACE, trip, "Independent fixed show", "activity", "2026-11-01", "20:00");
+        replan_save_rules(TEST_WORKSPACE, trip, boundary.id, 60, "2026-11-01T20:00", True);
         flight = [i for i in state["items"] if i["title"] == "Flight arrival"][0];
-        revised = propose_replan(trip, flight["id"], "delayed", 180);
+        revised = propose_replan(TEST_WORKSPACE, trip, flight["id"], "delayed", 180);
         for proposal in revised["proposals"] {
             assert boundary.id not in [c["item_id"] for c in proposal["changes"]];
         }
@@ -253,50 +255,50 @@ test "budget violations and independent fixed timing boundaries block repairs" {
 test "failed application rolls back changes retained payments and event status" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        trip = replan_demo()["trip_id"];
-        dinner = [i for i in replan_state(trip)["items"] if i["category"] == "food"][0];
-        set_item_state(trip, dinner["id"], False, True);
-        before = replan_state(trip);
-        proposal = propose_replan(trip, dinner["id"], "interrupted")["proposals"][0];
+        trip = replan_demo(TEST_WORKSPACE)["trip_id"];
+        dinner = [i for i in replan_state(TEST_WORKSPACE, trip)["items"] if i["category"] == "food"][0];
+        set_item_state(TEST_WORKSPACE, trip, dinner["id"], False, True);
+        before = replan_state(TEST_WORKSPACE, trip);
+        proposal = propose_replan(TEST_WORKSPACE, trip, dinner["id"], "interrupted")["proposals"][0];
         conn = _connect();
         try {
             conn.execute("CREATE TRIGGER fail_simulated_write BEFORE UPDATE ON items BEGIN SELECT RAISE(ABORT, 'test failure'); END");
             conn.commit();
         } finally { conn.close(); }
         caught = False;
-        try { review_replan(trip, proposal["id"], True); } except sqlite3.IntegrityError { caught = True; }
+        try { review_replan(TEST_WORKSPACE, trip, proposal["id"], True); } except sqlite3.IntegrityError { caught = True; }
         assert caught;
-        assert replan_state(trip)["items"] == before["items"];
-        assert replan_state(trip)["version"] == before["version"];
+        assert replan_state(TEST_WORKSPACE, trip)["items"] == before["items"];
+        assert replan_state(TEST_WORKSPACE, trip)["version"] == before["version"];
         conn = _connect();
         try { conn.execute("DROP TRIGGER fail_simulated_write"); conn.commit(); }
         finally { conn.close(); }
-        assert review_replan(trip, proposal["id"], True)["status"] == "accepted";
+        assert review_replan(TEST_WORKSPACE, trip, proposal["id"], True)["status"] == "accepted";
     }
 }
 
 test "guided demo supports both backup scenarios and saved dependency-aware replanning" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        trip = replan_demo()["trip_id"];
-        before = replan_state(trip);
+        trip = replan_demo(TEST_WORKSPACE)["trip_id"];
+        before = replan_state(TEST_WORKSPACE, trip);
         assert before["trip"]["destination"] == "Boston";
         dinner = [i for i in before["items"] if i["category"] == "food"][0];
         walk = [i for i in before["items"] if i["title"] == "Outdoor harbor walk"][0];
         flight = [i for i in before["items"] if i["title"] == "Flight arrival"][0];
         for (item, scenario) in [(dinner, "arrival_delay"), (walk, "rain")] {
-            preview = preview_backups(trip, item["id"], scenario);
+            preview = preview_backups(TEST_WORKSPACE, trip, item["id"], scenario);
             assert len(preview.options) == 2;
             assert preview.status == "needs_validation";
         }
-        assert replan_state(trip)["version"] == before["version"];
-        plans = propose_replan(trip, flight["id"], "delayed", 180)["proposals"];
+        assert replan_state(TEST_WORKSPACE, trip)["version"] == before["version"];
+        plans = propose_replan(TEST_WORKSPACE, trip, flight["id"], "delayed", 180)["proposals"];
         assert len(plans) == 3;
-        assert replan_state(trip)["items"] == before["items"];
+        assert replan_state(TEST_WORKSPACE, trip)["items"] == before["items"];
         selected = plans[0];
-        assert review_replan(trip, selected["id"], True)["status"] == "accepted";
+        assert review_replan(TEST_WORKSPACE, trip, selected["id"], True)["status"] == "accepted";
         # Reopen the saved state rather than inspecting only the proposal response.
-        saved = replan_state(trip);
+        saved = replan_state(TEST_WORKSPACE, trip);
         assert [i for i in saved["items"] if i["id"] == flight["id"]][0]["time"] == "18:00";
         assert [i for i in saved["items"] if i["id"] == walk["id"]][0] == walk;
         assert sum([i["cost_cents"] for i in saved["items"]]) == selected["projected_total_cents"];
@@ -307,26 +309,26 @@ test "guided demo supports both backup scenarios and saved dependency-aware repl
 test "route locations persist, preserve omitted edits, clear explicitly and advance trip versions" {
     with tempfile.TemporaryDirectory() as directory {
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
-        created = save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07",
+        created = save_trip(TEST_WORKSPACE, "Japan trip", "Kyoto", "2027-04-01", "2027-04-07",
             departure_location="  Detroit (DTW)  ", return_location="Chicago (ORD)");
         assert created.departure_location == "Detroit (DTW)" and created.return_location == "Chicago (ORD)";
-        saved = list_trips()[0];
+        saved = list_trips(TEST_WORKSPACE)[0];
         assert saved.departure_location == "Detroit (DTW)" and saved.return_location == "Chicago (ORD)";
-        version = replan_state(created.id)["version"];
+        version = replan_state(TEST_WORKSPACE, created.id)["version"];
         # Older clients must not erase route endpoints when editing other fields.
-        updated = save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id);
+        updated = save_trip(TEST_WORKSPACE, "Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id);
         assert updated.departure_location == "Detroit (DTW)" and updated.return_location == "Chicago (ORD)";
-        edited = save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id, return_location="Detroit (DTW)");
+        edited = save_trip(TEST_WORKSPACE, "Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id, return_location="Detroit (DTW)");
         assert edited.departure_location == edited.return_location == "Detroit (DTW)";
-        assert replan_state(created.id)["version"] > version;
+        assert replan_state(TEST_WORKSPACE, created.id)["version"] > version;
         for field in ["departure_location", "return_location"] {
             caught = False;
             try {
-                save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id, **{field: "x" * 161});
+                save_trip(TEST_WORKSPACE, "Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id, **{field: "x" * 161});
             } except ValueError { caught = True; }
             assert caught;
         }
-        cleared = save_trip("Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id,
+        cleared = save_trip(TEST_WORKSPACE, "Japan trip", "Kyoto", "2027-04-01", "2027-04-07", trip_id=created.id,
             departure_location="", return_location="  ");
         assert cleared.departure_location == cleared.return_location == "";
     }
@@ -341,12 +343,35 @@ test "legacy trip databases migrate route fields without changing saved records"
             conn.execute("INSERT INTO trips VALUES (?,?,?,?,?,?,?,?)", ("legacy", "Saved trip", "Boston", "2027-04-01", "2027-04-07", "USD", 100000, "Keep me"));
             conn.commit();
         } finally { conn.close(); }
-        migrated = list_trips()[0];
-        assert migrated.id == "legacy" and migrated.notes == "Keep me" and migrated.budget_cents == 100000;
-        assert migrated.departure_location == migrated.return_location == "";
-        save_trip("Saved trip", "Boston", "2027-04-01", "2027-04-07", trip_id="legacy", departure_location="Detroit", return_location="Chicago");
-        reopened = list_trips()[0];
-        assert reopened.departure_location == "Detroit" and reopened.return_location == "Chicago";
-        assert len(list_trips()) == 1;
+        assert list_trips(TEST_WORKSPACE) == [];
+        with unittest.TestCase().assertRaises(ValueError) { list_items(TEST_WORKSPACE, "legacy"); }
+        conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
+        try {
+            row = conn.execute("SELECT notes,budget_cents,departure_location,return_location FROM trips WHERE id='legacy'").fetchone();
+            assert row == ("Keep me", 100000, "", "");
+        } finally { conn.close(); }
+    }
+}
+
+test "private browsers list only their own trips and demos and scope every trip read or write" {
+    import from uuid { uuid4 }
+    import from unittest.mock { patch }
+    first = str(uuid4()); second = str(uuid4()); check = unittest.TestCase();
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": os.path.join(directory, "private.sqlite3")}) {
+        a = save_trip(first, "First trip", "Boston", "2027-01-01", "2027-01-03");
+        b = save_trip(first, "Second trip", "Seattle", "2027-02-01", "2027-02-03");
+        demo = replan_demo(second); rain = create_planning_demo(second);
+        assert {t.id for t in list_trips(first)} == {a.id, b.id};
+        assert {t.id for t in list_trips(second)} == {demo["trip_id"], rain["trip_id"]};
+        stop = save_item(first, a.id, "Boston-only stop", date="2027-01-01");
+        assert not list_items(first, b.id);
+        assert assistant_state(first, b.id)["trip_id"] == b.id and not assistant_state(first, b.id)["messages"];
+        assert replan_state(first, b.id)["items"] == [];
+        with check.assertRaises(ValueError) { assistant_state(second, a.id); }
+        with check.assertRaises(ValueError) { propose_replan(second, a.id, stop.id, "delay"); }
+        with check.assertRaises(ValueError) { save_item(second, a.id, "Wrong browser"); }
+        with check.assertRaises(ValueError) { delete_trip(second, a.id); }
+        with check.assertRaises(ValueError) { list_trips(""); }
+        assert list_items(first, a.id)[0].title == "Boston-only stop";
     }
 }

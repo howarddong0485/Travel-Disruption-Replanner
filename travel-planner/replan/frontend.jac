@@ -1,4 +1,5 @@
 """Disruption simulation and review of combined mock backup plans."""
+import from workspace { workspaceKey }
 import from server.main { replan_state, replan_save_rules, replan_save_dependency,
     propose_replan, review_replan, combine_replan }
 
@@ -30,7 +31,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         }
     }
     async def reload -> None {
-        state = await replan_state(trip_id=trip_id);
+        state = await replan_state(workspace_key=await workspaceKey(), trip_id=trip_id);
         available = [i for i in state["items"] if i["category"] in ["transport", "stay", "food", "activity"]];
         if len(available) > 0 and not item_id { item_id = available[0]["id"]; }
         if len(available) > 0 and not rule_id { loadRule(available[0]["id"]); }
@@ -39,7 +40,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         e.preventDefault(); if busy { return; } busy = True; error = ""; message = "";
         result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
         try {
-            result = await propose_replan(trip_id=trip_id, item_id=item_id, kind=kind,
+            result = await propose_replan(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=item_id, kind=kind,
                 delay_minutes=int(delay) if kind == "delayed" else 0, use_llm=use_ai);
             choices = {};
             if len(result["proposals"]) > 0 {
@@ -53,7 +54,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
     async def combine(e: FormEvent) -> None {
         e.preventDefault(); if busy { return; } busy = True; error = ""; message = "";
         try {
-            result = await combine_replan(trip_id=trip_id, event_id=result["event_id"], choices=choices);
+            result = await combine_replan(workspace_key=await workspaceKey(), trip_id=trip_id, event_id=result["event_id"], choices=choices);
             message = "Your backup combination is ready to review.";
         } except Exception as exc { error = str(exc); }
         finally { busy = False; }
@@ -61,7 +62,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
     async def review(id: str, accept: bool) -> None {
         if busy { return; } busy = True; error = "";
         try {
-            response = await review_replan(trip_id=trip_id, proposal_id=id, accept=accept);
+            response = await review_replan(workspace_key=await workspaceKey(), trip_id=trip_id, proposal_id=id, accept=accept);
             message = response["message"];
             if accept {
                 result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
@@ -75,7 +76,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
     async def rules(e: FormEvent) -> None {
         e.preventDefault(); if busy { return; } busy = True; error = "";
         try {
-            state = await replan_save_rules(trip_id=trip_id, item_id=rule_id,
+            state = await replan_save_rules(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=rule_id,
                 duration_minutes=int(duration), latest_start=latest, fixed=fixed);
             result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
             message = "Schedule rules saved. Generate new options to use them.";
@@ -85,7 +86,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
     async def dependency(e: FormEvent) -> None {
         e.preventDefault(); if busy { return; } busy = True; error = "";
         try {
-            state = await replan_save_dependency(trip_id=trip_id, prerequisite_id=prerequisite,
+            state = await replan_save_dependency(workspace_key=await workspaceKey(), trip_id=trip_id, prerequisite_id=prerequisite,
                 dependent_id=dependent, buffer_minutes=int(buffer));
             result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
             message = "Items linked. Generate new options to use the link.";
@@ -95,7 +96,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
     async def removeDependency(source: str, target: str) -> None {
         if busy { return; } busy = True; error = "";
         try {
-            state = await replan_save_dependency(trip_id=trip_id, prerequisite_id=source,
+            state = await replan_save_dependency(workspace_key=await workspaceKey(), trip_id=trip_id, prerequisite_id=source,
                 dependent_id=target, remove=True);
             result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
             message = "Link removed.";

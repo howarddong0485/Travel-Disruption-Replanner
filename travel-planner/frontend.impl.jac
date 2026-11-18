@@ -41,15 +41,16 @@ impl app.refresh -> None {
     target = selected;
     loading = True;
     try {
-        fresh_trips = await list_trips();
+        fresh_trips = await list_trips(workspace_key=await workspaceKey());
         if target not in [trip.id for trip in fresh_trips] {
-            target = fresh_trips[0].id if fresh_trips else "";
+            target = fresh_trips[0].id if not target and fresh_trips else "";
         }
         fresh_items: list[ItemView] = [];
         fresh_journey: any = {};
-        if target { fresh_items = await list_items(trip_id=target); fresh_journey = await journey_state(trip_id=target); }
+        if target { fresh_items = await list_items(workspace_key=await workspaceKey(), trip_id=target); fresh_journey = await journey_state(workspace_key=await workspaceKey(), trip_id=target); }
         if requestRef.current == token {
-            trips = fresh_trips; selected = target; items = fresh_items; journeyData = fresh_journey; mapRevision += 1; error = "";
+            activateTrip(target); token = requestRef.current;
+            trips = fresh_trips; loadedTrip = target; items = fresh_items; journeyData = fresh_journey; mapRevision += 1; error = "";
             aiReload += 1;
         }
     } except Exception as exc {
@@ -58,12 +59,22 @@ impl app.refresh -> None {
         if requestRef.current == token { loading = False; }
     }
 }
+impl app.activateTrip(trip_id: str) -> None {
+    if selected == trip_id { return; }
+    requestRef.current += 1;
+    if selected and loadedTrip == selected {
+        tripViews.current[selected] = {"items": items, "journey": journeyData, "ai": aiData, "day": day, "chat": mapChat};
+    }
+    views: any = tripViews.current; prior: any = views.get(trip_id, {});
+    resetReview(); selected = trip_id; loadedTrip = trip_id if prior else "";
+    items = prior.get("items", []); journeyData = prior.get("journey", {}); day = prior.get("day", "");
+    aiData = prior.get("ai", {}); aiCompose = 0; aiText = ""; aiMode = "ask"; mapApiKey = ""; mapChat = prior.get("chat", False);
+    revisionNotice = ""; notice = ""; error = ""; railView = "auto"; placeId = "";
+    resetItem();
+}
 impl app.chooseTrip(trip_id: str) -> None {
     if busy or loading { return; }
-    resetReview(); selected = trip_id; items = []; day = ""; tab = "itinerary";
-    railView = "auto"; placeId = "";
-    trip_form = False; notice = ""; revisionNotice = ""; resetItem();
-    aiData = {}; aiCompose = 0; aiText = "";
+    activateTrip(trip_id); tab = "itinerary"; trip_form = False;
     await refresh();
 }
 impl app.submitTrip(e: FormEvent) -> None {
@@ -75,11 +86,11 @@ impl app.submitTrip(e: FormEvent) -> None {
     }
     busy = True; notice = "";
     try {
-        saved = await save_trip(title=trip_title, destination=destination, start_date=start_date,
+        saved = await save_trip(workspace_key=await workspaceKey(), title=trip_title, destination=destination, start_date=start_date,
             end_date=end_date, currency=currency, budget=budget, notes=trip_notes, trip_id=editing_trip,
             departure_location=departure_location, return_location=return_location);
-        if selected != saved.id { aiData = {}; aiCompose = 0; tab = "planner"; }
-        resetReview(); selected = saved.id; trip_form = False; day = ""; resetItem();
+        if selected != saved.id { tab = "planner"; }
+        resetReview(); activateTrip(saved.id); trip_form = False; day = ""; resetItem();
         await refresh(); notice = "Trip saved.";
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
@@ -87,7 +98,7 @@ impl app.submitTrip(e: FormEvent) -> None {
 impl app.submitItem(e: FormEvent) -> None {
     e.preventDefault(); if busy or not selected { return; } busy = True; notice = "";
     try {
-        await save_item(trip_id=selected, title=item_title, category=category,
+        await save_item(workspace_key=await workspaceKey(), trip_id=selected, title=item_title, category=category,
             date="" if category == "packing" else item_date, time="" if category == "packing" else item_time,
             location="" if category == "packing" else location,
             reference=reference if category in ["transport", "stay"] else "",
@@ -103,7 +114,7 @@ impl app.submitItem(e: FormEvent) -> None {
 impl app.toggle(item: ItemView, payment: bool = False) -> None {
     if busy or loading { return; } busy = True; notice = "";
     try {
-        await set_item_state(trip_id=selected, item_id=item.id,
+        await set_item_state(workspace_key=await workspaceKey(), trip_id=selected, item_id=item.id,
             done=item.done if payment else not item.done, paid=not item.paid if payment else item.paid);
         await refresh();
     } except Exception as exc { error = str(exc); }
@@ -114,8 +125,8 @@ impl app.togglePacking(title: str) -> None {
     busy = True; error = ""; notice = "";
     try {
         saved = [item for item in items if item.category == "packing" and item.title == title];
-        packing_item = saved[0] if saved else await save_item(trip_id=selected, title=title, category="packing", cost="0");
-        await set_item_state(trip_id=selected, item_id=packing_item.id, done=not packing_item.done, paid=packing_item.paid);
+        packing_item = saved[0] if saved else await save_item(workspace_key=await workspaceKey(), trip_id=selected, title=title, category="packing", cost="0");
+        await set_item_state(workspace_key=await workspaceKey(), trip_id=selected, item_id=packing_item.id, done=not packing_item.done, paid=packing_item.paid);
         await refresh();
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
@@ -124,7 +135,7 @@ impl app.removeItem(item: ItemView) -> None {
     if busy or not window.confirm("Delete “" + item.title + "” from this trip?") { return; }
     busy = True; notice = "";
     try {
-        await delete_item(trip_id=selected, item_id=item.id);
+        await delete_item(workspace_key=await workspaceKey(), trip_id=selected, item_id=item.id);
         if editing_item == item.id { resetItem(); }
         await refresh();
     } except Exception as exc { error = str(exc); }
@@ -134,7 +145,8 @@ impl app.removeTrip -> None {
     if busy or not window.confirm("Delete this trip and all its itinerary, booking, packing, and cost records?") { return; }
     busy = True; notice = "";
     try {
-        await delete_trip(trip_id=selected); resetReview(); selected = ""; items = []; day = "";
+        deleted = selected; await delete_trip(workspace_key=await workspaceKey(), trip_id=deleted); activateTrip("");
+        views: any = tripViews.current; views.pop(deleted, None);
         trip_form = False; resetItem(); await refresh();
     } except Exception as exc { error = str(exc); }
     finally { busy = False; }
@@ -143,7 +155,7 @@ impl app.removeTrip -> None {
 impl app.createDemo -> None {
     if busy or loading { return; } busy = True; error = "";
     try {
-        demo = await replan_demo(); resetReview(); selected = demo["trip_id"]; day = "";
+        demo = await replan_demo(workspace_key=await workspaceKey()); activateTrip(demo["trip_id"]);
         trip_form = False; tab = "demo"; resetItem(); await refresh();
         notice = "Demo trip created. Follow the three steps below.";
     } except Exception as exc { error = str(exc); }
@@ -153,7 +165,7 @@ impl app.createDemo -> None {
 impl app.createIntegratedDemo(scenario: str = "rain") -> None {
     if busy or loading { return; } busy = True; error = "";
     try {
-        demo = await create_planning_demo(scenario=scenario); resetReview(); selected = demo["trip_id"]; day = "";
+        demo = await create_planning_demo(workspace_key=await workspaceKey(), scenario=scenario); activateTrip(demo["trip_id"]);
         if scenario == "map" { itineraryView = "map"; }
         trip_form = False; tab = "itinerary" if scenario == "map" else "backups"; resetItem(); await refresh();
         if scenario != "map" { notice = "Sample trip created. Select Find alternative plans to compare options."; }

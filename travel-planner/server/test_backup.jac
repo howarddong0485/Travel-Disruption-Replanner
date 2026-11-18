@@ -1,4 +1,5 @@
 """Backup endpoint integration checks with an isolated SQLite database."""
+import from tests.workspace_fixture { TEST_WORKSPACE }
 import os;
 import tempfile;
 import sqlite3;
@@ -16,16 +17,16 @@ test "preview endpoint serializes drafts and never alters trips items or costs" 
         os.environ["TRAVEL_DB_PATH"] = os.path.join(directory, "travel.sqlite3");
         client = JacTestClient.from_file(os.path.join(os.path.dirname(__file__), "main.jac"), base_path=os.path.join(directory, "store"));
         try {
-            trip = client.post("/function/save_trip", json={"title": "Backup demo", "destination": "Boston", "start_date": "2026-11-01", "end_date": "2026-11-03", "budget": "100"}).data["result"];
-            other = client.post("/function/save_trip", json={"title": "Other trip", "destination": "Boston", "start_date": "2026-11-01", "end_date": "2026-11-03"}).data["result"];
-            activity = client.post("/function/save_item", json={"trip_id": trip["id"], "title": "Outdoor walk", "date": "2026-11-02", "cost": "10"}).data["result"];
-            dinner = client.post("/function/save_item", json={"trip_id": trip["id"], "title": "Dinner", "category": "food", "date": "2026-11-02", "cost": "20"}).data["result"];
-            undated = client.post("/function/save_item", json={"trip_id": trip["id"], "title": "Undated activity"}).data["result"];
-            completed = client.post("/function/save_item", json={"trip_id": trip["id"], "title": "Finished activity", "date": "2026-11-02"}).data["result"];
-            client.post("/function/set_item_state", json={"trip_id": trip["id"], "item_id": completed["id"], "done": True, "paid": False});
+            trip = client.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, "title": "Backup demo", "destination": "Boston", "start_date": "2026-11-01", "end_date": "2026-11-03", "budget": "100"}).data["result"];
+            other = client.post("/function/save_trip", json={"workspace_key":TEST_WORKSPACE, "title": "Other trip", "destination": "Boston", "start_date": "2026-11-01", "end_date": "2026-11-03"}).data["result"];
+            activity = client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "title": "Outdoor walk", "date": "2026-11-02", "cost": "10"}).data["result"];
+            dinner = client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "title": "Dinner", "category": "food", "date": "2026-11-02", "cost": "20"}).data["result"];
+            undated = client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "title": "Undated activity"}).data["result"];
+            completed = client.post("/function/save_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "title": "Finished activity", "date": "2026-11-02"}).data["result"];
+            client.post("/function/set_item_state", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "item_id": completed["id"], "done": True, "paid": False});
             before = stored_snapshot();
             for (item_id, trigger) in [(activity["id"], "rain"), (dinner["id"], "arrival_delay")] {
-                response = client.post("/function/preview_backups", json={"trip_id": trip["id"], "item_id": item_id, "trigger": trigger});
+                response = client.post("/function/preview_backups", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "item_id": item_id, "trigger": trigger});
                 assert response.ok, str(response.data);
                 result = response.data["result"];
                 assert result["status"] == "needs_validation" and len(result["options"]) == 2;
@@ -43,12 +44,12 @@ test "preview endpoint serializes drafts and never alters trips items or costs" 
                 (trip["id"], undated["id"], "rain"),
                 (trip["id"], completed["id"], "rain")
             ] {
-                assert not client.post("/function/preview_backups", json={"trip_id": trip_id, "item_id": item_id, "trigger": trigger}).ok;
+                assert not client.post("/function/preview_backups", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip_id, "item_id": item_id, "trigger": trigger}).ok;
                 assert stored_snapshot() == before;
             }
-            client.post("/function/delete_item", json={"trip_id": trip["id"], "item_id": activity["id"]});
+            client.post("/function/delete_item", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "item_id": activity["id"]});
             after_delete = stored_snapshot();
-            assert not client.post("/function/preview_backups", json={"trip_id": trip["id"], "item_id": activity["id"], "trigger": "rain"}).ok;
+            assert not client.post("/function/preview_backups", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip["id"], "item_id": activity["id"], "trigger": "rain"}).ok;
             assert stored_snapshot() == after_delete;
         } finally {
             client.close();

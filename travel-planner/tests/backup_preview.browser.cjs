@@ -1,4 +1,5 @@
 /** Run against a local Roam service with a dedicated TRAVEL_DB_PATH. */
+const {browserWorkspace} = require('./browser_workspace.cjs');
 const assert = require('node:assert/strict');
 const { createRequire } = require('node:module');
 const path = require('node:path');
@@ -16,13 +17,15 @@ const previewRoute = '**/function/generate_backup_plans';
     ...(process.env.TRAVEL_BROWSER_CHANNEL ? {channel: process.env.TRAVEL_BROWSER_CHANNEL} : {}),
   });
   const page = await browser.newPage({viewport: {width: 1440, height: 1100}});
+  const workspace_key = await browserWorkspace(page);
+
   const errors = [];
   const trips = [];
   let checks = 0;
   page.on('pageerror', error => errors.push(error.message));
   const passed = name => { checks++; console.log('PASS: ' + name); };
   const api = async (name, data) => {
-    const response = await page.request.post(apiUrl + '/function/' + name, {data});
+    const response = await page.request.post(apiUrl + '/function/' + name, {data: {...data, workspace_key}});
     const payload = await response.json();
     assert(response.ok() && payload.ok, JSON.stringify(payload));
     return payload.data.result;

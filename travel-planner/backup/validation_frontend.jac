@@ -1,4 +1,5 @@
 """Shared sample/saved-trip backup workflow using Roam's controls and styles."""
+import from workspace { workspaceKey }
 import from browser_ids { request_id }
 import from server.main { load_backup_history, save_backup_refresh, load_trip_backup_history, save_trip_backup_refresh }
 
@@ -61,8 +62,8 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
     storageKey = "roam.backup.trip-session.v1:" + trip_id if trip_id else "roam.backup.sample-session.v1";
 
     async def fetchHistory -> dict[str, any] {
-        if trip_id { return await load_trip_backup_history(session_id=str(sessionId.current or ""), trip_id=trip_id); }
-        return await load_backup_history(session_id=str(sessionId.current or ""));
+        if trip_id { return await load_trip_backup_history(workspace_key=await workspaceKey(), session_id=str(sessionId.current or ""), trip_id=trip_id); }
+        return await load_backup_history(workspace_key=await workspaceKey(), session_id=str(sessionId.current or ""));
     }
 
     can with entry {
@@ -174,11 +175,11 @@ def:pub ValidationLab(trip_id: str = "", initial_target: str = "", initial_trigg
             if not retryId.current { retryId.current = request_id(browser); }
             response: dict[str, any] = {};
             if trip_id {
-                response = await save_trip_backup_refresh(session_id=str(sessionId.current or ""), request_id=str(retryId.current or ""),
+                response = await save_trip_backup_refresh(workspace_key=await workspaceKey(), session_id=str(sessionId.current or ""), request_id=str(retryId.current or ""),
                     expected_revision=revision, trip_id=trip_id, item_id=target, trigger=scenario,
                     inventory_change=inventory, expected_base_snapshot=history["base_snapshot"]);
             } else {
-                response = await save_backup_refresh(session_id=str(sessionId.current or ""), request_id=str(retryId.current or ""),
+                response = await save_backup_refresh(workspace_key=await workspaceKey(), session_id=str(sessionId.current or ""), request_id=str(retryId.current or ""),
                     expected_revision=revision, scenario=scenario, profile_name=profile,
                     budget=budget, inventory_change=inventory, sample_date=sampleDate);
             }

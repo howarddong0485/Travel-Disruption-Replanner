@@ -1,4 +1,5 @@
 """Explicitly save source terms; extraction does not book or cancel anything."""
+import from workspace { workspaceKey }
 import from server.main { save_policy_terms }
 import from assistant.frontend { assistantError }
 
@@ -8,7 +9,7 @@ def:pub PolicyEditor(trip_id: str, items: any, version: int, onSaved: any, disab
     async def save(e: FormEvent) -> None {
         e.preventDefault(); busy = True; failure = ""; notice = "";
         try {
-            result = await save_policy_terms(trip_id=trip_id, item_id=item, terms=terms, source=source,
+            result = await save_policy_terms(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=item, terms=terms, source=source,
                 zone=zone, expires_at=expires, expected_version=version);
             onSaved(result);
             notice = "Terms saved for review. No booking or cancellation was made.";

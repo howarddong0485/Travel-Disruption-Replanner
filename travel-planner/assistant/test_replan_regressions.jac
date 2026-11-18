@@ -1,4 +1,5 @@
 """Regressions for the ordinary saved-trip Replan audit; no paid model calls."""
+import from tests.workspace_fixture { TEST_WORKSPACE }
 import os;
 import tempfile;
 import unittest;
@@ -15,30 +16,30 @@ import from replan.connections { validate_connections }
 
 test "saved-item summaries use checked arithmetic even when the model contradicts itself" {
     with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH":os.path.join(directory, "trip.sqlite3")}) {
-        trip = service.save_trip("Chicago regression", "Chicago", "2027-01-01", "2027-01-02", "USD", "600");
-        museum = service.save_item(trip.id, "Architecture Center", "activity", "2027-01-01", "10:00", "Chicago", cost="15");
-        service.save_item(trip.id, "Other costs", "expense", cost="50");
-        service.replan_save_rules(trip.id, museum.id, 90, "", False);
+        trip = service.save_trip(TEST_WORKSPACE, "Chicago regression", "Chicago", "2027-01-01", "2027-01-02", "USD", "600");
+        museum = service.save_item(TEST_WORKSPACE, trip.id, "Architecture Center", "activity", "2027-01-01", "10:00", "Chicago", cost="15");
+        service.save_item(TEST_WORKSPACE, trip.id, "Other costs", "expense", cost="50");
+        service.replan_save_rules(TEST_WORKSPACE, trip.id, museum.id, 90, "", False);
         response = {"answer":"Cannot fit; the revised total is $80 (was $55).", "plans":[{
             "title":"Later museum", "summary":"Impossible overlap, total $80.", "changes":[{
                 "item_id":museum.id, "title":museum.title, "category":"activity", "date":"2027-01-01", "time":"15:30",
                 "duration_minutes":90, "location":"Chicago", "cost_cents":2500, "notes":"Estimated admission"}]}]};
         with patch.object(provider, "generate", return_value=response) {
-            result = service.assistant_chat(trip.id, "Move the museum to 15:30, $25; keep everything else", "replan", False, str(uuid4()));
+            result = service.assistant_chat(TEST_WORKSPACE, trip.id, "Move the museum to 15:30, $25; keep everything else", "replan", False, str(uuid4()));
         }
         text = result["messages"][-1]["text"]; draft = result["drafts"][0];
         assert "USD 65.00 → USD 75.00" in text and "15:30" in text;
         assert "$80" not in text and "Cannot fit" not in text and "Impossible" not in draft["summary"];
         assert draft["original_total_cents"] == 6500 and draft["total_cents"] == 7500;
-        before = [(i.id, i.title, i.date, i.time, i.cost_cents, i.notes) for i in service.list_items(trip.id)];
-        service.assistant_review(trip.id, draft["id"], False, False);
-        assert [(i.id, i.title, i.date, i.time, i.cost_cents, i.notes) for i in service.list_items(trip.id)] == before;
+        before = [(i.id, i.title, i.date, i.time, i.cost_cents, i.notes) for i in service.list_items(TEST_WORKSPACE, trip.id)];
+        service.assistant_review(TEST_WORKSPACE, trip.id, draft["id"], False, False);
+        assert [(i.id, i.title, i.date, i.time, i.cost_cents, i.notes) for i in service.list_items(TEST_WORKSPACE, trip.id)] == before;
     }
 }
 
 test "large drafts with long generated summaries can still be priced and saved" {
     with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH":os.path.join(directory, "trip.sqlite3")}) {
-        trip = service.save_trip("Long draft", "Chicago", "2027-01-01", "2027-01-03", "USD", "1000");
+        trip = service.save_trip(TEST_WORKSPACE, "Long draft", "Chicago", "2027-01-01", "2027-01-03", "USD", "1000");
         changes = [];
         for index in range(30) {
             changes.append({"item_id":"", "title":("Stop " + str(index) + " ").ljust(160, "x"), "category":"activity",
@@ -48,16 +49,16 @@ test "large drafts with long generated summaries can still be priced and saved" 
         response = {"answer":"Draft", "plans":[{"title":"Busy trip", "summary":"Many stops.", "changes":changes}]};
         # The missing price triggers a repair request; return the same draft.
         with patch.object(provider, "generate", return_value=response), patch.object(provider, "repair", return_value=response) {
-            result = service.assistant_chat(trip.id, "Plan a busy trip", "plan", False, str(uuid4()));
+            result = service.assistant_chat(TEST_WORKSPACE, trip.id, "Plan a busy trip", "plan", False, str(uuid4()));
         }
         draft = result["drafts"][0];
         assert len(draft["summary"]) > 5000;
-        priced = service.assistant_update_prices(trip.id, draft["id"], {"0":"5"});
+        priced = service.assistant_update_prices(TEST_WORKSPACE, trip.id, draft["id"], {"0":"5"});
         assert priced["drafts"][0]["can_apply"];
         with patch.object(maps, "search_places", return_value=[]) {
-            service.assistant_review(trip.id, draft["id"], True, True);
+            service.assistant_review(TEST_WORKSPACE, trip.id, draft["id"], True, True);
         }
-        assert len([i for i in service.list_items(trip.id) if i.category == "activity"]) == 30;
+        assert len([i for i in service.list_items(TEST_WORKSPACE, trip.id) if i.category == "activity"]) == 30;
     }
 }
 
@@ -83,14 +84,14 @@ test "assistant and saved-trip validation enforce the longest evidenced transfer
 
 test "saved reschedules retain venue-bound routes and location edits invalidate them" {
     with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH":os.path.join(directory, "trip.sqlite3")}) {
-        saved = service.create_planning_demo(); trip_id = saved["trip_id"];
-        before = service.planning_state(trip_id); item = next(i for i in service.list_items(trip_id) if i.category == "activity");
+        saved = service.create_planning_demo(TEST_WORKSPACE); trip_id = saved["trip_id"];
+        before = service.planning_state(TEST_WORKSPACE, trip_id); item = next(i for i in service.list_items(TEST_WORKSPACE, trip_id) if i.category == "activity");
         assert before["facts"]["transfers"];
-        service.save_item(trip_id, item.title, item.category, item.date, "11:30", item.location, item.reference, item.notes, str(item.cost_cents / 100), item.id);
-        after = service.planning_state(trip_id);
+        service.save_item(TEST_WORKSPACE, trip_id, item.title, item.category, item.date, "11:30", item.location, item.reference, item.notes, str(item.cost_cents / 100), item.id);
+        after = service.planning_state(TEST_WORKSPACE, trip_id);
         assert after["facts"]["transfers"] == before["facts"]["transfers"];
-        service.save_item(trip_id, item.title, item.category, item.date, "11:30", "New venue", item.reference, item.notes, str(item.cost_cents / 100), item.id);
-        changed = service.planning_state(trip_id);
+        service.save_item(TEST_WORKSPACE, trip_id, item.title, item.category, item.date, "11:30", "New venue", item.reference, item.notes, str(item.cost_cents / 100), item.id);
+        changed = service.planning_state(TEST_WORKSPACE, trip_id);
         assert all(r["from_id"] != item.id and r["to_id"] != item.id for r in changed["facts"]["transfers"]);
     }
 }

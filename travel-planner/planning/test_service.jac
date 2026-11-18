@@ -1,4 +1,5 @@
 """HTTP proof of risk -> backups -> P1 validation -> P5 review -> P4 apply."""
+import from tests.workspace_fixture { TEST_WORKSPACE }
 import os;
 import json;
 import uuid;
@@ -26,7 +27,7 @@ def integrated_client -> any {
 }
 
 def api(client: any, name: str, **data: any) -> any {
-    response = client.post("/function/" + name, json=data);
+    response = client.post("/function/" + name, json={"workspace_key": TEST_WORKSPACE, **data});
     assert response.ok, str(response.data);
     return response.data["result"];
 }
@@ -62,7 +63,7 @@ test "both integrated scenarios generate compare reject and accept the actual P3
                 assert saved["time"] == candidate["item"]["start"]["local"][11:16];
             }
             assert sum(item["cost_cents"] for item in updated) + state["ledger"]["contingency_cents"] == chosen["comparison"]["projected_total_minor"];
-            assert not client.post("/function/review_backup_plan", json={"trip_id": state["trip_id"], "proposal_id": chosen["id"], "accept": True}).ok;
+            assert not client.post("/function/review_backup_plan", json={"workspace_key":TEST_WORKSPACE, "trip_id": state["trip_id"], "proposal_id": chosen["id"], "accept": True}).ok;
         }
     }
 }
@@ -85,7 +86,7 @@ test "a saved-trip report makes versioned options without changing itinerary ite
             saved = next(i for i in api(client, "list_items", trip_id=trip_id) if i["id"] == change["replaces_id"]);
             assert saved["title"] == change["item"]["title"] and saved["time"] == change["item"]["start"]["local"][11:16];
         }
-        assert not client.post("/function/report_itinerary_change", json={"trip_id": trip_id, "item_id": activity["id"],
+        assert not client.post("/function/report_itinerary_change", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip_id, "item_id": activity["id"],
             "reason": "weather", "expected_version": state["trip_version"]}).ok;
     }
 }
@@ -103,20 +104,20 @@ test "place photos and pins are address-bound and concurrent edits cannot overwr
             expected_revision=0, payload=payload);
         assert saved["revision"] == 1 and saved["latitude"] == 42.36 and active_rows() == before;
         assert api(client, "planning_state", trip_id=trip_id)["trip_version"] == state["trip_version"];
-        assert not client.post("/function/save_place_details", json={"trip_id": trip_id, "item_id": item["id"],
+        assert not client.post("/function/save_place_details", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip_id, "item_id": item["id"],
             "location": item["location"], "expected_revision": 0, "payload": payload}).ok;
         for invalid in ({**payload, "latitude": 91}, {**payload, "longitude": None},
             {**payload, "photo_url": "javascript:alert(1)"}, {**payload, "photo_source": ""}) {
-            assert not client.post("/function/save_place_details", json={"trip_id": trip_id, "item_id": item["id"],
+            assert not client.post("/function/save_place_details", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip_id, "item_id": item["id"],
                 "location": item["location"], "expected_revision": 1, "payload": invalid}).ok;
         }
         other = api(client, "create_planning_demo");
-        assert not client.post("/function/get_place_details", json={"trip_id": other["trip_id"], "item_id": item["id"]}).ok;
+        assert not client.post("/function/get_place_details", json={"workspace_key":TEST_WORKSPACE, "trip_id": other["trip_id"], "item_id": item["id"]}).ok;
         api(client, "save_item", trip_id=trip_id, item_id=item["id"], title=item["title"], date=item["date"],
             time=item["time"], location="A different address", cost=str(item["cost_cents"] / 100));
         moved = api(client, "get_place_details", trip_id=trip_id, item_id=item["id"]);
         assert moved["photo_url"] == "" and moved["latitude"] is None and moved["revision"] == 1;
-        assert not client.post("/function/save_place_details", json={"trip_id": trip_id, "item_id": item["id"],
+        assert not client.post("/function/save_place_details", json={"workspace_key":TEST_WORKSPACE, "trip_id": trip_id, "item_id": item["id"],
             "location": item["location"], "expected_revision": 1, "payload": payload}).ok;
         api(client, "delete_item", trip_id=trip_id, item_id=item["id"]);
         conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
@@ -183,11 +184,11 @@ test "context edits fixed rules and stale versions block old plan acceptance wit
         changed = api(client, "save_planning_context", trip_id=state["trip_id"], payload=facts, expected_version=state["trip_version"]);
         assert changed["trip_version"] > state["trip_version"];
         before = active_rows();
-        assert not client.post("/function/review_backup_plan", json={"trip_id": state["trip_id"], "proposal_id": plans[0]["id"], "accept": True}).ok;
+        assert not client.post("/function/review_backup_plan", json={"workspace_key":TEST_WORKSPACE, "trip_id": state["trip_id"], "proposal_id": plans[0]["id"], "accept": True}).ok;
         assert active_rows() == before;
         unresolved = generate(client, changed)["plans"];
         assert unresolved and all(not p["selectable"] for p in unresolved);
-        assert not client.post("/function/review_backup_plan", json={"trip_id": state["trip_id"], "proposal_id": unresolved[0]["id"], "accept": True}).ok;
+        assert not client.post("/function/review_backup_plan", json={"workspace_key":TEST_WORKSPACE, "trip_id": state["trip_id"], "proposal_id": unresolved[0]["id"], "accept": True}).ok;
         assert active_rows() == before;
     }
 }
@@ -251,7 +252,7 @@ test "editing confirmed facts removes their unsupported hours and saves an unres
         current = api(client, "save_planning_context", trip_id=state["trip_id"], payload=restored, expected_version=saved["trip_version"]);
         assert all(p["selectable"] for p in generate(client, current, risk_ids=weather)["plans"]);
         invalid = deepcopy(current["facts"]); invalid["place_hours"][0]["evidence_id"] = "unknown-proof";
-        assert not client.post("/function/save_planning_context", json={"trip_id":state["trip_id"], "payload":invalid, "expected_version":current["trip_version"]}).ok;
+        assert not client.post("/function/save_planning_context", json={"workspace_key":TEST_WORKSPACE, "trip_id":state["trip_id"], "payload":invalid, "expected_version":current["trip_version"]}).ok;
     }
 }
 
@@ -261,7 +262,7 @@ test "request retries preserve stored evidence and cannot publish a changed trip
         first = generate(client, state, request_id=request_id);
         retry = generate(client, state, request_id=request_id);
         assert retry["replayed"] and retry["plans"] == first["plans"];
-        assert not client.post("/function/generate_backup_plans", json={"trip_id": state["trip_id"], "expected_version": state["trip_version"], "request_id": request_id, "max_plans": 2}).ok;
+        assert not client.post("/function/generate_backup_plans", json={"workspace_key":TEST_WORKSPACE, "trip_id": state["trip_id"], "expected_version": state["trip_version"], "request_id": request_id, "max_plans": 2}).ok;
         facts = state["facts"]; facts["reserve_minor"] += 100;
         api(client, "save_planning_context", trip_id=state["trip_id"], payload=facts, expected_version=state["trip_version"]);
         old = generate(client, state, request_id=request_id);
@@ -287,7 +288,7 @@ test "upgrading validation rules cannot replay older proposals as selectable" {
         current = api(client, "planning_state", trip_id=state["trip_id"]);
         assert current["trip_version"] == state["trip_version"];
         assert all(current["review_statuses"][p["id"]] == "incompatible" for p in first["plans"]);
-        assert not client.post("/function/review_backup_plan", json={"trip_id":state["trip_id"], "proposal_id":first["plans"][0]["id"], "accept":True}).ok;
+        assert not client.post("/function/review_backup_plan", json={"workspace_key":TEST_WORKSPACE, "trip_id":state["trip_id"], "proposal_id":first["plans"][0]["id"], "accept":True}).ok;
         assert active_rows() == before;
     }
 }
@@ -301,14 +302,14 @@ test "a concurrently completed duplicate cannot restore a rejected proposal" {
         def finish_duplicate(*args: any, **kwargs: any) -> dict[str, any] {
             result = generate_plans(*args, **kwargs);
             with patch("server.main.generate_plans", generate_plans) {
-                first = service.generate_backup_plans(state["trip_id"], state["trip_version"], 4, [r["id"] for r in state["risks"]], False, request_id, []);
+                first = service.generate_backup_plans(TEST_WORKSPACE, state["trip_id"], state["trip_version"], 4, [r["id"] for r in state["risks"]], False, request_id, []);
             }
             completed.append(first["plans"][0]["id"]);
-            service.review_backup_plan(state["trip_id"], completed[0], False);
+            service.review_backup_plan(TEST_WORKSPACE, state["trip_id"], completed[0], False);
             return result;
         }
         with patch("server.main.generate_plans", side_effect=finish_duplicate) {
-            replayed = service.generate_backup_plans(state["trip_id"], state["trip_version"], 4, [r["id"] for r in state["risks"]], False, request_id, []);
+            replayed = service.generate_backup_plans(TEST_WORKSPACE, state["trip_id"], state["trip_version"], 4, [r["id"] for r in state["risks"]], False, request_id, []);
         }
         assert completed;
         assert replayed["replayed"] and replayed["plans"][0]["id"] == completed[0];
@@ -321,17 +322,17 @@ test "refresh failure price changes expiry and nonboolean acceptance preserve th
     with integrated_client() as client {
         state = api(client, "create_planning_demo"); plan = generate(client, state)["plans"][0]; before = active_rows();
         for value in ("yes", 1, None) {
-            assert not client.post("/function/review_backup_plan", json={"trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": value}).ok;
+            assert not client.post("/function/review_backup_plan", json={"workspace_key":TEST_WORKSPACE, "trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": value}).ok;
         }
         with patch("planning.application.observe", side_effect=TimeoutError("Synthetic timeout")) {
-            assert not client.post("/function/review_backup_plan", json={"trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": True}).ok;
+            assert not client.post("/function/review_backup_plan", json={"workspace_key":TEST_WORKSPACE, "trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": True}).ok;
         }
         def changed_price(*args: any, **kwargs: any) -> any {
             candidate = observe(*args, **kwargs);
             return replace(candidate, item=replace(candidate.item, cost_minor=candidate.item.cost_minor + 1));
         }
         with patch("planning.application.observe", side_effect=changed_price) {
-            assert not client.post("/function/review_backup_plan", json={"trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": True}).ok;
+            assert not client.post("/function/review_backup_plan", json={"workspace_key":TEST_WORKSPACE, "trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": True}).ok;
         }
         def changed_duration(*args: any, **kwargs: any) -> any {
             candidate = observe(*args, **kwargs);
@@ -339,7 +340,7 @@ test "refresh failure price changes expiry and nonboolean acceptance preserve th
             return replace(candidate, item=replace(candidate.item, end=replace(candidate.item.end, local=later.isoformat(timespec="minutes"))));
         }
         with patch("planning.application.observe", side_effect=changed_duration) {
-            assert not client.post("/function/review_backup_plan", json={"trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": True}).ok;
+            assert not client.post("/function/review_backup_plan", json={"workspace_key":TEST_WORKSPACE, "trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": True}).ok;
         }
         conn = sqlite3.connect(os.environ["TRAVEL_DB_PATH"]);
         try {
@@ -347,7 +348,7 @@ test "refresh failure price changes expiry and nonboolean acceptance preserve th
             payload["expires_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat();
             conn.execute("UPDATE replan_proposals SET payload=? WHERE id=?", (json.dumps(payload), plan["id"])); conn.commit();
         } finally { conn.close(); }
-        assert not client.post("/function/review_backup_plan", json={"trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": True}).ok;
+        assert not client.post("/function/review_backup_plan", json={"workspace_key":TEST_WORKSPACE, "trip_id": state["trip_id"], "proposal_id": plan["id"], "accept": True}).ok;
         assert active_rows() == before;
     }
 }
@@ -375,7 +376,7 @@ test "requesting other plans advances stable candidates without rejecting or cha
         assert other["plans"] and all(p["candidate_id"] not in ids for p in other["plans"]);
         retry = generate(client, state, max_plans=3, exclude_candidate_ids=ids, request_id=request_id);
         assert retry["replayed"] and retry["plans"] == other["plans"];
-        assert not client.post("/function/generate_backup_plans", json={"trip_id":state["trip_id"], "expected_version":state["trip_version"], "risk_ids":[r["id"] for r in state["risks"]], "max_plans":3, "exclude_candidate_ids":[], "request_id":request_id}).ok;
+        assert not client.post("/function/generate_backup_plans", json={"workspace_key":TEST_WORKSPACE, "trip_id":state["trip_id"], "expected_version":state["trip_version"], "risk_ids":[r["id"] for r in state["risks"]], "max_plans":3, "exclude_candidate_ids":[], "request_id":request_id}).ok;
         seen = ids + [p["candidate_id"] for p in other["plans"]];
         final = generate(client, state, max_plans=3, exclude_candidate_ids=seen);
         assert not final["plans"] and active_rows() == before;
@@ -416,7 +417,7 @@ test "editing the itinerary while inventory is searched prevents proposal public
         }
         rejected = False;
         with patch("server.main.generate_plans", side_effect=intervening_edit) {
-            try { service.generate_backup_plans(state["trip_id"], state["trip_version"], 4, [r["id"] for r in state["risks"]]); }
+            try { service.generate_backup_plans(TEST_WORKSPACE, state["trip_id"], state["trip_version"], 4, [r["id"] for r in state["risks"]]); }
             except ValueError { rejected = True; }
         }
         assert rejected;
