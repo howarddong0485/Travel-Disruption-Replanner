@@ -300,7 +300,9 @@ def update_prices(conn: any, trip_id: str, draft_id: str, prices: dict[str, any]
         change["after"]["cost_cents"] = int(amount); change["price_unknown"] = False;
         change["after"]["notes"] = (change["after"]["notes"][:2400] + "\nPrice supplied by traveler as an unverified estimate.");
     }
-    raw = {"title": draft["title"], "summary": draft["summary"], "trip_changes": draft.get("trip_changes", {}), "journey": draft.get("journey"), "changes": [
+    # check_plan regenerates the summary from validated changes. Passing back the
+    # stored one would apply the model-input limit to text the app generated.
+    raw = {"title": draft["title"], "summary": "", "trip_changes": draft.get("trip_changes", {}), "journey": draft.get("journey"), "changes": [
         {**change["after"], "item_id": change["item_id"], "cost_cents": None if change["price_unknown"] else change["after"]["cost_cents"]}
         for change in draft["changes"]]};
     checked = check_plan(state, facts, raw); checked["mode"] = draft["mode"];
@@ -321,7 +323,7 @@ def review(conn: any, trip_id: str, draft_id: str, accept: bool, acknowledged: b
         if not acknowledged { raise ValueError("Acknowledge the estimates and unverified travel details before saving."); }
         if row["expires"] <= now() or row["fingerprint"] != fingerprint(state, facts) { raise ValueError("Your trip or this draft changed. Ask for a fresh plan before saving."); }
         draft = json.loads(row["payload"]);
-        raw = {"title": draft["title"], "summary": draft["summary"], "trip_changes": draft.get("trip_changes", {}), "journey": draft.get("journey"), "changes": [
+        raw = {"title": draft["title"], "summary": "", "trip_changes": draft.get("trip_changes", {}), "journey": draft.get("journey"), "changes": [
             {**change["after"], "item_id": change["item_id"], "cost_cents": None if change["price_unknown"] else change["after"]["cost_cents"]}
             for change in draft["changes"]]};
         checked = check_plan(state, facts, raw);

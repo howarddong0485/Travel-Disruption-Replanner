@@ -7,6 +7,7 @@ import from datetime { datetime, timedelta, timezone }
 import from unittest.mock { patch }
 import from uuid { uuid4 }
 import assistant.provider as provider;
+import tools.map_providers as maps;
 import server.main as service;
 import from assistant.workflow { check_plan }
 import from planning.fixtures { sample_state }
@@ -32,6 +33,31 @@ test "saved-item summaries use checked arithmetic even when the model contradict
         before = [(i.id, i.title, i.date, i.time, i.cost_cents, i.notes) for i in service.list_items(trip.id)];
         service.assistant_review(trip.id, draft["id"], False, False);
         assert [(i.id, i.title, i.date, i.time, i.cost_cents, i.notes) for i in service.list_items(trip.id)] == before;
+    }
+}
+
+test "large drafts with long generated summaries can still be priced and saved" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH":os.path.join(directory, "trip.sqlite3")}) {
+        trip = service.save_trip("Long draft", "Chicago", "2027-01-01", "2027-01-03", "USD", "1000");
+        changes = [];
+        for index in range(30) {
+            changes.append({"item_id":"", "title":("Stop " + str(index) + " ").ljust(160, "x"), "category":"activity",
+                "date":"2027-01-0" + str(1 + index // 10), "time":str(8 + index % 10).zfill(2) + ":00", "duration_minutes":30,
+                "location":"Chicago", "cost_cents":None if index == 0 else 0, "notes":"Estimate"});
+        }
+        response = {"answer":"Draft", "plans":[{"title":"Busy trip", "summary":"Many stops.", "changes":changes}]};
+        # The missing price triggers a repair request; return the same draft.
+        with patch.object(provider, "generate", return_value=response), patch.object(provider, "repair", return_value=response) {
+            result = service.assistant_chat(trip.id, "Plan a busy trip", "plan", False, str(uuid4()));
+        }
+        draft = result["drafts"][0];
+        assert len(draft["summary"]) > 5000;
+        priced = service.assistant_update_prices(trip.id, draft["id"], {"0":"5"});
+        assert priced["drafts"][0]["can_apply"];
+        with patch.object(maps, "search_places", return_value=[]) {
+            service.assistant_review(trip.id, draft["id"], True, True);
+        }
+        assert len([i for i in service.list_items(trip.id) if i.category == "activity"]) == 30;
     }
 }
 
