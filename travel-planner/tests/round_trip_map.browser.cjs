@@ -99,10 +99,11 @@ const apiUrl = process.env.TRAVEL_API_URL || appUrl + '/api/server';
         if (!fixture) return route.continue();
         const result = name === 'list_items' ? fixture.items : name === 'journey_state'
           ? {journey: fixture.journey, version: 1, issues: []}
-          : {journey: fixture.journey, trip_version: 1, pins: {}, routes: {}, flights: {}, dependencies: [], risks: [], plans: []};
+          : {journey: fixture.journey, trip_version: 1, pins: {}, routes: {}, location_points: {}, flights: {}, dependencies: [], risks: [], plans: []};
         return fulfilled(route, result);
       });
     }
+    await page.route('**/function/search_map_places', route => fulfilled(route, []));
     await page.route('**/function/assistant_chat', route => { aiCalls++; return route.abort(); });
     await page.goto(appUrl);
     await select(0); await assertRoundTrip(0, 'Detroit');

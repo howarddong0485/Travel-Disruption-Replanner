@@ -74,8 +74,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             names = [trip.destination, trip.departure_location, trip.return_location];
             mapJourney = draft.get("journey") if draft and draft.get("journey") else journey or fresh.get("journey");
             if mapJourney {
-                names = [mapJourney["origin"]["city"]] + [stop["city"] for stop in mapJourney["stops"]];
-                if mapJourney["return_to"] { names.append(mapJourney["return_to"]["city"]); }
+                names = [trip.departure_location or mapJourney["origin"]["city"], trip.return_location or trip.departure_location] + [stop["city"] for stop in mapJourney["stops"]];
             }
             resolved: any = {};
             for name in names {
