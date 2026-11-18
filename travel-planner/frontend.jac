@@ -11,11 +11,18 @@ import from itinerary.motion { animateTimeline }
 import from itinerary.presentation { shiftLabel }
 import from itinerary.place_popover { PlacePopover }
 import from itinerary.trip_map { TripMap }
-import from journey.frontend { RouteEditor, journeyLabel, legLabel }
+import from journey.frontend { RouteEditor, journeyLabel }
 import from journey.display { itineraryOrder, journeyCity }
 import from server.main { journey_state }
 import from assistant.frontend { ChatSidebar, AIPlanner, assistantError }
 import from server.main { assistant_review, assistant_update_prices, assistant_save_preferences }
+
+def legLabel(route: any, leg: any) -> str {
+    names = {stop["id"]: stop["city"] for stop in route["stops"]};
+    names["origin"] = route["origin"]["city"];
+    if route["return_to"] { names["return"] = route["return_to"]["city"]; }
+    return names[leg["from_id"]] + " → " + names[leg["to_id"]];
+}
 
 def:pub app -> JsxElement {
     has trips: list[TripView] = [], items: list[ItemView] = [], selected: str = "",
@@ -106,11 +113,20 @@ def:pub app -> JsxElement {
     }
     def openMapReview(item_id: str, risks: any, options: any, option: str, control: str) -> None {
         if busy or loading { return; }
+        if tab != "itinerary" { chooseTab("itinerary"); }
         resetReview(); day = "";
         reviewRequest = {"item": item_id, "reason": "", "control": control, "risks": risks,
             "options": options, "option": option};
     }
+    def jumpDraft -> None {
+        tab = "planner";
+        window.requestAnimationFrame(lambda {
+            heading: any = document.querySelector(".ai-draft-heading h2");
+            if heading { heading.setAttribute("tabindex", "-1"); heading.focus(); heading.scrollIntoView({"block": "start"}); }
+        });
+    }
     def jumpTimeline -> None {
+        if tab != "itinerary" { chooseTab("itinerary"); }
         window.requestAnimationFrame(lambda { focusItineraryControl("itinerary-timeline"); });
     }
     def showItineraryControls -> None {
@@ -124,6 +140,7 @@ def:pub app -> JsxElement {
         window.requestAnimationFrame(lambda { showItineraryControls(); });
     }
     def jumpStop(id: str) -> None {
+        if tab != "itinerary" { chooseTab("itinerary"); }
         day = "";
         window.requestAnimationFrame(lambda {
             control: any = document.getElementById("place-details-" + id);
@@ -232,6 +249,8 @@ def:pub app -> JsxElement {
     packing = ["Passport / ID", "Wallet", "Phone & Charger", "Clothing"];
     packed = len([title for title in packing if packingChecked(title)]);
     bookings = [item for item in items if item.category in ["transport", "stay"]];
+    pendingDrafts = [draft for draft in aiData.get("drafts", []) if draft["status"] == "pending"] if aiData.get("trip_id") == selected else [];
+    mapDraft: any = pendingDrafts[0] if pendingDrafts else None;
     itineraryItems = [item for item in items if item.category in ["activity", "food", "transport", "stay"]];
     shown = [item for item in items if (
         item.cost_cents > 0 if tab == "budget" else
@@ -248,6 +267,15 @@ def:pub app -> JsxElement {
     selectedPlaces = [item for item in places if item.id == placeId];
     currentPlace = selectedPlaces[0] if selectedPlaces else places[0] if places else None;
     placesOpen = tab == "itinerary" and (railView == "places" or (railView == "auto" and bool(places)));
+
+    mapWorkspace = (<div className="map-workspace">
+                        <TripMap key={selected} trip={current} items={itineraryItems} revision={mapRevision}
+                            journey={journeyData.get("journey")} draft={mapDraft if tab == "planner" else None}
+                            day={day} onDay={lambda (value: str) { day = value; }} onDraft={jumpDraft}
+                            preview={itineraryPreview} disabled={busy or loading} apiKey={mapApiKey}
+                            onReview={openReview} onPlanB={openMapReview} onStop={jumpStop} onTimeline={jumpTimeline}
+                            onSample={lambda { createIntegratedDemo("map"); }}/>
+                    </div>) if current and (mapVisible or tab == "planner") else None;
 
     <div className={"app-shell" + (" with-assistant" if current else "")} data-reviewing={bool(reviewRequest)} data-map-focus={mapVisible and not mapChat}>
         <aside className="sidebar">
@@ -368,6 +396,7 @@ def:pub app -> JsxElement {
                     </div>
                     <BackupPanel key={selected} trip={current} items={items} onApplied={backupApplied}/>
                 </section>) if not loading and tab == "backups" else None}
+                {mapWorkspace if tab == "planner" else None}
                 {(<AIPlanner data={aiData} currency={current.currency} onCompose={composeAI} onReview={reviewAI} onPrices={priceAI} onPreferences={savePreferences} busy={busy}/>) if tab == "planner" else None}
                 {(<section className="budget-overview card"><div><h2>Budget summary</h2>
                     <p>All amounts are in {current.currency}. Mark items paid as you pay them.</p></div><div className="budget-numbers">
@@ -381,12 +410,7 @@ def:pub app -> JsxElement {
                     onViewItinerary={lambda { chooseTab("itinerary"); }}/>) if tab == "demo" else None}
                 <div className="detail-grid" data-view={itineraryView if tab == "itinerary" else ""}
                     data-reviewing={bool(reviewRequest)} hidden={tab in ["planner", "journey", "backups", "replan", "demo"]}>
-                    {(<div className="map-workspace">
-                        <TripMap key={selected} trip={current} items={itineraryItems} revision={mapRevision}
-                            preview={itineraryPreview} disabled={busy or loading} apiKey={mapApiKey}
-                            onReview={openReview} onPlanB={openMapReview} onStop={jumpStop} onTimeline={jumpTimeline}
-                            onSample={lambda { createIntegratedDemo("map"); }}/>
-                    </div>) if mapVisible else None}
+                    {mapWorkspace if mapVisible else None}
                     <div className="itinerary-main">
                         <section className="card plan-card">
                             <div className="section-heading"><div>

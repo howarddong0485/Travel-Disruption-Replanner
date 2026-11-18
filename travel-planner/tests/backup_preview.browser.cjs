@@ -8,7 +8,7 @@ const { chromium } = process.env.PLAYWRIGHT_MODULE
 
 const appUrl = process.env.TRAVEL_APP_URL || 'http://localhost:8000';
 const apiUrl = process.env.TRAVEL_API_URL || 'http://localhost:8001/api/server';
-const previewRoute = '**/function/save_trip_backup_refresh';
+const previewRoute = '**/function/generate_backup_plans';
 
 (async () => {
   const browser = await chromium.launch({
@@ -27,72 +27,70 @@ const previewRoute = '**/function/save_trip_backup_refresh';
     assert(response.ok() && payload.ok, JSON.stringify(payload));
     return payload.data.result;
   };
-  const createTrip = async (suffix, destination = 'Boston') => {
-    const trip = await api('save_trip', {
-      title: `Backup browser ${Date.now()} ${suffix}`, destination,
-      start_date: '2026-11-01', end_date: '2026-11-03', budget: '100',
-    });
-    trips.push(trip);
-    return trip;
-  };
+  const panel = page.getByRole('region', {name: 'Integrated backup plans'});
+  const options = panel.locator('.backup-option');
+  const findPlans = panel.getByRole('button', {name: 'Find alternative plans'});
   const selectTrip = async trip => {
     await page.getByRole('button', {name: new RegExp(trip.title)}).click();
     await page.getByRole('button', {name: 'Backup plans', exact: true}).click();
-    await page.getByLabel('Item to replace', {exact: true}).waitFor();
+    await panel.getByLabel('What should the plans address?').waitFor();
   };
-  const generate = async itemId => {
-    await page.getByLabel('Item to replace', {exact: true}).selectOption(itemId);
-    await page.locator('.backup-panel .primary').click();
-    await page.locator('.backup-option').first().waitFor();
-    assert.equal(await page.locator('.backup-option').count(), 2);
+  const generate = async () => {
+    await findPlans.click();
+    await options.first().waitFor();
   };
+  const savedItems = async trip_id => (await api('list_items', {trip_id}))
+    .map(({_jac_id, ...item}) => item);
 
   try {
-    const first = await createTrip('A');
-    const second = await createTrip('B');
-    const unsupported = await createTrip('unsupported', 'Kyoto');
-    const activity = await api('save_item', {trip_id: first.id, title: 'Audit outdoor walk', date: '2026-11-02', cost: '10'});
-    const dinner = await api('save_item', {trip_id: first.id, title: 'Audit dinner', category: 'food', date: '2026-11-02', cost: '20'});
-    await api('save_item', {trip_id: second.id, title: 'Second trip activity', date: '2026-11-02'});
-    const unsupportedItem = await api('save_item', {trip_id: unsupported.id, title: 'Unsupported location activity', date: '2026-11-02'});
-    const before = await api('list_items', {trip_id: first.id});
+    const suffix = Date.now();
+    const demos = [];
+    for (const scenario of ['rain', 'arrival_delay']) {
+      const state = await api('create_planning_demo', {scenario});
+      const trip = (await api('list_trips', {})).find(row => row.id === state.trip_id);
+      trips.push(trip);
+      trip.title += ' ' + suffix;
+      await api('save_trip', {trip_id: trip.id, title: trip.title, destination: trip.destination,
+        start_date: trip.start_date, end_date: trip.end_date, budget: String(trip.budget_cents / 100),
+        currency: trip.currency, notes: trip.notes});
+      demos.push(trip);
+    }
+    const [first, second] = demos;
+    const unsupported = await api('save_trip', {title: 'Backup empty ' + suffix, destination: 'Kyoto',
+      start_date: '2026-11-01', end_date: '2026-11-03'});
+    trips.push(unsupported);
+    const before = await savedItems(first.id);
     await page.clock.install();
     await page.goto(appUrl);
     await selectTrip(first);
-    await generate(activity.id);
-    assert.match(await page.locator('.backup-options').innerText(), /Needs confirmation/);
-    assert.equal(await page.locator('.backup-pipeline, .validation-history, .validation-evidence, .validation-reasons').count(), 0);
-    assert(!/Inventory IDs:|All checks|Saved refresh #|fixture:\/\//.test(await page.locator('.backup-panel').innerText()));
-    passed('rain preview shows two mock drafts with evidence and validation status');
+    await generate();
+    assert.match(await options.first().innerText(), /Projected trip total/);
+    assert.match(await panel.innerText(), /prices are simulated/i);
+    passed('rain alternatives show whole-trip costs and inventory disclosure');
 
     await page.setViewportSize({width: 390, height: 844});
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     await page.setViewportSize({width: 1440, height: 1100});
     passed('backup panel fits a mobile viewport');
 
-    await page.getByLabel('Disruption', {exact: true}).selectOption('arrival_delay');
-    assert.equal(await page.locator('.backup-option').count(), 0);
-    assert.equal(await page.getByLabel('Item to replace', {exact: true}).inputValue(), '');
-    await generate(dinner.id);
-    await page.getByRole('heading', {name: 'Late vegetarian dinner'}).waitFor();
-    passed('scenario switch clears old state and delayed dinner renders its own drafts');
+    await panel.getByLabel('What should the plans address?').selectOption('timing');
+    assert.equal(await options.count(), 0);
+    await panel.getByLabel('Affected item').waitFor();
+    await selectTrip(second);
+    await generate();
+    assert.match(await options.first().innerText(), /dinner/i);
+    passed('changing the reason clears previews and arrival delay offers dinner alternatives');
 
-    await page.getByRole('button', {name: '↻ Refresh', exact: true}).click();
-    await page.getByLabel('Item to replace', {exact: true}).waitFor();
-    assert.equal(await page.locator('.backup-option').count(), 0);
-    passed('workspace refresh clears current results while keeping recorded history');
-    await page.getByLabel('Disruption', {exact: true}).selectOption('rain');
-
-    await page.getByLabel('Item to replace', {exact: true}).selectOption(activity.id);
-    await page.route(previewRoute, route => route.abort('failed'), {times: 1});
-    await page.locator('.backup-panel .primary').click();
-    await page.locator('.backup-panel [role="alert"]').waitFor();
-    assert.equal(await page.locator('.backup-option').count(), 0);
+    await panel.getByRole('button', {name: 'Reload trip facts'}).click();
+    await options.first().waitFor({state: 'detached'});
+    await page.route(previewRoute, route => route.abort(), {times: 1});
+    await findPlans.click();
+    await panel.getByRole('alert').waitFor();
+    assert.equal(await options.count(), 0);
     await page.unroute(previewRoute);
-    passed('failed preview requests show an error without old options');
+    passed('reload and failed generation clear previous results');
 
-    let release;
-    let signal;
+    let release, signal;
     const held = new Promise(resolve => { release = resolve; });
     const intercepted = new Promise(resolve => { signal = resolve; });
     await page.route(previewRoute, async route => {
@@ -101,46 +99,32 @@ const previewRoute = '**/function/save_trip_backup_refresh';
       await held;
       await route.fulfill({response});
     }, {times: 1});
-    await page.locator('.backup-panel .primary').click();
+    await findPlans.click();
     await intercepted;
-    await selectTrip(second);
-    const completed = page.waitForResponse(response => response.url().endsWith('/function/save_trip_backup_refresh'));
+    await selectTrip(unsupported);
+    const completed = page.waitForResponse(response => response.url().endsWith('/function/generate_backup_plans'));
     release();
     await completed;
-    assert.equal(await page.locator('.backup-option').count(), 0);
-    assert.equal(await page.getByLabel('Item to replace', {exact: true}).inputValue(), '');
+    assert.equal(await options.count(), 0);
+    assert(await findPlans.isDisabled());
     await page.unroute(previewRoute);
-    passed('a late response from another trip cannot restore old previews');
-
-    await selectTrip(unsupported);
-    await page.getByLabel('Item to replace', {exact: true}).selectOption(unsupportedItem.id);
-    await page.locator('.backup-panel .primary').click();
-    await page.getByRole('status').filter({hasText: 'No alternatives are available'}).waitFor();
-    assert.equal(await page.locator('.backup-option').count(), 0);
-    passed('unsupported destinations show an explicit empty state');
+    passed('a late response from another trip leaves the empty trip unchanged');
 
     await selectTrip(first);
-    await page.getByLabel('Disruption', {exact: true}).selectOption('rain');
-    await generate(activity.id);
-    await page.clock.fastForward(16 * 60 * 1000);
-    await page.locator('.backup-option').first().waitFor({state: 'detached'});
-    await page.getByRole('status').filter({hasText: 'Availability has expired'}).waitFor();
-    assert.equal(await page.locator('.backup-option').count(), 0);
-    assert.equal(await page.locator('.backup-panel .primary').innerText(), 'Find backup plans');
+    await generate();
+    await page.clock.fastForward(60 * 60 * 1000);
+    await panel.getByRole('status').filter({hasText: 'expired'}).waitFor();
+    assert.equal(await options.count(), 0);
     await page.clock.setSystemTime(new Date());
-    await page.locator('.backup-panel .primary').click();
-    await page.locator('.backup-option').first().waitFor();
-    assert.equal(await page.locator('.backup-option').count(), 2);
-    assert.equal(await page.getByRole('status').filter({hasText: 'Availability has expired'}).count(), 0);
-    passed('expired evidence clears automatically and refreshing restores fresh drafts');
+    await generate();
+    assert.equal(await panel.getByRole('status').filter({hasText: 'expired'}).count(), 0);
+    passed('expired proposals clear automatically and refreshed proposals have fresh status');
 
-    // Jac allocates a response-object _jac_id on each read; SQLite item.id is stable.
-    const persisted = items => items.map(({_jac_id, ...item}) => item);
-    assert.deepEqual(persisted(await api('list_items', {trip_id: first.id})), persisted(before));
+    assert.deepEqual(await savedItems(first.id), before);
     assert.equal((await api('list_trips', {})).find(trip => trip.id === first.id).budget_cents, first.budget_cents);
     assert.deepEqual(errors, []);
-    passed('all browser interactions preserve saved items and budget without runtime errors');
-    console.log(`${checks} browser checks passed`);
+    passed('draft review preserves the itinerary and budget');
+    console.log(checks + ' browser checks passed');
   } finally {
     try {
       for (const trip of trips) await api('delete_trip', {trip_id: trip.id});

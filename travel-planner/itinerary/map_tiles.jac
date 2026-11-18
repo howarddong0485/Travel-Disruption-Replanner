@@ -2,10 +2,11 @@
 import from "leaflet" { map, tileLayer, polyline, layerGroup }
 
 def:pub createStreetMap(element: any, onMove: any, onError: any) -> any {
-    result: any = map(element, {"zoomControl": False, "attributionControl": True,
+    result: any = map(element, {"zoomControl": False, "zoomAnimation": False, "attributionControl": True,
         "scrollWheelZoom": False, "worldCopyJump": True, "minZoom": 2, "maxZoom": 19});
     result.setView([25, 0], 2);
     tiles: any = tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        "referrerPolicy": "strict-origin-when-cross-origin",
         "maxZoom": 19, "attribution": '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'});
     tiles.on("tileerror", lambda { onError(True); });
     tiles.on("tileload", lambda { onError(False); });
@@ -15,10 +16,10 @@ def:pub createStreetMap(element: any, onMove: any, onError: any) -> any {
 }
 
 def:pub fitStreetMap(map: any, points: any, city: bool = False) -> None {
-    if not map or not points { return; }
+    if not map or len(points) == 0 { return; }
     anchor = points[0]["lon"];
     coords = [[p["lat"], anchor + ((p["lon"] - anchor + 540) % 360) - 180] for p in points];
-    map.fitBounds(coords, {"paddingTopLeft": [75, 110], "paddingBottomRight": [75, 80],
+    map.fitBounds(coords, {"paddingTopLeft": [60, 180], "paddingBottomRight": [60, 100],
         "maxZoom": 15 if city else 7, "animate": False});
 }
 
@@ -31,10 +32,17 @@ def:pub streetPoint(map: any, point: any) -> any {
 }
 
 def:pub streetRoute(map: any, route: any) -> any {
-    lon = route["from"]["lon"];
-    delta = ((route["to"]["lon"] - lon + 540) % 360) - 180;
-    return {"marker": streetPoint(map, {"lat": (route["from"]["lat"] + route["to"]["lat"]) / 2,
-        "lon": lon + delta / 2})};
+    start = streetPoint(map, route["from"]); end = streetPoint(map, route["to"]);
+    browser: any = window;
+    dx = end["x"] - start["x"]; dy = end["y"] - start["y"];
+    distance = browser.Math.hypot(dx, dy);
+    lift = min(82.0, max(22.0, distance * 0.18)) if route["kind"] == "flight" and distance > 1 else 0.0;
+    normalX = dy / max(1.0, distance); normalY = -dx / max(1.0, distance);
+    middle = {"x": (start["x"] + end["x"]) / 2.0, "y": (start["y"] + end["y"]) / 2.0};
+    return {"start": start, "end": end,
+        "control": {"x": middle["x"] + normalX * lift * 2.0, "y": middle["y"] + normalY * lift * 2.0},
+        "marker": {"x": middle["x"] + normalX * lift, "y": middle["y"] + normalY * lift},
+        "angle": browser.Math.atan2(dy, dx) * 180.0 / browser.Math.PI};
 }
 
 

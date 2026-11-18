@@ -1,6 +1,6 @@
 """Edit the geographic endpoints of a saved transport item."""
 import from server.main { save_trip_map_route }
-import from itinerary.map_geometry { cityPoint }
+import from itinerary.city_points { cityPoint }
 
 def routeEndpoint(name: str, lat: str, lon: str) -> any {
     if lat.strip() and lon.strip() { return {"label": name.strip(), "lat": float(lat), "lon": float(lon)}; }

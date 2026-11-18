@@ -1,5 +1,5 @@
 """Group mapped routes, stops and risk dependencies for the workspace."""
-import from itinerary.map_geometry { cityPoint }
+import from itinerary.city_points { cityPoint }
 import from itinerary.presentation { affectedItemIds }
 
 def cityId(point: any) -> str {
@@ -40,6 +40,13 @@ def:pub mapScene(destination: str, items: any, data: any, preview: any) -> any {
                 routes[item.id] = {"revision": routes.get(item.id, {}).get("revision", 0), "route": {
                     "from": points[leg[0]["from_id"]], "to": points[leg[0]["to_id"]], "kind": "flight" if leg[0]["mode"] == "flight" else "ground"}};
             } elif detail.get("stop_id") in points { groups[item.id] = [cityId(points[detail["stop_id"]])]; }
+        }
+    }
+    for item in items {
+        flight = data.get("flights", {}).get(item.id);
+        if flight and flight.get("departure_point") and flight.get("arrival_point") {
+            routes[item.id] = {"revision": routes.get(item.id, {}).get("revision", 0), "route": {
+                "from": flight["departure_point"], "to": flight["arrival_point"], "kind": "flight"}};
         }
     }
     for item in items {

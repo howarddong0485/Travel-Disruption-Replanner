@@ -17,7 +17,7 @@
 .map-workspace { min-width:0; grid-column:1/-1; }
 .trip-map {
   --map-ink:#182026; --map-muted:#667177; --map-border:#dde2e4; --map-panel:#fffffffa;
-  position:relative; isolation:isolate; min-width:0; height:var(--trip-map-height); overflow:hidden;
+  position:relative; isolation:isolate; min-width:0; height:var(--trip-map-height,530px); overflow:hidden;
   border:1px solid #dce2e4; border-radius:19px; background:#e7eee8; color:var(--map-ink);
   box-shadow:none;
 }
@@ -37,7 +37,7 @@
 }
 .map-tools button:hover,.map-zoom button:hover,.map-footer-links button:hover { background:#eef3f1; }
 .map-tools .map-alert-button[data-active="true"] { background:#fff0f0; color:#a62d43; border-color:#e5acb7; }
-.map-zoom { position:absolute; z-index:2; right:13px; bottom:64px; display:grid; gap:3px; }
+.map-zoom { position:absolute; z-index:2; right:13px; bottom:64px; display:flex; gap:3px; }
 .map-zoom button { width:35px; height:35px; padding:0; font-size:20px; }
 .map-footer {
   position:absolute; z-index:2; bottom:20px; left:0; right:0; display:flex; justify-content:space-between; align-items:center;
@@ -68,14 +68,20 @@
   white-space:nowrap; max-width:156px; text-overflow:ellipsis; overflow:hidden; font-size:13px; font-weight:750;
   color:var(--map-ink); background:#fffffff5; border:1px solid var(--map-border); border-radius:8px;
 }
-.map-route-pin { width:47px; height:47px; font-size:25px; background:#ffffff; box-shadow:0 0 0 5px #99e7ff25,0 5px 18px #05122391; }
-.map-route-pin[data-tone="disruption"] { background:#fff5f4; box-shadow:0 0 0 5px #c3415638,0 5px 23px #ef506e55; }
-.map-route-symbol { transform:rotate(23deg); }
+.map-route-pin { width:44px; height:44px; border:0; font-size:22px; color:var(--map-tone,var(--route-color,#7de3f4)); background:transparent; box-shadow:none; }
+.trip-map [data-direction="Departure"] { --route-color:#7de3f4; }
+.trip-map [data-direction="Return"] { --route-color:#bea6ff; }
+.map-route-symbol { display:grid; place-items:center; width:32px; height:32px; border:1px solid currentColor; border-radius:50%; background:#0c2032; box-shadow:0 2px 10px #06132180; }
+.map-flight-glyph { width:21px; height:21px; fill:currentColor; }
+.map-route-caption { position:absolute; top:calc(100% + 2px); left:50%; transform:translateX(-50%); padding:3px 7px;
+  border-radius:6px; color:inherit; background:#0b1d2fec; font-size:10px; font-weight:700; white-space:nowrap; letter-spacing:.02em; }
+.map-route-pin[data-active="true"] .map-route-symbol { box-shadow:0 0 0 4px #ffffff15,0 0 20px #ffffff20; background:#1b354b; }
+.map-route-pin:hover,.map-route-pin[aria-expanded="true"] { outline:none; }
 .map-route-shift { position:absolute; top:calc(100% + 7px); white-space:nowrap; font-size:11px; font-weight:730;
   padding:3px 8px; border:1px solid #15805c65; border-radius:8px; background:#ebfff4; color:#117b55; }
 .map-place-pin { width:28px; height:28px; font-size:22px; }
-.map-city-pin:hover,.map-route-pin:hover,.map-place-pin:hover,
-.map-city-pin[aria-expanded="true"],.map-route-pin[aria-expanded="true"],.map-place-pin[aria-expanded="true"] {
+.map-city-pin:hover,.map-place-pin:hover,
+.map-city-pin[aria-expanded="true"],.map-place-pin[aria-expanded="true"] {
   outline:2px solid currentColor; outline-offset:4px; z-index:3;
 }
 .trip-map button:focus-visible,.trip-map summary:focus-visible { outline:2px solid #1689b1; outline-offset:3px; }
@@ -165,6 +171,48 @@
   .map-popup,.map-city-pin[data-tone="disruption"]::after,.map-route-pin[data-tone="disruption"]::after { animation:none; }
 }
 
+/* The familiar geographic map also hosts planning previews; controls stay outside the canvas. */
+.trip-map-explorer { min-width:0; margin:12px 0 22px; }
+.map-explorer-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 10px; }
+.map-explorer-bar strong { font-size:14px; color:var(--ink); }
+.map-explorer-bar p { margin:3px 0 0; color:var(--muted); font-size:12px; }
+.map-working-note { max-width:240px; color:var(--accent); font-size:12px; }
+.map-draft-link { flex:none; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--accent); font-size:12px; }
+.map-days { display:flex; gap:6px; overflow-x:auto; padding:0 0 9px; margin-bottom:2px; }
+.map-days button { flex:none; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--muted); font-size:11px; padding:7px 10px; }
+.map-days button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:white; }
+.map-route-targets { position:absolute; inset:0; z-index:1; pointer-events:none; }
+.map-route-hit { pointer-events:stroke; cursor:pointer; }
+.map-route-hit:focus-visible { stroke:#eafaff88; outline:none; }
+.map-city-label small { display:block; color:var(--map-muted); font-size:10px; font-weight:500; margin-top:1px; }
+.map-unlocated-note { position:absolute; left:13px; top:74px; z-index:3; max-width:calc(100% - 26px); }
+.map-unlocated-note button { padding:6px 9px; border:1px solid var(--map-border); border-radius:7px; color:var(--map-ink); background:#183446; font-size:11px; }
+.map-unlocated-location { display:grid; gap:2px; padding:8px 0; border-bottom:1px solid var(--map-border); }
+.map-unlocated-location small { color:var(--map-muted); }
+.map-travel-strip { position:absolute; top:70px; left:15px; right:15px; z-index:3; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; max-width:570px; }
+.map-travel-leg { position:relative; display:grid; gap:4px; min-width:0; padding:10px 13px; text-align:left; border:1px solid #6e9aac40;
+  border-left:3px solid var(--route-color,#7de3f4); border-radius:10px; color:var(--map-ink); background:linear-gradient(120deg,#163044f5,#102334f5); box-shadow:0 5px 16px #030e1c26; }
+.map-travel-leg:hover,.map-travel-leg[data-active="true"] { background:#1c374d; border-color:var(--route-color,#7de3f4); }
+.map-travel-label { display:flex; align-items:center; gap:6px; font-size:10px; font-weight:750; color:var(--route-color,#7de3f4); letter-spacing:.045em; text-transform:uppercase; }
+.map-travel-label > span { font-size:14px; }
+.map-travel-leg strong { font-size:12px; font-weight:650; line-height:1.3; overflow-wrap:anywhere; }
+.map-travel-leg small { color:var(--map-muted); font-size:10px; }
+.map-route-key::before { width:17px!important; height:2px!important; border-radius:2px!important; background:var(--route-color)!important; }
+.map-estimate-key { color:var(--map-muted)!important; }
+.map-estimate-key::before { width:17px!important; height:0!important; border-top:2px dashed #afc5d1; border-radius:0!important; background:none!important; }
+.map-city-label .map-endpoint-label { color:#a8edff; font-weight:700; }
+.map-estimated-flight { color:#b6dce9; padding:6px 8px; background:#1a3a4c; border-radius:7px; }
+.trip-map[data-travel="true"] .map-unlocated-note,.trip-map[data-travel="true"] .map-load-error,.trip-map[data-travel="true"] .map-preview-tag { top:164px; }
+@media(max-width:560px) {
+  .map-explorer-bar { align-items:start; flex-wrap:wrap; }
+  .map-working-note { max-width:none; }
+  .trip-map-explorer .trip-map { height:480px; }
+  .map-city-label small { font-size:9px; }
+  .map-route-caption { display:none; }
+  .map-travel-strip { top:64px; left:10px; right:10px; gap:6px; }
+  .map-travel-leg { padding:7px; }
+  .map-travel-leg strong { font-size:11px; }
+}
 .map-explorer { display:grid; grid-template-columns:minmax(220px,285px) minmax(0,1fr); border:1px solid #e0e4e2; border-radius:20px; overflow:hidden; background:white; }
 .map-explorer .trip-map { border:0; border-radius:0; }
 .map-stop-list { display:flex; flex-direction:column; min-width:0; height:var(--trip-map-height); padding:20px 0 0; border-right:1px solid #e4e8e5; background:#fff; }
@@ -231,3 +279,17 @@
  .app-shell[data-map-focus="true"] > .chat-sidebar { display:none; }
  .app-shell[data-map-focus="true"] > .workspace { padding:0 32px; }
 }
+
+/* Keep estimated round-trip routes legible on the street basemap. */
+.trip-map-explorer { --trip-map-height:530px; }
+.map-route-line { pointer-events:none; filter:drop-shadow(0 1px 1px #fff); }
+.trip-map [data-direction="Departure"] { --route-color:#137a9e; }
+.trip-map [data-direction="Return"] { --route-color:#7150b7; }
+.map-travel-leg { background:#fffffff2; color:#182026; border-color:#cad8d8; border-left-color:var(--route-color); }
+.map-travel-leg:hover,.map-travel-leg[data-active="true"] { background:#eff6f7; }
+.map-route-symbol,.map-route-caption { background:#fffffff2; }
+.map-route-pin[data-active="true"] .map-route-symbol { background:#e6f0f4; }
+.map-city-label .map-endpoint-label { color:#176a83; }
+.map-estimated-flight { color:#265a70; background:#e9f2f6; }
+.map-unlocated-note button { background:#fff; }
+@media(max-width:1000px) and (min-width:761px) { .map-explorer { grid-template-columns:190px minmax(0,1fr); } }

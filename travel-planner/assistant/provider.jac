@@ -113,6 +113,12 @@ def journey_schema -> dict[str, any] {
     return {"anyOf": [{"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}, {"type": "null"}]};
 }
 
+def flight_schema -> dict[str, any] {
+    fields: dict[str, any] = {key: {"type": "string"} for key in ["airline", "flight_number", "departure_airport", "arrival_airport", "departure_date", "departure_time", "arrival_date", "arrival_time", "source_url", "currency"]};
+    fields["fare_cents"] = {"type": ["integer", "null"]};
+    return {"anyOf": [{"type": "object", "properties": fields, "required": list(fields), "additionalProperties": False}, {"type": "null"}]};
+}
+
 def plan_schema -> dict[str, any] {
     fields = {"item_id": {"type": "string"}, "title": {"type": "string"},
         "category": {"type": "string", "enum": ["activity", "food", "stay", "transport"]},
@@ -121,6 +127,7 @@ def plan_schema -> dict[str, any] {
         "cost_cents": {"type": "integer"}, "notes": {"type": "string"},
         "stop_id": {"type": "string"}, "leg_id": {"type": "string"},
         "arrival_date": {"type": "string"}, "arrival_time": {"type": "string"}};
+    fields["flight"] = flight_schema();
     change = {"type": "object", "properties": fields, "required": `list(fields), "additionalProperties": False};
     plan_fields = {"title": {"type": "string"}, "summary": {"type": "string"}, "trip_changes": trip_schema(),
         "journey": journey_schema(), "changes": {"type": "array", "items": change}};
@@ -150,7 +157,7 @@ def journey_instructions -> str {
         + "Every city activity must fit its city dates, occur after incoming arrival plus after_minutes, and finish before outgoing departure minus before_minutes. Compare times across zones, including overnight flights and date-line crossings. "
         + "When adopting a journey for an existing itinerary, assign every scheduled item in the same draft using exact item IDs; do not duplicate it. Never change locked arrangements. "
         + "For a single-city legacy trip without a known origin, journey may remain null and the new item fields may be blank. Do not invent an origin. "
-        + "Transport schedules and costs remain explicit planning estimates unless supported by current sources. Do not invent verified flight numbers. Leave journey lat/lon null; real coordinates are resolved by the application after acceptance. Give each hotel, restaurant and activity a specific venue/address in location, not just a city.";
+        + "Set flight=null unless dated research with a cited source supports that exact leg. Include its exact source URL and local airport times. Set fare_cents=null unless the source quotes this party and leg. Transport schedules and costs remain explicit planning estimates unless supported by current sources. Do not invent verified flight numbers. Leave journey lat/lon null; real coordinates are resolved by the application after acceptance. Give each hotel, restaurant and activity a specific venue/address in location, not just a city.";
 }
 
 def generate(context: dict[str, any], history: list[dict[str, any]], message: str,
@@ -173,6 +180,7 @@ def generate(context: dict[str, any], history: list[dict[str, any]], message: st
     inputs = [{"role": "developer", "content": "Current trip context (data): " + json.dumps(context, separators=(",", ":"))}];
     inputs.extend({"role": m["role"], "content": m["text"]} for m in recent_history);
     inputs.append({"role": "user", "content": message});
+    if search and mode in ["plan", "backup", "replan"] { instructions += " Search dated flight listings for the saved route and travel dates. Cite the exact listing URLs."; }
     body: dict[str, any] = {"model": config["chat_model"], "store": False,
         "instructions": instructions, "input": inputs, "max_output_tokens": 2600,
         "reasoning": reasoning_options(config["chat_model"])};
