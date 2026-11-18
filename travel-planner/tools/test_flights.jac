@@ -83,6 +83,8 @@ test "flight airports must serve the leg endpoints they claim" {
     assert serves(airport("NRT"), {"city": "Tokyo", "lat": None, "lon": None}, "Asia/Tokyo", "2027-01-02");
     assert not serves(airport("LAX"), detroit, "America/Detroit", "2027-01-01");
     assert not serves(airport("LHR"), {"city": "Tokyo", "lat": None, "lon": None}, "Asia/Tokyo", "2027-01-02");
+    assert not serves(airport("MIA"), detroit, "America/Detroit", "2027-01-01");
+    assert not serves(airport("JFK"), {"city": "LGA"}, "America/New_York", "2027-01-01");
     # Pacific zones east of the date line still match nearby airports.
     assert serves(airport("APW"), {"city": "Apia", "lat": None, "lon": None}, "Pacific/Apia", "2027-01-02") if airport("APW") else True;
     # Known coordinates are stricter than the time-zone fallback: ORD shares Detroit's region, not its city.

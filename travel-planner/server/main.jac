@@ -392,7 +392,7 @@ def:pub load_trip_map(trip_id: str, preview_journey: any = None, preview_trip: a
         (pins, routes) = map_points(conn, trip_id);
         return {"trip_version": state["version"], "pins": pins, "routes": routes, "journey": state["journey"],
             "location_points": {**location_points(state["trip"], state["journey"]), **location_points(preview_trip if isinstance(preview_trip, dict) else state["trip"], preview_journey)},
-            "flights": flight_details.read_for_items(conn, state["items"]),
+            "flights": flight_details.read_for_items(conn, state["items"], state["journey"]),
             "lookups": map_enrichment.lookup_states(conn, trip_id), "tracks": map_enrichment.flight_tracks(conn, trip_id),
             "dependencies": state["dependencies"], "risks": [risk for risk in context["risks"] if risk["node_ids"]],
             "plans": current_map_plans(conn, trip_id, state["version"], VALIDATION_VERSION, now)};

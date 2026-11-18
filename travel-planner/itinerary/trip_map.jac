@@ -4,7 +4,7 @@ import from itinerary.actions { focusItineraryControl }
 import from itinerary.map_tiles { createStreetMap, fitStreetMap, streetPoint, streetRoute, drawRecordedTrack }
 import from itinerary.map_search { MapPlaceSearch, FlightSearch }
 import from itinerary.map_scene { mapScene }
-import from itinerary.map_geometry { cityPoint }
+import from itinerary.city_points { cityPoint }
 import from itinerary.map_route_editor { MapRouteEditor }
 import from itinerary.presentation { planTitle, moneyLabel, shiftLabel }
 import from itinerary.review { itinerarySchedule }
@@ -415,7 +415,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
             onClick={lambda { openPopup("place", record["item"].id, stageId + "-place-" + record["item"].id); }}>
             <span aria-hidden="true">{ "⌂" if record["item"].category == "stay" else "♨" if record["item"].category == "food" else "♧"}</span><span className="map-pin-check" aria-hidden="true">✓</span><span className="map-place-label">{record["item"].title}</span>
         </button> for record in visiblePlaces if not track]}
-        {(<div className="map-empty"><strong>{trip.destination}</strong>
+        {(<div className="map-empty"><strong>{planned.destination}</strong>
             <p>Locations without coordinates are listed in Map details. Your activities are still available there.</p>
             <button type="button" className="map-primary" onClick={lambda { openPopup("details", "", stageId + "-details"); }}>Explore locations</button>
         </div>) if len(pointList) == 0 and popup is None else None}
@@ -497,7 +497,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
                     <p>{itinerarySchedule(selectedItem.date, selectedItem.time)}</p>
                     {(<p><strong>{selectedItem.location}</strong></p>) if selectedItem.location else None}
                     <p>{selectedItem.notes or "No extra notes for this stop."}</p>
-                    <p>{"Cost not estimated yet" if activeId in overview["unknown_prices"] else moneyLabel(selectedItem.cost_cents, trip.currency) + " · estimated cost"}</p>
+                    <p>{"Cost not estimated yet" if activeId in overview["unknown_prices"] else moneyLabel(selectedItem.cost_cents, planned.currency if selectedDraft else trip.currency) + " · estimated cost"}</p>
                     <button type="button" className="map-primary" onClick={lambda { jumpTo(activeId); }}>{"Review this draft" if selectedDraft else "Show in itinerary"}</button>
                     {(<button type="button" className="map-secondary" disabled={disabled} onClick={lambda { findAlternative(activeId); }}>Find alternatives</button>) if not selectedDraft else None}
                 </div>) if activeKind == "place" and selectedItem is not None and popupTab == "plan" else None}

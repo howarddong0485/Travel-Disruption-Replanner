@@ -1,5 +1,5 @@
 """Group mapped routes, stops and risk dependencies for the workspace."""
-import from itinerary.map_geometry { cityPoint }
+import from itinerary.city_points { cityPoint }
 import from itinerary.presentation { affectedItemIds }
 
 def cityId(point: any) -> str {

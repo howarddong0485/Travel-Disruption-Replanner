@@ -6,6 +6,8 @@ import math;
 import from datetime { datetime, timezone }
 import from zoneinfo { ZoneInfo }
 import from urllib.parse { urlsplit }
+import from itinerary.city_points { cityPoint }
+import from itinerary.map_locations { airport_location }
 import from tools.airports { airport }
 
 def install(conn: any) -> None {
@@ -23,19 +25,16 @@ def kilometres(left: dict[str, any], right: dict[str, any]) -> float {
     return 12742.0 * math.asin(min(1.0, math.sqrt(step)));
 }
 
-# An airport must serve the leg endpoint it claims. Known city coordinates allow 150 km
-# (e.g. Narita–Tokyo, Beauvais–Paris). Otherwise the airport's solar offset must fall
-# within 2.5 hours of the endpoint zone's UTC offset on that local date, which rejects
-# swapped or unrelated airports (LAX for Detroit, LHR for Tokyo) without network lookups.
+# A shared time zone alone cannot establish that an airport serves a city.
 def serves(point: dict[str, any], place: any, zone: str, day: str) -> bool {
-    if isinstance(place, dict) and place.get("lat") is not None and place.get("lon") is not None {
-        return kilometres(point, place) <= 150.0;
-    }
-    try { shift: any = ZoneInfo(zone).utcoffset(datetime.fromisoformat(day + "T12:00")); }
+    if not isinstance(place, dict) { return False; }
+    try { ZoneInfo(zone); datetime.fromisoformat(day); }
     except (ValueError, KeyError) { return False; }
-    offset = shift.total_seconds() / 3600;
-    gap = (point["lon"] / 15.0 - offset) % 24.0;
-    return min(gap, 24.0 - gap) <= 2.5;
+    label = place.get("city", "");
+    named = airport_location(label);
+    if named is not None { return named["lat"] == point["lat"] and named["lon"] == point["lon"]; }
+    center = place if place.get("lat") is not None and place.get("lon") is not None else cityPoint(label);
+    return center is not None and kilometres(point, center) <= 150.0;
 }
 
 def leg_places(item: dict[str, any], journey: any) -> list[any] {
@@ -81,11 +80,18 @@ def write(conn: any, item_id: str, item: dict[str, any]) -> None {
     }
 }
 
-def read_for_items(conn: any, items: list[dict[str, any]]) -> dict[str, any] {
+def read_for_items(conn: any, items: list[dict[str, any]], journey: any) -> dict[str, any] {
     flights: dict[str, any] = {};
     for item in items {
         row = conn.execute("SELECT fingerprint,payload FROM itinerary_flights WHERE item_id=?", (item["id"],)).fetchone();
-        if row is not None and row["fingerprint"] == signature(item) { flights[item["id"]] = json.loads(row["payload"]); }
+        if row is not None and row["fingerprint"] == signature(item) {
+            flight = json.loads(row["payload"]); (start, end) = leg_places(item, journey);
+            detail = item["journey"];
+            if serves(flight["departure_point"], start, detail["zone"], item["date"])
+                and serves(flight["arrival_point"], end, detail["end_zone"], detail["arrival_date"]) {
+                flights[item["id"]] = flight;
+            }
+        }
     }
     return flights;
 }

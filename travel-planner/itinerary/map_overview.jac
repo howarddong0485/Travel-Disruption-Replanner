@@ -1,5 +1,5 @@
 """Read-only map snapshots for saved trips, pending drafts and empty trip routes."""
-import from itinerary.map_geometry { cityPoint }
+import from itinerary.city_points { cityPoint }
 
 def:pub routePath(curve: any) -> str {
     return "M " + str(curve["start"]["x"]) + " " + str(curve["start"]["y"]) + " Q " +
