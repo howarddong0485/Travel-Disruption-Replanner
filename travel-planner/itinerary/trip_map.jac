@@ -126,7 +126,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     def rememberView -> None {
         if not street.current or not fitted.current or not geometry.current { return; }
         center = street.current.getCenter();
-        try { browser.sessionStorage.setItem(viewKey, browser.JSON.stringify({
+        try { browser.localStorage.setItem(viewKey, browser.JSON.stringify({
             "geometry": geometry.current, "center": [center.lat, center.lng], "zoom": street.current.getZoom(),
             "city": cityId, "category": categoryFilter, "day": dayFilter, "popup": popup, "tab": popupTab,
             "track": trackItem.current
@@ -164,7 +164,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
     }
     can with entry {
         alive.current = True;
-        try { savedView.current = browser.JSON.parse(browser.sessionStorage.getItem(viewKey) or "null"); } except Exception {}
+        try { savedView.current = browser.JSON.parse(browser.localStorage.getItem(viewKey) or "null"); } except Exception {}
         browser.addEventListener("pagehide", rememberView);
         street.current = createStreetMap(document.getElementById(stageId + "-tiles"),
             lambda { viewRevision += 1; }, lambda (failed: bool) { tilesFailed = failed; });

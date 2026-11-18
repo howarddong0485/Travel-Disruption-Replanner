@@ -1,6 +1,6 @@
 # JacRoam — Travel Planner
 
-JacRoam is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Each browser profile automatically opens its own private workspace. Each trip has its own itinerary, chat history, drafts and replanning state. Tabs can select different trips. Clearing site data removes access to that browser’s workspace.
+JacRoam is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Each browser profile automatically opens its own private workspace. Each trip has its own itinerary, chat history, drafts and replanning state. The browser restores the city, map position, zoom and filters for each trip. Each tab keeps its own active trip and unsent copilot text. Clearing site data removes access to that browser’s workspace.
 
 Application code, backend helpers, demos, and tests are written in `.jac` files. Jac imports Python standard-library modules for SQLite, dataclasses, date/time handling, and CLI argument parsing; no project-owned Python source files are required.
 
