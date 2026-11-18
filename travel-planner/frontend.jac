@@ -134,10 +134,16 @@ def:pub app -> JsxElement {
         toolbar: any = document.getElementById("itinerary-view-toolbar");
         if toolbar { toolbar.scrollIntoView({"block": "start"}); }
     }
+    def savedItineraryView(trip_id: str) -> str {
+        try {
+            if trip_id and browser.localStorage.getItem("roam.itinerary-view." + trip_id) == "list" { return "list"; }
+        } except Exception {}
+        return "map";
+    }
     def chooseItineraryView(value: str) -> None {
         if itineraryView == value { return; }
         itineraryView = value;
-        try { browser.localStorage.setItem("roam.itinerary-view", value); } except Exception {}
+        try { browser.localStorage.setItem("roam.itinerary-view." + selected, value); } except Exception {}
         window.requestAnimationFrame(lambda { showItineraryControls(); });
     }
     def jumpStop(id: str) -> None {
@@ -223,11 +229,18 @@ def:pub app -> JsxElement {
     async can with entry {
         document.title = "JacRoam";
         try {
-            if browser.localStorage.getItem("roam.itinerary-view") == "list" { itineraryView = "list"; }
             saved_workspace: any = browser.JSON.parse(browser.sessionStorage.getItem("roam.workspace") or "null");
             if saved_workspace and saved_workspace["tab"] in ["planner", "journey", "itinerary", "backups", "replan", "bookings", "packing", "budget"] {
                 selected = saved_workspace["trip_id"]; tab = saved_workspace["tab"];
+                if selected {
+                    view_key = "roam.itinerary-view." + selected;
+                    if browser.localStorage.getItem("roam.itinerary-view") == "list" and not browser.localStorage.getItem(view_key) {
+                        browser.localStorage.setItem(view_key, "list");
+                    }
+                    itineraryView = savedItineraryView(selected);
+                }
             }
+            browser.localStorage.removeItem("roam.itinerary-view");
         } except Exception {}
         await refresh();
     }

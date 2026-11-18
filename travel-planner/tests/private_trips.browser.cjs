@@ -39,28 +39,43 @@ const api = process.env.TRAVEL_API_URL || app + '/api/server';
       assert.equal(await fresh.getByRole('alert').count(), 0, 'a new workspace should open cleanly');
     }
     const suffix = Date.now();
-    for (const destination of ['Boston', 'Seattle']) {
-      const trip = await call(page, key, 'save_trip', {title: destination + ' ' + suffix,
-        destination, start_date: '2027-02-01', end_date: '2027-02-03'});
+    const menu = page.locator('aside.sidebar .trip-list');
+    async function createTrip(destination) {
+      const title = destination + ' ' + suffix;
+      await page.getByRole('button', {name: /Plan a new trip/}).click();
+      await page.getByLabel('Trip name', {exact: true}).fill(title);
+      await page.getByLabel('Destination', {exact: true}).fill(destination);
+      await page.getByLabel('Departure date').fill('2027-02-01');
+      await page.getByLabel('Return date').fill('2027-02-03');
+      await page.getByRole('button', {name: /Review trip brief/}).click();
+      const saving = page.waitForResponse(r => r.url().endsWith('/function/save_trip') && r.ok());
+      await page.getByRole('button', {name: 'Confirm and create trip'}).click();
+      const trip = (await (await saving).json()).data.result;
       saved.push({key, id: trip.id, title: trip.title});
+      await menu.locator('[data-active=true]').filter({hasText: title}).waitFor();
       await call(page, key, 'save_item', {trip_id: trip.id, title: destination + ' private stop', location: destination, date: '2027-02-01'});
+      return trip;
     }
-    const [a,b] = saved;
-    await page.getByRole('button', {name: '↻ Refresh', exact: true}).click();
+    const a = await createTrip('Boston');
     await select(page, a.title);
     const cities = page.getByRole('navigation', {name:'Choose a city'});
     await cities.getByRole('button',{name:'Boston',exact:true}).click();
     await page.locator('.map-filters label').filter({hasText:'Show'}).locator('select').selectOption('activity');
     await page.getByRole('button',{name:'Zoom in'}).click();
+    const b = await createTrip('Seattle');
+    assert.deepEqual((await menu.locator('button strong').allTextContents()).sort(), [a.title, b.title]);
     await select(page,b.title);
     const mapState = id => page.evaluate(key => JSON.parse(localStorage.getItem('jacroam.map-view.' + key)), id);
     const originalView = await mapState(a.id);
     assert(originalView && originalView.zoom && originalView.city && originalView.category==='activity');
     assert.equal(await page.locator('.map-filters label').filter({hasText:'Show'}).locator('select').inputValue(), '');
+    await page.getByRole('button', {name: 'List', exact: true}).click();
     await select(page,a.title);
+    assert.equal(await page.getByRole('button', {name: 'Map', exact: true}).getAttribute('aria-pressed'), 'true');
     await page.locator('.map-city-switcher button[aria-pressed=true]').filter({hasText:'Boston'}).waitFor();
     assert.equal(await page.locator('.map-filters label').filter({hasText:'Show'}).locator('select').inputValue(), 'activity');
     await select(page,b.title);
+    assert.equal(await page.getByRole('button', {name: 'List', exact: true}).getAttribute('aria-pressed'), 'true');
     const restoredView = await mapState(a.id);
     assert.equal(restoredView.zoom, originalView.zoom);
     assert(Math.abs(restoredView.center[0]-originalView.center[0]) < 0.001);
@@ -100,10 +115,21 @@ const api = process.env.TRAVEL_API_URL || app + '/api/server';
     await another.locator('.map-city-switcher button[aria-pressed=true]').filter({hasText:'Boston'}).waitFor();
     await page.reload();
     await page.locator('.trip-card[data-active=true]').filter({hasText:b.title}).waitFor();
+    await select(page,b.title);
+    assert.equal(await page.getByRole('button', {name: 'List', exact: true}).getAttribute('aria-pressed'), 'true');
     await other.getByRole('button',{name:'↻ Refresh',exact:true}).click();
     await other.getByRole('heading',{name:'Create your first trip'}).waitFor();
     assert.deepEqual(await call(other,otherKey,'list_trips',{}),[]);
-    console.log('PASS: browser ownership, tab selection, restored city, filters, camera and composer, separate replans and late chat after switching trips');
+    // Simulate an existing visitor upgrading while viewing B in the old List mode.
+    await page.evaluate(id => {
+      localStorage.removeItem('roam.itinerary-view.' + id);
+      localStorage.setItem('roam.itinerary-view', 'list');
+    }, b.id);
+    await openPage(page);
+    assert.equal(await page.getByRole('button', {name: 'List', exact: true}).getAttribute('aria-pressed'), 'true');
+    await select(page,a.title);
+    assert.equal(await page.getByRole('button', {name: 'Map', exact: true}).getAttribute('aria-pressed'), 'true');
+    console.log('PASS: new trips preserve sidebar entries, each trip restores its map/list choice, camera, filters and composer, and visitors, replans and delayed replies stay isolated');
   } finally {
     try { for (const t of saved) await call(page,t.key,'delete_trip',{trip_id:t.id}); }
     finally { await browser.close(); }
