@@ -67,6 +67,7 @@ impl app.activateTrip(trip_id: str) -> None {
     }
     views: any = tripViews.current; prior: any = views.get(trip_id, {});
     resetReview(); selected = trip_id; loadedTrip = trip_id if trip_id in views else "";
+    itineraryView = savedItineraryView(trip_id);
     items = prior.get("items", []); journeyData = prior.get("journey", {}); day = prior.get("day", "");
     aiData = prior.get("ai", {}); aiCompose = 0; aiText = ""; aiMode = "ask"; mapApiKey = ""; mapChat = prior.get("chat", False);
     revisionNotice = ""; notice = ""; error = ""; railView = "auto"; placeId = "";
