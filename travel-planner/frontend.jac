@@ -1,4 +1,4 @@
-"""Jacplan's responsive trip workspace."""
+"""JacRoam's responsive trip workspace."""
 import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip,
     list_items, save_item, set_item_state, delete_item, replan_demo, create_planning_demo }
 import from backup.frontend { BackupPanel }
@@ -32,7 +32,7 @@ def:pub app -> JsxElement {
         reviewRequest: any = None, itineraryPreview: any = None, reviewKey: Ref[int] = Ref(0),
         revisionNotice: str = "", revisionTimer: Ref[int] = Ref(0),
         railView: str = "auto", placeId: str = "", timelinePositions: Ref[any] = Ref({}),
-        mapRevision: int = 0, itineraryView: str = "map", journeyData: any = {},
+        mapChat: bool = False, mapApiKey: str = "", mapRevision: int = 0, itineraryView: str = "map", journeyData: any = {},
         item_stop: str = "", item_leg: str = "", arrival_date: str = "", arrival_time: str = "", item_duration: str = "60";
 
     browser: any = window;
@@ -166,7 +166,7 @@ def:pub app -> JsxElement {
         aiMode = mode; aiText = text; aiCompose += 1; tab = "planner";
     }
     def receiveAI(data: dict[str, any], generated: bool) -> None {
-        aiData = data;
+        aiData = data; mapRevision += 1;
         if generated { tab = "planner"; }
     }
     async def routeSaved(data: any) -> None { journeyData = data; await refresh(); }
@@ -201,7 +201,7 @@ def:pub app -> JsxElement {
         finally { busy = False; }
     }
     async can with entry {
-        document.title = "Jacplan";
+        document.title = "JacRoam";
         try {
             if browser.localStorage.getItem("roam.itinerary-view") == "list" { itineraryView = "list"; }
             saved_workspace: any = browser.JSON.parse(browser.localStorage.getItem("roam.workspace") or "null");
@@ -249,9 +249,9 @@ def:pub app -> JsxElement {
     currentPlace = selectedPlaces[0] if selectedPlaces else places[0] if places else None;
     placesOpen = tab == "itinerary" and (railView == "places" or (railView == "auto" and bool(places)));
 
-    <div className={"app-shell" + (" with-assistant" if current else "")} data-reviewing={bool(reviewRequest)}>
+    <div className={"app-shell" + (" with-assistant" if current else "")} data-reviewing={bool(reviewRequest)} data-map-focus={mapVisible and not mapChat}>
         <aside className="sidebar">
-            <a className="brand" href="#"><span className="brand-icon">↗</span>Jacplan</a>
+            <a className="brand" href="#"><span className="brand-icon">↗</span>JacRoam</a>
             <p className="brand-caption">Plan trips and handle disruptions.</p>
             <div className="sidebar-heading"><span>YOUR TRIPS</span><span>{str(len(trips))}</span></div>
             <div className="trip-list">{[
@@ -353,6 +353,7 @@ def:pub app -> JsxElement {
                         <button type="button" id="itinerary-view-list" aria-pressed={itineraryView == "list"}
                             onClick={lambda { chooseItineraryView("list"); }}>List</button>
                     </div>) if tab == "itinerary" else None}
+                    {(<button type="button" className="itinerary-chip" aria-pressed={mapChat} onClick={lambda { mapChat = not mapChat; }}>✦ Travel assistant</button>) if mapVisible else None}
                     {(<button id="trip-actions-launch" type="button" className={"itinerary-chip" if mapVisible else "trip-actions-launch"}
                         disabled={busy or loading} onClick={lambda { openReview("", "", "trip-actions-launch"); }}>
                         <span aria-hidden="true">↗</span> Review a change
@@ -382,7 +383,7 @@ def:pub app -> JsxElement {
                     data-reviewing={bool(reviewRequest)} hidden={tab in ["planner", "journey", "backups", "replan", "demo"]}>
                     {(<div className="map-workspace">
                         <TripMap key={selected} trip={current} items={itineraryItems} revision={mapRevision}
-                            preview={itineraryPreview} disabled={busy or loading}
+                            preview={itineraryPreview} disabled={busy or loading} apiKey={mapApiKey}
                             onReview={openReview} onPlanB={openMapReview} onStop={jumpStop} onTimeline={jumpTimeline}
                             onSample={lambda { createIntegratedDemo("map"); }}/>
                     </div>) if mapVisible else None}
@@ -481,12 +482,12 @@ def:pub app -> JsxElement {
                     </div>
                 </div>
             </div>)}
-            <footer>Jacplan</footer>
+            <footer>JacRoam</footer>
         </main>
         {(<div className="revision-toast" role="status">{revisionNotice}
             <button type="button" className="itinerary-chip" aria-label="Dismiss saved revision message" onClick={lambda { revisionNotice = ""; }}>×</button>
         </div>) if revisionNotice else None}
         {(<ChatSidebar key={selected} trip_id={selected} destination={current.destination} onUpdate={receiveAI} reload={aiReload}
-            compose={aiCompose} composeMode={aiMode} composeText={aiText} externalBusy={busy}/>) if current else None}
+            compose={aiCompose} composeMode={aiMode} composeText={aiText} externalBusy={busy} onKeyChange={lambda (value: str) { mapApiKey = value; }}/>) if current else None}
     </div>
 }

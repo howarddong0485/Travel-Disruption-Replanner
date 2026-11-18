@@ -1,8 +1,8 @@
-# Travel Disruption Replanner
+# JacRoam — Travel Disruption Replanner
 
 **Personalized travel planning, proactive backup plans, and disruption-aware replanning.**
 
-Travel Disruption Replanner is a Jac prototype for managing trips, preparing validated alternatives, and reviewing simulated changes. Initial itinerary generation is still pending; connected backups operate on saved or predefined sample trips. It considers the whole itinerary: a delayed flight can affect a rental car pickup, hotel check-in, dinner reservation, and the following day's activities.
+JacRoam is a Jac prototype for managing trips, preparing validated alternatives, and reviewing simulated changes. Initial itinerary generation is still pending; connected backups operate on saved or predefined sample trips. It considers the whole itinerary: a delayed flight can affect a rental car pickup, hotel check-in, dinner reservation, and the following day's activities.
 
 > **Project status:** Early prototype. [Roam](travel-planner/README.md) provides a runnable Jac trip planner, mock backup plans, and [disruption replanning](travel-planner/replan/README.md). PR #36 delivers connected validation, risk analysis, comparison and version-safe traveler-approved updates to main. Shared contracts and separately imported source PRs still require owner coordination. This milestone uses synthetic travel data and simulated disruptions.
 

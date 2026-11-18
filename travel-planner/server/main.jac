@@ -1,5 +1,7 @@
 """Trip records and travel items persisted in an independent SQLite database."""
 import os;
+import tools.map_providers as map_providers;
+import itinerary.map_enrichment as map_enrichment;
 import re;
 import uuid;
 import sqlite3;
@@ -25,6 +27,7 @@ import from itinerary.place_data { read_place_details, write_place_details }
 import from itinerary.map_data { install_map_schema, save_map_route, map_points, current_map_plans }
 import assistant.workflow as ai_workflow;
 import assistant.provider as ai_provider;
+import assistant.map_actions as ai_maps;
 import assistant.preferences as ai_preferences;
 import journey.model as journey_model;
 
@@ -81,6 +84,15 @@ def:pub assistant_chat(trip_id: str, message: str, mode: str, search: any, reque
     if captured["replay"] { return assistant_state(trip_id); }
     try {
         result = ai_provider.generate(captured["context"], captured["history"], message, mode, search, api_key);
+        if result.get("map_requests") {
+            conn = _connect();
+            try {
+                if ai_workflow.fingerprint(snapshot(conn, trip_id), ai_workflow.planning_facts(conn, trip_id)) != captured["fingerprint"] {
+                    result["answer"] = "Your trip changed. Ask for a fresh map lookup.";
+                } else { result.update(ai_maps.execute(conn, trip_id, result["map_requests"])); }
+            }
+            finally { conn.close(); }
+        }
         failures: list[str] = [];
         if result.get("plans", []) {
             for plan in result.get("plans", []) {
@@ -114,7 +126,27 @@ def:pub assistant_update_prices(trip_id: str, draft_id: str, prices: dict[str, a
 
 def:pub assistant_review(trip_id: str, draft_id: str, accept: any, acknowledged: any = False) -> dict[str, any] {
     conn = _connect();
-    try { return ai_workflow.review(conn, trip_id, draft_id, accept, acknowledged); }
+    try {
+        prior = conn.execute("SELECT status FROM assistant_drafts WHERE id=? AND trip_id=?", (draft_id, trip_id)).fetchone();
+        result = ai_workflow.review(conn, trip_id, draft_id, accept, acknowledged);
+        # A repeated accept (double-click or retry) is a no-op in review(); do not
+        # geocode again or post a duplicate map message for it.
+        if accept is True and prior is not None and prior["status"] == "pending" {
+            # The accepted AI itinerary uses exactly the same real-place resolver as chat.
+            located = ai_maps.execute(conn, trip_id, [{"name": "locate_itinerary_places", "arguments": {}}]);
+            conn.execute("INSERT INTO assistant_messages VALUES (?,?,?,?,?,?)", (str(uuid.uuid4()), trip_id, "assistant",
+                located["answer"], json.dumps({"mode": "ask", "map_actions": located["map_actions"]}), ai_workflow.now()));
+            conn.commit(); result = ai_workflow.read(conn, trip_id);
+        }
+        return result;
+    }
+    except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
+
+def:pub assistant_confirm_map(trip_id: str, message_id: str, action_index: int, choice_index: int) -> dict[str, any] {
+    conn = _connect();
+    try { ai_maps.confirm(conn, trip_id, message_id, action_index, choice_index); return ai_workflow.read(conn, trip_id); }
     except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
 }
@@ -292,6 +324,7 @@ def _connect -> sqlite3.Connection {
     conn.execute("CREATE INDEX IF NOT EXISTS items_trip ON items(trip_id)");
     conn.execute("CREATE TABLE IF NOT EXISTS itinerary_place_details (item_id TEXT PRIMARY KEY REFERENCES items(id) ON DELETE CASCADE, location TEXT NOT NULL, payload TEXT NOT NULL, revision INTEGER NOT NULL)");
     install_map_schema(conn);
+    map_enrichment.install(conn);
     conn.commit();
     install_schema(conn);
     install_context_schema(conn);
@@ -321,6 +354,7 @@ def:pub load_trip_map(trip_id: str) -> dict[str, any] {
         context = build_context(state, read_facts(conn, trip_id), now);
         (pins, routes) = map_points(conn, trip_id);
         return {"trip_version": state["version"], "pins": pins, "routes": routes, "journey": state["journey"],
+            "lookups": map_enrichment.lookup_states(conn, trip_id), "tracks": map_enrichment.flight_tracks(conn, trip_id),
             "dependencies": state["dependencies"], "risks": [risk for risk in context["risks"] if risk["node_ids"]],
             "plans": current_map_plans(conn, trip_id, state["version"], VALIDATION_VERSION, now)};
     } finally { conn.close(); }
@@ -785,5 +819,32 @@ def:pub review_replan(trip_id: str, proposal_id: str, accept: bool) -> dict[str,
 def:pub combine_replan(trip_id: str, event_id: str, choices: dict[str, str]) -> dict[str, any] {
     conn = _connect();
     try { return custom_proposal(conn, trip_id, event_id, choices); }
+    finally { conn.close(); }
+}
+
+
+def:pub search_map_places(query: str) -> list[dict[str, any]] {
+    return map_providers.search_places(query);
+}
+
+def:pub search_map_flight(ident: str, departure_date: str, api_key: str = "") -> dict[str, any] {
+    return map_providers.search_flight(ident, departure_date, api_key);
+}
+
+
+def:pub load_recorded_flight_tracks(callsign: str, day: str) -> dict[str, any] {
+    return map_providers.recorded_tracks(callsign, day);
+}
+
+def:pub resolve_trip_map_places(trip_id: str, retry: bool = False) -> dict[str, any] {
+    conn = _connect();
+    try { return map_enrichment.resolve_places(conn, trip_id, retry); }
+    finally { conn.close(); }
+}
+
+def:pub save_trip_flight_track(trip_id: str, item_id: str, title: str, location: str, departure_date: str,
+    callsign: str, day: str, track_id: str, expected_revision: int = 0) -> dict[str, any] {
+    conn = _connect();
+    try { return map_enrichment.save_flight_track(conn, trip_id, item_id, title, location, departure_date, callsign, day, track_id, expected_revision); }
     finally { conn.close(); }
 }

@@ -241,7 +241,7 @@ def finish(conn: any, trip_id: str, request_id: str, message: str, mode: str,
                 json.dumps(draft), "stale" if stale else "pending", expires));
     }
     payload = {"sources": result.get("sources", []), "research": result.get("research", ""),
-        "mode": mode, "issues": issues, "stale": stale};
+        "mode": mode, "issues": issues, "stale": stale, "map_actions": result.get("map_actions", [])};
     for (role, text, data) in [("user", message, {"mode": mode}), ("assistant", result["answer"], payload)] {
         conn.execute("INSERT INTO assistant_messages VALUES (?,?,?,?,?,?)", (str(uuid4()), trip_id, role, text, json.dumps(data), stamp));
     }

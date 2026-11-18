@@ -1,6 +1,6 @@
-# Jacplan — Travel Planner
+# JacRoam — Travel Planner
 
-Jacplan is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Keep multiple trips, daily itineraries, reservations, packing lists, notes, and costs together in one workspace.
+JacRoam is a personal travel planner built with **Jac 0.37.23**, following GoPlanner's web + CLI + shared SQLite service structure. Keep multiple trips, daily itineraries, reservations, packing lists, notes, and costs together in one workspace.
 
 Application code, backend helpers, demos, and tests are written in `.jac` files. Jac imports Python standard-library modules for SQLite, dataclasses, date/time handling, and CLI argument parsing; no project-owned Python source files are required.
 
@@ -321,4 +321,17 @@ Tests use temporary SQLite databases. They do not read or modify your saved trip
 
 Departure and return locations are optional cities or airports and may differ. Set them in Create/Edit trip or with CLI `new --depart-from "Detroit, MI" --return-to "Chicago, IL"`. They appear in the trip overview and assistant context. Existing databases migrate automatically with blank locations; older API clients that omit these fields preserve saved locations when editing.
 
-The trip overview animates the route from departure through destination to return, with a pause/play control. Reduced-motion settings show a static route. This is a route illustration, not a geographic map or live flight tracker.
+The trip overview includes a compact route illustration. For geographic detail, open **Itinerary → Map**.
+
+### Street maps and recorded flights
+
+- The map uses Leaflet and OpenStreetMap street tiles. Click a city to see its itinerary places, filter by day or category, and select a card or marker for details. **All cities** restores the trip overview. **Travel assistant** opens the chat alongside the map.
+- Opening **Itinerary → Map** automatically searches missing place coordinates for any saved trip, including a newly accepted AI plan. Unique matches are saved in the shared trip database. **Retry missing locations** retries unresolved searches. For ambiguous results, select a stop, search a more specific address, and confirm a location. Existing saved coordinates and photos are preserved. Nominatim queries are serialized, cached for 24 hours, and identified with the project User-Agent. `MAP_GEOCODER_URL` can switch the server to another compatible search endpoint.
+- Select a flight, enter its flight number and departure date, and choose **Search flight & track**. This uses the same in-memory or server OpenAI key as the assistant and returns cited web research. No FlightAware key is required.
+- To display the observed path, enter the verified **ICAO callsign** and the UTC date of its first recorded position under **Recorded ADS-B track**. Select a match after checking its registration and times. Public [adsb.aero](https://adsb.aero/api/docs) coordinates are drawn in separate coverage segments; missing coverage is left disconnected. Airport endpoints alone never produce a claimed actual track. Availability depends on the archive, and **Save & show recorded track** stores the provider record with the trip. It is restored on refresh or in another browser using the same server and database. Changing the flight date, title or location invalidates its saved track.
+
+Internet access is required for street tiles, place searches, web research, and recorded tracks. Public services can return no coverage or rate-limit requests. Search results and flight tracks show their sources; OpenAI search does not produce map coordinates.
+
+Provider parsing, new-trip geocoding, ambiguity, cross-request persistence, coverage gaps, and stale edits can be checked with `jac test itinerary/test_map_enrichment.jac tools/test_map_providers.jac`.
+
+Map availability is independent of the sample/demo buttons and does not depend on a particular browser conversation. Searches use each saved stop’s city (or the trip destination), including cities outside the offline catalog. Ambiguous candidates and failed lookups are persisted for explicit confirmation/retry. All clients of the same instance share its configured SQLite database; separate local installations do not synchronize automatically. The current prototype has no per-user trip ownership layer, and this change does not publish it as a public multiuser service. A public deployment needs authentication, ownership checks, HTTPS, persistent storage and provider capacity appropriate to its traffic.
