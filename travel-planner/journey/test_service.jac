@@ -16,6 +16,9 @@ import from replan.engine { build_combination }
 def create -> str {
     return api.save_trip(TEST_WORKSPACE, "Japan", "Tokyo", "2027-01-01", "2027-01-07", "USD", "8000", "", "", "Detroit", "Detroit").id;
 }
+def fields(rows: any) -> list[any] {
+    return [(i.id, i.title, i.date, i.time, i.cost_cents) for i in rows];
+}
 def send(trip_id: str, proposal: any) -> any {
     response = {"answer": "Review your route.", "sources": [], "plans": [proposal]};
     with patch.object(provider, "generate", return_value=response), patch.object(provider, "repair", return_value=response) {
@@ -135,5 +138,28 @@ test "journey backup reschedules preserve city timing and reject cross-city samp
         candidate["action"] = "replace";
         with check.assertRaises(ValueError) { journey.replacement_items(state, [candidate]); }
         with check.assertRaises(ValueError) { build_combination(state, {"item_id": item["id"], "type": "interrupted"}, [item["id"]], {}); }
+    }
+}
+
+test "journey canceled train offers no unusable replacements while delay-only replans still apply" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": directory + "/trip.db"}) {
+        id = create(); draft = send(id, plan())["drafts"][0]; api.assistant_review(TEST_WORKSPACE, id, draft["id"], True, True);
+        train = next(i for i in api.replan_state(TEST_WORKSPACE, id)["items"] if i["title"] == "Tokyo to Kyoto");
+        canceled = api.propose_replan(TEST_WORKSPACE, id, train["id"], "interrupted");
+        assert canceled["proposals"] == [] and canceled["backups"] == [] and len(canceled["blockers"]) == 1;
+        blocker = canceled["blockers"][0];
+        assert blocker["item_id"] == train["id"] and blocker["action"] == "delay" and "train from Tokyo to Kyoto" in blocker["reason"];
+        assert blocker["message"] not in canceled["warnings"];
+        check = unittest.TestCase(); items = fields(api.list_items(TEST_WORKSPACE, id));
+        with check.assertRaises(ValueError) as forced { api.combine_replan(TEST_WORKSPACE, id, canceled["event_id"], {train["id"]: train["id"] + ":shuttle"}); }
+        assert str(forced.exception) == blocker["message"];
+        with check.assertRaises(ValueError) as kept { api.combine_replan(TEST_WORKSPACE, id, canceled["event_id"], {}); }
+        assert str(kept.exception) == blocker["message"], str(kept.exception);
+        assert fields(api.list_items(TEST_WORKSPACE, id)) == items;
+        delayed = api.propose_replan(TEST_WORKSPACE, id, train["id"], "delayed", 30);
+        assert delayed["blockers"] == [] and len(delayed["proposals"]) == 1;
+        api.review_replan(TEST_WORKSPACE, id, delayed["proposals"][0]["id"], True);
+        moved = next(i for i in api.list_items(TEST_WORKSPACE, id) if i.id == train["id"]);
+        assert moved.time == "10:30" and moved.journey["arrival_time"] == "13:00" and moved.journey["leg_id"] == "tokyo:kyoto";
     }
 }

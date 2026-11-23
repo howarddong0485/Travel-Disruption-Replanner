@@ -390,6 +390,33 @@ def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
     }
     return total;
 }
+def replacement_blocker(state: any, item: any, event: any) -> any {
+    # Explain why the mock catalog cannot replace an item on a city-and-leg route.
+    if not state.get('journey') { return None; }
+    detail = item.get('journey') or {};
+    if detail.get('leg_id') {
+        what = 'the ' + (detail.get('mode') or 'transport') + ' from ' + detail.get('from_city', '') + ' to ' + detail.get('to_city', '');
+        reason = 'No verified replacement is available for ' + what + '. Mock shuttles and taxis can\'t be assigned to an intercity leg or checked against the route.';
+    } elif detail.get('stop_id') {
+        reason = 'No verified replacement is available for ' + item['title'] + ' in ' + detail.get('city', 'this city') + '. Mock backups can\'t confirm which city they are in.';
+    } else {
+        reason = item['title'] + ' isn\'t assigned to a city or transport leg, so no replacement can be checked against the route.';
+    }
+    rebook = (item['id'] == event['item_id']) and (event['type'] == 'interrupted');
+    next_step = 'If you were rebooked on a later departure, report this as Delayed by the minutes it now leaves later. Otherwise, update it in Itinerary with your new booking, then generate options again.'
+        if rebook
+        else 'Loosen its latest start in Schedule rules or update it in Itinerary, then generate options again.';
+    return {
+        'item_id': item['id'], 'title': item['title'], 'reason': reason, 'next_step': next_step,
+        'action': 'delay' if rebook else 'rules', 'message': reason + ' ' + next_step
+    };
+}
+def needed_blockers(packet: any, errors: any) -> tuple[list[dict[str, any]], list[str]] {
+    # Split search errors into structured replacement blockers and remaining warnings.
+    blockers = [b for b in packet.get('blockers', []) if b['message'] in errors];
+    messages = {b['message'] for b in blockers};
+    return (blockers, [e for e in errors if e not in messages]);
+}
 def build_combination(
     state: any, event: any, affected: any, choices: any, manual: any = False,
     inventory: any = None
@@ -426,12 +453,13 @@ def build_combination(
         );
         backup = None;
         if (forced_replace or missed or (manual and choices.get(item_id))) {
-            if state.get('journey') { raise ValueError('Use the journey planner for replacements; this backup source cannot verify city and transport-leg assignments.'); }
             if before['protected'] {
                 raise ValueError(
                     '{} is fixed or completed and can\'t move'.format(before['title'])
                 );
             }
+            blocker = replacement_blocker(state, before, event);
+            if blocker { raise ValueError(blocker['message']); }
             options = backups_for(before) if inventory is None else [b for b in inventory if b['item_id'] == item_id];
             backup = next(
                 (
@@ -539,11 +567,17 @@ def prepare(
         conn.rollback();
         raise;
     }
+    blockers = [
+        b for b in (replacement_blocker(state, nodes[node_id], event) for node_id in affected) if b
+    ];
+    blocked = {b['item_id'] for b in blockers};
     return {
         'state': state,
         'event': event,
         'affected': affected,
-        'backups': [b for node_id in affected for b in backups_for(nodes[node_id])]
+        # Offer only inventory the server can assign and validate for this route.
+        'backups': [b for node_id in affected if node_id not in blocked for b in backups_for(nodes[node_id])],
+        'blockers': blockers
     };
 }
 def candidates(
@@ -642,7 +676,8 @@ def store_proposals(
     selected_ids: any = None,
     explanation: any = '',
     mode: any = 'mock',
-    warnings: any = None
+    warnings: any = None,
+    blockers: any = None
 ) -> dict[str, any] {
     valid_ids = {p['candidate_id'] for p in results[:12]};
     if (selected_ids is not None) {
@@ -719,6 +754,7 @@ def store_proposals(
         'event_id': packet['event']['id'],
         'proposals': chosen,
         'warnings': (warnings or []),
+        'blockers': (blockers or []),
         'affected': [
             i
             for i in packet['state']['items']
@@ -983,6 +1019,9 @@ def custom_proposal(
         conn, trip_id, event['item_id'], event['type'], event['delay_minutes'], event_id
     );
     supplied = {b['id']: b['item_id'] for b in packet['backups']};
+    for blocker in packet['blockers'] {
+        if choices.get(blocker['item_id']) { raise ValueError(blocker['message']); }
+    }
     if `any(
         (
             (item_id not in packet['affected'])
