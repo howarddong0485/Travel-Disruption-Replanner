@@ -74,4 +74,6 @@ jac build travel --as client
 
 The service tests cover the original planner plus delay cascades, fixed-node preservation, custom combinations, rejection, stale proposals, event deduplication, cycles, missing timing, retained payments, budgets, independent timing boundaries, rollback, and the actual typed `by` path using MockLLM. All tests use temporary trip databases.
 
+`tests/replan_journey.browser.cjs` drives the real Replan panel on a synthetic New York → Boston → Providence → New York trip with three train legs. It checks that canceling the outbound train shows a specific blocker and next step instead of mock transport or raw RPC errors, that **Report as delayed instead** switches to the delay path, and that an accepted 30-minute delay persists both local times after a reload. Run it like the [other browser regressions](../README.md#browser-regression-check), supplying `TRAVEL_APP_URL`, `TRAVEL_API_URL` and either `PLAYWRIGHT_MODULE` or `NODE_PATH`. It makes no model or provider requests.
+
 If Jac cannot initialize its embedded Postgres store for HTTP tests, `jac db fetch` provisions its separate framework runtime. This does not move Roam's SQLite trip data.
