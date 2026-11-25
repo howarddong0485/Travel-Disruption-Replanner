@@ -111,3 +111,36 @@ test "percentage refunds round down to the minor unit" {
     assert refund_amount(None, 0, None) == 0;
     assert refund_amount(1000, 100, None) is None;
 }
+
+def without_no_show -> RefundPolicy {
+    policy = hotel_policy();
+    policy.no_show_refund_percent = None;
+    policy.no_show_evidence_id = "";
+    policy.unknowns = ["no-show terms"];
+    return policy;
+}
+
+test "missing no-show terms do not hide the refund for the current window" {
+    s = evaluate_cancellation(without_no_show(), hotel_node(), parse_instant("2026-10-27T12:00:00-04:00"));
+    assert s.state == CancelState.FREE_CANCEL_OPEN;
+    assert s.refund_if_cancel_now_minor == 52000 and s.fee_if_cancel_now_minor == 0;
+    assert s.unknowns == [];
+    assert s.later_unknowns == ["no-show terms"];
+    late = evaluate_cancellation(without_no_show(), hotel_node(), parse_instant("2026-10-28T18:00:00-06:00"));
+    assert late.state == CancelState.PARTIAL_REFUND and late.unknowns == [] and late.later_unknowns == ["no-show terms"];
+}
+
+test "missing no-show terms stay unresolved once the service starts" {
+    s = evaluate_cancellation(without_no_show(), hotel_node(), parse_instant("2026-10-30T15:00:00-06:00"));
+    assert s.state == CancelState.SERVICE_STARTED;
+    assert s.refund_if_cancel_now_minor is None;
+    assert "no-show terms" in s.unknowns and "no-show refund" in s.unknowns;
+    assert s.later_unknowns == [];
+}
+
+test "a policy that never mentions no-shows still reports them as missing for later" {
+    policy = without_no_show();
+    policy.unknowns = [];
+    s = evaluate_cancellation(policy, hotel_node(), parse_instant("2026-10-27T12:00:00-04:00"));
+    assert s.unknowns == [] and s.later_unknowns == ["no-show terms"];
+}

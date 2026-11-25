@@ -11,11 +11,14 @@ import from backup.validation_models { Evidence, Moment }
 def cancellation_review(bundle: TripBundle, booking: ItineraryNode, deadlines: dict[str, str], now: datetime) -> dict[str, any] {
     row: dict[str, any] = {"item_id":booking.id, "title":booking.title, "state":"unknown", "label":"Cancellation terms need confirmation",
         "currency":booking.currency, "fee":"Unknown", "refund":"Unknown", "refund_form":"unknown", "deadline":"Not supplied", "zone":booking.tz,
-        "sources":[], "unknowns":[], "requires_confirmation":True, "reviewed_at":now.isoformat(), "deadline_at":""};
+        "sources":[], "unknowns":[], "later_unknowns":[], "requires_confirmation":True, "reviewed_at":now.isoformat(), "deadline_at":""};
     policy = bundle.policy(booking.policy_id) if booking.policy_id else None;
     if policy is None { row["unknowns"] = ["No cancellation policy is recorded for this item."]; return row; }
     status = evaluate_cancellation(policy, booking, now);
     unknowns = list(status.unknowns);
+    if "no-show terms" in status.later_unknowns {
+        row["later_unknowns"] = ["No-show terms are not stated. They would decide the refund once the service starts."];
+    }
     try {
         instant(Moment(booking.start_local, booking.tz));
         for tier in policy.tiers { if tier.deadline_local { instant(Moment(tier.deadline_local, policy.tz)); } }

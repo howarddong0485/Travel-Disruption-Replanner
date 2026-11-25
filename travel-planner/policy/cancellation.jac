@@ -29,8 +29,13 @@ obj CancellationStatus {
     has next_deadline_local: str = "";
     has minutes_to_next_deadline: int | None = None;
     has unknowns: list[str] = [];
+    # Missing terms that cannot change what cancelling now returns, such as
+    # no-show terms before the service starts. Reported, but never blocking.
+    has later_unknowns: list[str] = [];
     has evidence_ids: list[str] = [];
 }
+
+glob NO_SHOW_UNKNOWN: str = "no-show terms";
 
 """The UTC instant a tier stops applying, or None when it lasts until the service starts or cannot be resolved."""
 def tier_deadline(tier: CancellationTier, policy: RefundPolicy, start: datetime | None) -> datetime | None {
@@ -66,8 +71,15 @@ def evaluate_cancellation(policy: RefundPolicy, booking: ItineraryNode, now: dat
         state=CancelState.UNKNOWN, currency=policy.currency, paid_minor=booking.paid_minor,
         unknowns=list(dict.fromkeys(policy.unknowns)));
     if booking.paid_minor is None { _note(status.unknowns, "amount paid"); }
+    started = start is not None and now >= start;
+    if not started and (NO_SHOW_UNKNOWN in status.unknowns or policy.no_show_refund_percent is None) {
+        # Only the active cancellation window decides the amount before the
+        # service starts; missing no-show terms matter once it has started.
+        status.unknowns = [u for u in status.unknowns if u != NO_SHOW_UNKNOWN];
+        status.later_unknowns = [NO_SHOW_UNKNOWN];
+    }
 
-    if start is not None and now >= start {
+    if started {
         status.state = CancelState.SERVICE_STARTED;
         status.refund_if_cancel_now_minor = refund_amount(booking.paid_minor, policy.no_show_refund_percent, 0);
         if policy.no_show_refund_percent is None { _note(status.unknowns, "no-show refund"); }
