@@ -1,5 +1,6 @@
 """Group mapped routes, stops and risk dependencies for the workspace."""
 import from itinerary.city_points { cityPoint }
+import from itinerary.city_aliases { sameCity, mergedCity }
 import from itinerary.presentation { affectedItemIds }
 
 def cityId(point: any) -> str {
@@ -7,30 +8,47 @@ def cityId(point: any) -> str {
 }
 
 def:pub mapScene(destination: str, items: any, data: any, preview: any) -> any {
+    browser: any = window;
     cities: any = {};
-    for point in data.get("city_points", {}).values() { cities[cityId(point)] = point; }
+    # One marker and filter per city: "Boston" and "Boston, MA" share a key, while
+    # same-name cities far apart (Portland, OR and Portland, ME) keep their own.
+    def place(point: any) -> str {
+        for key in browser.Object.keys(cities) {
+            if sameCity(cities[key], point) { cities[key] = mergedCity(cities[key], point); return key; }
+        }
+        key = cityId(point);
+        while key in cities { key = key + "~"; }
+        cities[key] = point;
+        return key;
+    }
+    def known(name: str) -> any {
+        for key in browser.Object.keys(cities) {
+            if sameCity(cities[key], {"label": name}) { return cities[key]; }
+        }
+        return None;
+    }
+    for point in data.get("city_points", {}).values() { place(point); }
     routes: any = {**data.get("routes", {})};
     pins: any = data.get("pins", {});
     # A verified itinerary place can anchor cities outside the small offline city catalog.
     for item in items {
         name = item.journey.get("city", "") or data.get("lookups", {}).get(item.id, {}).get("city", "") or destination;
         if item.id in pins {
-            point = data.get("city_points", {}).get(name.strip().lower()) or cityPoint(name) or {"label": name, **pins[item.id]};
-            if cityId(point) not in cities { cities[cityId(point)] = point; }
+            place(data.get("city_points", {}).get(name.strip().lower()) or cityPoint(name) or {"label": name, **pins[item.id]});
         }
     }
-    home = data.get("city_points", {}).get(destination.strip().lower()) or cityPoint(destination) or cities.get(destination.strip().lower());
-    if home is not None { cities[cityId(home)] = home; }
+    home = data.get("city_points", {}).get(destination.strip().lower()) or cityPoint(destination) or known(destination);
+    homeKey = place(home) if home is not None else "";
     groups: any = {};
     journey = data.get("journey");
     if journey {
-        points: any = {};
+        points: any = {}; pointKeys: any = {};
         locations = [{**journey["origin"], "id": "origin"}] + journey["stops"];
         if journey["return_to"] { locations.append({**journey["return_to"], "id": "return"}); }
         for location in locations {
             point = {"label": location["city"], "lat": location["lat"], "lon": location["lon"]}
-                if location.get("lat") is not None else cities.get(location["city"].strip().lower()) or cityPoint(location["city"]);
-            if point is not None { points[location["id"]] = point; cities[cityId(point)] = point; }
+                if location.get("lat") is not None else known(location["city"]) or cityPoint(location["city"]);
+            if point is not None { points[location["id"]] = point; pointKeys[location["id"]] = place(point); }
         }
         for item in items {
             detail = item.journey;
@@ -39,7 +57,7 @@ def:pub mapScene(destination: str, items: any, data: any, preview: any) -> any {
             if len(leg) > 0 and leg[0]["from_id"] in points and leg[0]["to_id"] in points {
                 routes[item.id] = {"revision": routes.get(item.id, {}).get("revision", 0), "route": {
                     "from": points[leg[0]["from_id"]], "to": points[leg[0]["to_id"]], "kind": "flight" if leg[0]["mode"] == "flight" else "ground"}};
-            } elif detail.get("stop_id") in points { groups[item.id] = [cityId(points[detail["stop_id"]])]; }
+            } elif detail.get("stop_id") in points { groups[item.id] = [pointKeys[detail["stop_id"]]]; }
         }
     }
     for item in items {
@@ -52,12 +70,10 @@ def:pub mapScene(destination: str, items: any, data: any, preview: any) -> any {
     for item in items {
         route = routes.get(item.id, {}).get("route");
         if route is not None {
-            start = cityId(route["from"]); end = cityId(route["to"]);
-            cities[start] = route["from"]; cities[end] = route["to"];
-            groups[item.id] = [start, end];
+            groups[item.id] = [place(route["from"]), place(route["to"])];
         }
     }
-    browser: any = window; keys = browser.Object.keys(cities);
+    keys = browser.Object.keys(cities);
     for item in items {
         if item.id in groups { continue; }
         pin = pins.get(item.id);
@@ -69,7 +85,7 @@ def:pub mapScene(destination: str, items: any, data: any, preview: any) -> any {
                 separation = abs(city["lat"] - pin["lat"]) + abs(city["lon"] - pin["lon"]);
                 if separation < distance { near = key; distance = separation; }
             }
-        } elif home is not None { near = cityId(home); }
+        } elif homeKey { near = homeKey; }
         groups[item.id] = [near] if near else [];
     }
     edges = {"items": [{"id": item.id} for item in items], "dependencies": data.get("dependencies", [])};

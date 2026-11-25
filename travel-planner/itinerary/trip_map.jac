@@ -7,6 +7,7 @@ import from itinerary.map_search { MapPlaceSearch, FlightSearch }
 import from itinerary.map_scene { mapScene }
 import from itinerary.city_points { cityPoint }
 import from itinerary.map_route_editor { MapRouteEditor }
+import from itinerary.map_unlocated { UnmappedStop }
 import from itinerary.presentation { planTitle, moneyLabel, shiftLabel }
 import from itinerary.review { itinerarySchedule }
 import from itinerary.flight_card { FlightCard }
@@ -53,7 +54,8 @@ def savedLocationApplies(item: any, preview: any) -> bool {
 
 def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bool,
     onReview: any, onPlanB: any, onStop: any, onTimeline: any, onSample: any,
-    journey: any = None, draft: any = None, working: bool = False, day: str = "", onDay: any = None, onDraft: any = None, apiKey: str = "") -> JsxElement {
+    journey: any = None, draft: any = None, working: bool = False, day: str = "", onDay: any = None, onDraft: any = None, apiKey: str = "",
+    onRouteChanged: any = None) -> JsxElement {
     has data: any = {}, loadError: str = "", width: int = 800, height: int = 530,
         hoverRoute: str = "",
         popup: any = None, cityId: str = "", dayFilter: str = "", categoryFilter: str = "",
@@ -552,7 +554,9 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
                     if not editing]}
                 {(<div className="map-popup-stack">
                     <p className="map-muted">Browse locations, activities and travel routes.</p>
-                    {[<div className="map-unlocated-location" key={place["id"]}><strong>{place["city"]}</strong><small>Location not mapped yet</small></div> for place in overview["unlocated"]]}
+                    {[<UnmappedStop key={place["id"] + place["city"]} trip_id={trip.id} place={place}
+                        editable={not draft and not disabled and bool(onRouteChanged)}
+                        onSaved={lambda { return onRouteChanged() if onRouteChanged else reload(); }}/> for place in overview["unlocated"]]}
                     {(<p className="map-muted">Add an itinerary item to get started.</p>) if len(mapItems) == 0 else None}
                     {[<button type="button" className="map-list-row" key={item.id} onClick={lambda { inspectStop(item); }}><span><strong>{item.title}</strong><small>{ "Flight or ground route" if item.category == "transport"
                         else "Itinerary stop"}</small></span><span aria-hidden="true">↗</span></button> for item in visibleItems]}
