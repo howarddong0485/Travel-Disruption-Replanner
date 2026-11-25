@@ -27,6 +27,8 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         alive: Ref[bool] = Ref(True), sequence: Ref[int] = Ref(0), scrollTarget: Ref[any] = Ref(None),
         poll: Ref[any] = Ref(None), reloadAction: Ref[any] = Ref(None), focusAction: Ref[any] = Ref(None);
     composerKey = "jacroam.composer." + trip_id;
+    # Saved apart from the composer, which is cleared whenever the text is empty.
+    searchKey = "jacroam.search." + trip_id;
     def rememberComposer(value: str) -> None {
         try {
             if value { browser.sessionStorage.setItem(composerKey, browser.JSON.stringify({"text":value, "mode":mode, "search":search})); }
@@ -48,6 +50,8 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
         try {
             saved = browser.JSON.parse(browser.sessionStorage.getItem(composerKey) or "null");
             if saved { mode = saved["mode"]; text = saved["text"]; search = saved["search"]; }
+            searching = browser.sessionStorage.getItem(searchKey);
+            if searching is not None { search = searching == "on"; }
         } except Exception {}
         focusAction.current = lambda { if not browser.document.hidden { reloadAction.current(); } };
         poll.current = browser.setInterval(focusAction.current, 15000);
@@ -167,7 +171,10 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                 <textarea id="ai-message" value={text} rows={3} maxLength={4000} disabled={busy}
                     placeholder="Type your question or request…" onChange={lambda (e: ChangeEvent) { text = e.target.value; }}/>
                 <div className="composer-actions"><label className="search-toggle"><input type="checkbox" checked={search} disabled={busy}
-                    onChange={lambda (e: ChangeEvent) { search = e.target.checked; }}/> Search the web</label>
+                    onChange={lambda (e: ChangeEvent) {
+                        search = e.target.checked;
+                        try { browser.sessionStorage.setItem(searchKey, "on" if e.target.checked else "off"); } except Exception {}
+                    }}/> Search the web</label>
                     <button className="primary" type="submit" disabled={busy or externalBusy or loading or not text.strip() or not (apiKey or data.get("config", {}).get("configured", False))}>
                         {"Working…" if busy else "Send ↗"}</button></div>
             </form>
