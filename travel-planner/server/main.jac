@@ -15,7 +15,7 @@ import from dataclasses { asdict }
 import from backup.models { BackupPreview }
 import from backup.planner { prepare as prepare_backup }
 import from replan.engine { install_schema, snapshot, save_rules, save_dependency,
-    prepare, candidates, model_packet, store_proposals, decide, seed_demo, custom_proposal }
+    prepare, candidates, needed_blockers, model_packet, store_proposals, decide, seed_demo, custom_proposal }
 import from replan.agent { select_combinations }
 import from backup.validation_fixtures { run_fixture }
 import from backup.history { read_history, save_refresh }
@@ -866,9 +866,10 @@ def:pub propose_replan(workspace_key: str, trip_id: str, item_id: str, kind: str
     conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {
         packet = prepare(conn, trip_id, item_id, kind, delay_minutes, event_id);
-        (options, warnings) = candidates(packet);
+        (options, errors) = candidates(packet);
+        (blockers, warnings) = needed_blockers(packet, errors);
         if not options {
-            return {"event_id": packet["event"]["id"], "proposals": [], "warnings": warnings,
+            return {"event_id": packet["event"]["id"], "proposals": [], "warnings": warnings, "blockers": blockers,
                 "affected": [i for i in packet["state"]["items"] if i["id"] in packet["affected"]],
                 "backups": packet["backups"], "mode": "mock"};
         }
@@ -876,13 +877,13 @@ def:pub propose_replan(workspace_key: str, trip_id: str, item_id: str, kind: str
             try {
                 selection = select_combinations(model_packet(packet, options));
                 return store_proposals(conn, packet, options, selection.combination_ids,
-                    selection.explanation, "llm", warnings);
+                    selection.explanation, "llm", warnings, blockers);
             } except Exception {
                 # Never return provider exception text, which may contain secrets or prompts.
                 warnings.append("LLM selection unavailable or invalid. Showing validated mock combinations instead.");
             }
         }
-        return store_proposals(conn, packet, options, None, "", "mock", warnings);
+        return store_proposals(conn, packet, options, None, "", "mock", warnings, blockers);
     } finally { conn.close(); }
 }
 def:pub review_replan(workspace_key: str, trip_id: str, proposal_id: str, accept: bool) -> dict[str, any] {

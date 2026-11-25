@@ -3,9 +3,22 @@ import from workspace { workspaceKey }
 import from server.main { replan_state, replan_save_rules, replan_save_dependency,
     propose_replan, review_replan, combine_replan }
 
+# Show the server's validation message instead of a raw RPC error payload.
+def:pub replanError(error: any) -> str {
+    browser: any = window;
+    text = str(error); offset = text.find("{");
+    if offset >= 0 {
+        try {
+            payload = browser.JSON.parse(text[offset:]);
+            if payload.get("error", {}).get("message", "") { return payload["error"]["message"]; }
+        } except Exception { return "Replanning couldn't finish. Generate options again."; }
+    }
+    return "Replanning couldn't finish. Generate options again." if "Function " in text else text;
+}
+
 def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
     has state: dict[str, any] = {"items": [], "dependencies": []},
-        result: dict[str, any] = {"proposals": [], "warnings": [], "affected": [], "backups": []},
+        result: dict[str, any] = {"proposals": [], "warnings": [], "blockers": [], "affected": [], "backups": []},
         choices: dict[str, str] = {},
         item_id: str = "", kind: str = "delayed", delay: str = "180", use_ai: bool = False,
         busy: bool = False, error: str = "", message: str = "",
@@ -17,6 +30,20 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
     def titleFor(id: str) -> str {
         matches = [i for i in state["items"] if i["id"] == id];
         return matches[0]["title"] if len(matches) > 0 else "Removed item";
+    }
+    def blockerFor(id: str) -> any {
+        matches = [b for b in result.get("blockers", []) if b["item_id"] == id];
+        return matches[0] if len(matches) > 0 else None;
+    }
+    def followBlocker(blocker: dict[str, any]) -> None {
+        if blocker["action"] == "delay" {
+            item_id = blocker["item_id"]; kind = "delayed"; error = "";
+            result = {"proposals": [], "warnings": [], "blockers": [], "affected": [], "backups": []};
+            message = "Enter how many minutes later your new departure leaves, then generate options.";
+        } else {
+            loadRule(blocker["item_id"]);
+            message = "Adjust the schedule rules for " + blocker["title"] + " under Schedule rules and linked items, then generate options again.";
+        }
     }
     def chooseBackup(id: str, value: str) -> None {
         browser: any = window;
@@ -38,7 +65,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
     }
     async def generate(e: FormEvent) -> None {
         e.preventDefault(); if busy { return; } busy = True; error = ""; message = "";
-        result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
+        result = {"proposals": [], "warnings": [], "blockers": [], "affected": [], "backups": []};
         try {
             result = await propose_replan(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=item_id, kind=kind,
                 delay_minutes=int(delay) if kind == "delayed" else 0, use_llm=use_ai);
@@ -48,7 +75,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
                     if change["backup_id"] { choices[change["item_id"]] = change["backup_id"]; }
                 }
             }
-        } except Exception as exc { error = str(exc); }
+        } except Exception as exc { error = replanError(exc); }
         finally { busy = False; }
     }
     async def combine(e: FormEvent) -> None {
@@ -56,7 +83,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         try {
             result = await combine_replan(workspace_key=await workspaceKey(), trip_id=trip_id, event_id=result["event_id"], choices=choices);
             message = "Your backup combination is ready to review.";
-        } except Exception as exc { error = str(exc); }
+        } except Exception as exc { error = replanError(exc); }
         finally { busy = False; }
     }
     async def review(id: str, accept: bool) -> None {
@@ -65,12 +92,12 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
             response = await review_replan(workspace_key=await workspaceKey(), trip_id=trip_id, proposal_id=id, accept=accept);
             message = response["message"];
             if accept {
-                result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
+                result = {"proposals": [], "warnings": [], "blockers": [], "affected": [], "backups": []};
                 await reload(); await onApplied(); loadRule(rule_id);
             } else {
                 result = {**result, "proposals": [p for p in result["proposals"] if p["id"] != id]};
             }
-        } except Exception as exc { error = str(exc); }
+        } except Exception as exc { error = replanError(exc); }
         finally { busy = False; }
     }
     async def rules(e: FormEvent) -> None {
@@ -78,9 +105,9 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         try {
             state = await replan_save_rules(workspace_key=await workspaceKey(), trip_id=trip_id, item_id=rule_id,
                 duration_minutes=int(duration), latest_start=latest, fixed=fixed);
-            result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
+            result = {"proposals": [], "warnings": [], "blockers": [], "affected": [], "backups": []};
             message = "Schedule rules saved. Generate new options to use them.";
-        } except Exception as exc { error = str(exc); }
+        } except Exception as exc { error = replanError(exc); }
         finally { busy = False; }
     }
     async def dependency(e: FormEvent) -> None {
@@ -88,9 +115,9 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         try {
             state = await replan_save_dependency(workspace_key=await workspaceKey(), trip_id=trip_id, prerequisite_id=prerequisite,
                 dependent_id=dependent, buffer_minutes=int(buffer));
-            result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
+            result = {"proposals": [], "warnings": [], "blockers": [], "affected": [], "backups": []};
             message = "Items linked. Generate new options to use the link.";
-        } except Exception as exc { error = str(exc); }
+        } except Exception as exc { error = replanError(exc); }
         finally { busy = False; }
     }
     async def removeDependency(source: str, target: str) -> None {
@@ -98,13 +125,13 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         try {
             state = await replan_save_dependency(workspace_key=await workspaceKey(), trip_id=trip_id, prerequisite_id=source,
                 dependent_id=target, remove=True);
-            result = {"proposals": [], "warnings": [], "affected": [], "backups": []};
+            result = {"proposals": [], "warnings": [], "blockers": [], "affected": [], "backups": []};
             message = "Link removed.";
-        } except Exception as exc { error = str(exc); }
+        } except Exception as exc { error = replanError(exc); }
         finally { busy = False; }
     }
     async can with entry {
-        try { await reload(); } except Exception as exc { error = str(exc); }
+        try { await reload(); } except Exception as exc { error = replanError(exc); }
     }
     available = [i for i in state["items"] if i["category"] in ["transport", "stay", "food", "activity"]];
     <section className="replan-workspace">
@@ -155,6 +182,10 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         </details>
         {(<section className="card"><h3>Items checked</h3><p>{", ".join([i["title"] for i in result["affected"]])}</p></section>) if len(result["affected"]) > 0 else None}
         {[<div className="alert error" role="status" key={warning}>{warning}</div> for warning in result["warnings"]]}
+        {(<section className="card replan-blockers" role="status"><h3>No replacement can be offered yet</h3>{[
+            <div key={b["item_id"]}><p><strong>{b["title"]}</strong>{" · " + b["reason"]}</p><p className="section-caption">{"Next step: " + b["next_step"]}</p>
+                <button type="button" className="secondary" disabled={busy} onClick={lambda { followBlocker(b); }}>{"Report as delayed instead" if b["action"] == "delay" else "Open its schedule rules"}</button></div>
+            for b in result.get("blockers", [])]}</section>) if len(result.get("blockers", [])) > 0 else None}
         {(<div className="replan-results-heading"><p className="eyebrow">STEP 2</p><h2>Compare revised plans</h2><p>Your itinerary changes only when you accept a plan.</p></div>) if len(result["proposals"]) > 0 else None}
         <div className="replan-proposals">{[
             <article className="card proposal-card" key={p["id"]}><p className="eyebrow">{p["mode"] + " · MOCK BACKUP COMBINATION"}</p><h3>{p["title"]}</h3>
@@ -167,8 +198,8 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         ]}</div>
         {(<details className="card replan-inventory"><summary>View available mock backups</summary><p className="section-caption">Simulated options that can replace affected items. To choose your own, use Build your own combination.</p><div className="backup-grid">{[<div className="backup-chip" key={b["id"]}><strong>{b["title"]}</strong><small>{"For " + titleFor(b["item_id"])}</small><span>{amount(b["cost_cents"]) + " · " + str(b["duration_minutes"]) + " min"}</span></div> for b in result["backups"]]}</div></details>) if len(result["backups"]) > 0 else None}
         {(<section className="card"><p className="eyebrow">OPTIONAL</p><h3>Build your own combination</h3><p className="section-caption">Pick a backup for any affected item. Items that can no longer happen in time need one.</p>
-            <form onSubmit={combine}><div className="backup-grid">{[<div key={i["id"]}><label htmlFor={"choice-" + i["id"]}>{i["title"]}</label><select id={"choice-" + i["id"]} value={choices.get(i["id"], "")} disabled={bool(i["protected"])} onChange={lambda (e: ChangeEvent) { chooseBackup(i["id"], e.target.value); }}><option value="">Keep original if feasible</option>{[<option key={b["id"]} value={b["id"]}>{b["title"] + " · " + amount(b["cost_cents"])}</option> for b in result["backups"] if b["item_id"] == i["id"]]}</select></div> for i in result["affected"]]}</div><button type="submit" className="secondary" disabled={busy}>Combine selected backups</button></form>
+            <form onSubmit={combine}><div className="backup-grid">{[<div key={i["id"]}><label htmlFor={"choice-" + i["id"]}>{i["title"]}</label><select id={"choice-" + i["id"]} value={choices.get(i["id"], "")} disabled={bool(i["protected"]) or blockerFor(i["id"]) is not None} onChange={lambda (e: ChangeEvent) { chooseBackup(i["id"], e.target.value); }}><option value="">Keep original if feasible</option>{[<option key={b["id"]} value={b["id"]}>{b["title"] + " · " + amount(b["cost_cents"])}</option> for b in result["backups"] if b["item_id"] == i["id"]]}</select>{(<small>{"No mock replacement can be assigned to this route."}</small>) if blockerFor(i["id"]) is not None else None}</div> for i in result["affected"]]}</div><button type="submit" className="secondary" disabled={busy}>Combine selected backups</button></form>
         </section>) if len(result["affected"]) > 0 and len(result["backups"]) > 0 else None}
-        {(<p className="section-caption">No workable plan found. Check the conflicts above or adjust the schedule rules.</p>) if len(result["affected"]) > 0 and len(result["proposals"]) == 0 and len(result["warnings"]) > 0 else None}
+        {(<p className="section-caption">No workable plan found. Check the conflicts above or adjust the schedule rules.</p>) if len(result["affected"]) > 0 and len(result["proposals"]) == 0 and (len(result["warnings"]) > 0 or len(result.get("blockers", [])) > 0) else None}
     </section>
 }

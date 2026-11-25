@@ -55,7 +55,10 @@ def cli(jac: str, project: Path, base: str, args: list[str]) -> str {
 with entry {
     base = os.environ["ROAM_SMOKE_URL"].rstrip("/");
     assert urlparse(base).hostname in ("127.0.0.1", "localhost"), "Use a disposable localhost server";
-    deadline = time.monotonic() + 120;
+    # A source run cold-compiles server modules and the client bundle before
+    # it answers; slow CI runners have taken over 120s. The PID check below
+    # still fails fast if the server process exits.
+    deadline = time.monotonic() + float(os.environ.get("ROAM_SMOKE_READY_SECONDS", "300"));
     while True {
         if os.environ.get("ROAM_SMOKE_PID") { os.kill(int(os.environ["ROAM_SMOKE_PID"]), 0); }
         try { fetch(base, "/healthz/ready"); break; }

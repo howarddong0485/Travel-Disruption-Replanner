@@ -52,7 +52,7 @@ No key is required for the deterministic mock workflow or MockLLM tests. LLM sel
 | `frontend.jac` | Simulation, schedule/dependency editing, inventory, custom combinations and proposal review |
 | `../server/main.jac` | Public Jac endpoints sharing the existing SQLite connection |
 
-Public endpoints are `replan_demo`, `replan_state`, `replan_save_rules`, `replan_save_dependency`, `propose_replan`, `combine_replan`, and `review_replan`. `propose_replan` accepts `trip_id`, `item_id`, `kind`, `delay_minutes`, optional `event_id`, and `use_llm`. It returns `event_id`, `affected`, `backups`, `proposals`, `warnings`, and `mode`. A proposal contains its stored ID, base version, before/after changes, selected backup IDs, reasons and computed cost metrics. `combine_replan` accepts the pending event ID and an item-ID-to-backup-ID mapping. `review_replan` accepts a stored proposal ID and an explicit accept/reject decision.
+Public endpoints are `replan_demo`, `replan_state`, `replan_save_rules`, `replan_save_dependency`, `propose_replan`, `combine_replan`, and `review_replan`. `propose_replan` accepts `trip_id`, `item_id`, `kind`, `delay_minutes`, optional `event_id`, and `use_llm`. It returns `event_id`, `affected`, `backups`, `proposals`, `warnings`, `blockers`, and `mode`. On trips with a saved city-and-leg route, the mock catalog cannot be assigned to a city stop or intercity leg, so `backups` omits those items. Each item that would need a replacement instead gets a `blockers` entry with `reason`, `next_step`, and `action` (`delay` to report a rebooked departure as a delay, or `rules` to adjust schedule rules). The UI disables those choices, and `combine_replan` rejects them with the same message. A proposal contains its stored ID, base version, before/after changes, selected backup IDs, reasons and computed cost metrics. `combine_replan` accepts the pending event ID and an item-ID-to-backup-ID mapping. `review_replan` accepts a stored proposal ID and an explicit accept/reject decision.
 
 ## State and validation
 
@@ -73,5 +73,7 @@ jac build travel --as client
 ```
 
 The service tests cover the original planner plus delay cascades, fixed-node preservation, custom combinations, rejection, stale proposals, event deduplication, cycles, missing timing, retained payments, budgets, independent timing boundaries, rollback, and the actual typed `by` path using MockLLM. All tests use temporary trip databases.
+
+`tests/replan_journey.browser.cjs` drives the real Replan panel on a synthetic New York → Boston → Providence → New York trip with three train legs. It checks that canceling the outbound train shows a specific blocker and next step instead of mock transport or raw RPC errors, that **Report as delayed instead** switches to the delay path, and that an accepted 30-minute delay persists both local times after a reload. Run it like the [other browser regressions](../README.md#browser-regression-check), supplying `TRAVEL_APP_URL`, `TRAVEL_API_URL` and either `PLAYWRIGHT_MODULE` or `NODE_PATH`. It makes no model or provider requests.
 
 If Jac cannot initialize its embedded Postgres store for HTTP tests, `jac db fetch` provisions its separate framework runtime. This does not move Roam's SQLite trip data.
