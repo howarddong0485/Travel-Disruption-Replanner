@@ -291,7 +291,7 @@ def:pub app -> JsxElement {
                             day={day} onDay={lambda (value: str) { day = value; }} onDraft={jumpDraft}
                             preview={itineraryPreview} disabled={busy or loading} apiKey={mapApiKey}
                             onReview={openReview} onPlanB={openMapReview} onStop={jumpStop} onTimeline={jumpTimeline}
-                            onSample={lambda { createIntegratedDemo("map"); }}/>
+                            onSample={lambda { createIntegratedDemo("map"); }} onRouteChanged={lambda { return routeSaved(selected); }}/>
                     </div>) if current and loadedTrip == selected and (mapVisible or tab == "planner") else None;
 
     <div className={"app-shell" + (" with-assistant" if current and not trip_form else "")} data-reviewing={bool(reviewRequest)} data-map-focus={mapVisible and not mapChat}>

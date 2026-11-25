@@ -98,6 +98,27 @@ def:pub save_journey(workspace_key: str, trip_id: str, payload: dict[str, any], 
     return journey_state(workspace_key, trip_id);
 }
 
+"""Pin every route place with this city name (origin and return often share one) to a confirmed point."""
+def:pub locate_journey_city(workspace_key: str, trip_id: str, city: str, lat: any, lon: any, expected_version: any) -> dict[str, any] {
+    if type(lat) not in (int, float) or type(lon) not in (int, float) { raise ValueError("Choose a place with coordinates."); }
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
+    try {
+        conn.execute("BEGIN IMMEDIATE"); state = snapshot(conn, trip_id);
+        if type(expected_version) is not int or expected_version != state["version"] { raise ValueError("Your trip changed. Reload the map before locating this city."); }
+        journey = state["journey"];
+        places = [journey["origin"], journey["return_to"]] + journey["stops"] if journey is not None else [];
+        matched = [place for place in places if place is not None and place["city"] == city];
+        if not matched { raise ValueError("This city is no longer on the route. Reload the map."); }
+        for place in matched { place["lat"] = float(lat); place["lon"] = float(lon); }
+        journey = journey_model.normalize(journey, state["trip"]);
+        journey_model.validate(journey, state["trip"], state["items"], complete=False);
+        journey_model.write(conn, trip_id, journey);
+        conn.commit();
+    } except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+    return journey_state(workspace_key, trip_id);
+}
+
 def:pub assistant_save_preferences(workspace_key: str, trip_id: str, pet_friendly: any, pace: str, expected_version: any) -> dict[str, any] {
     conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try {

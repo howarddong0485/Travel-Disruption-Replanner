@@ -137,3 +137,45 @@ test "journey backup reschedules preserve city timing and reject cross-city samp
         with check.assertRaises(ValueError) { build_combination(state, {"item_id": item["id"], "type": "interrupted"}, [item["id"]], {}); }
     }
 }
+
+def northeast_loop(trip_id: str) -> int {
+    version = api.journey_state(TEST_WORKSPACE, trip_id)["version"];
+    payload = {"version": 1, "origin": {"city": "New York", "zone": "America/New_York"},
+        "return_to": {"city": "New York", "zone": "America/New_York"},
+        "stops": [{"id": "boston", "city": "Boston, MA", "zone": "America/New_York", "arrival_date": "2031-05-01", "departure_date": "2031-05-03"},
+            {"id": "providence", "city": "Providence, RI", "zone": "America/New_York", "arrival_date": "2031-05-03", "departure_date": "2031-05-04"}],
+        "legs": [{"from_id": "origin", "to_id": "boston", "mode": "train", "before_minutes": 30, "after_minutes": 30},
+            {"from_id": "boston", "to_id": "providence", "mode": "train", "before_minutes": 30, "after_minutes": 30},
+            {"from_id": "providence", "to_id": "return", "mode": "train", "before_minutes": 30, "after_minutes": 30}]};
+    return api.save_journey(TEST_WORKSPACE, trip_id, payload, version)["version"];
+}
+
+test "locating an unmapped route city saves its point on every matching place and nothing else" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": directory + "/trip.db"}) {
+        id = api.save_trip(TEST_WORKSPACE, "Northeast", "Boston, MA", "2031-05-01", "2031-05-04", "USD", "900", "", "", "New York", "New York").id;
+        version = northeast_loop(id);
+        before = api.journey_state(TEST_WORKSPACE, id)["journey"];
+        result = api.locate_journey_city(TEST_WORKSPACE, id, "Providence, RI", 41.824, -71.4128, version);
+        stops = {stop["id"]: stop for stop in result["journey"]["stops"]};
+        assert (stops["providence"]["lat"], stops["providence"]["lon"]) == (41.824, -71.4128);
+        assert stops["boston"]["lat"] is None and result["journey"]["origin"]["lat"] is None;
+        assert result["journey"]["legs"] == before["legs"] and stops["providence"]["arrival_date"] == "2031-05-03";
+        both = api.locate_journey_city(TEST_WORKSPACE, id, "New York", 40.7128, -74.006, result["version"]);
+        assert both["journey"]["origin"]["lat"] == 40.7128 and both["journey"]["return_to"]["lat"] == 40.7128;
+        trip = next(t for t in api.list_trips(TEST_WORKSPACE) if t.id == id);
+        assert (trip.destination, trip.departure_location, trip.return_location) == ("Boston, MA", "New York", "New York");
+    }
+}
+
+test "locating a route city rejects stale versions, unknown cities and invalid points" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": directory + "/trip.db"}) {
+        id = api.save_trip(TEST_WORKSPACE, "Northeast", "Boston, MA", "2031-05-01", "2031-05-04", "USD", "900", "", "", "New York", "New York").id;
+        version = northeast_loop(id); check = unittest.TestCase();
+        for (city, lat, lon, expected) in [("Providence, RI", 41.8, -71.4, version - 1), ("Hartford, CT", 41.8, -72.7, version),
+            ("Providence, RI", 91.0, -71.4, version), ("Providence, RI", "41.8", -71.4, version)] {
+            with check.assertRaises(ValueError) { api.locate_journey_city(TEST_WORKSPACE, id, city, lat, lon, expected); }
+        }
+        saved = api.journey_state(TEST_WORKSPACE, id);
+        assert saved["version"] == version and all(stop["lat"] is None for stop in saved["journey"]["stops"]);
+    }
+}
