@@ -4,6 +4,7 @@ import from server.main { load_trip_map, search_map_places, resolve_trip_map_pla
 import from itinerary.actions { focusItineraryControl }
 import from itinerary.map_tiles { createStreetMap, fitStreetMap, streetPoint, streetRoute, drawRecordedTrack }
 import from itinerary.map_search { MapPlaceSearch, FlightSearch }
+import from itinerary.place_query { placeSearchError }
 import from itinerary.map_scene { mapScene }
 import from itinerary.city_points { cityPoint }
 import from itinerary.map_route_editor { MapRouteEditor }
@@ -119,7 +120,7 @@ def:pub TripMap(trip: any, items: any, revision: int, preview: any, disabled: bo
                 await reload();
             }
             locateNotice = str(saved) + " places added to your map" if saved else "";
-        } except Exception as exc { locateNotice = str(exc); }
+        } except Exception as exc { locateNotice = placeSearchError(str(exc)); }
         finally { if alive.current { locating = False; await reload(); } }
     }
     viewKey = "jacroam.map-view." + trip.id;

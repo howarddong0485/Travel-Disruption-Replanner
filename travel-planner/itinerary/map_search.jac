@@ -1,9 +1,10 @@
 """Confirm geographic matches and research exact dated flights from the map."""
 import from workspace { workspaceKey }
+import from itinerary.place_query { placeQuery, placeSearchError }
 import from server.main { search_map_places, get_place_details, save_place_details, search_map_flight, load_recorded_flight_tracks, save_trip_flight_track }
 
 def:pub MapPlaceSearch(trip_id: str, item: any, destination: str, onSaved: any, lookup: any = None) -> JsxElement {
-    has query: str = (item.location if item.location and not item.location.startswith("fixture:") else item.title) + ", " + destination,
+    has query: str = placeQuery(item.location, item.title, destination),
         matches: any = [], busy: bool = False, error: str = "", searched: bool = False, saved: bool = False;
     can with entry {
         if lookup and lookup.get("status") == "needs_confirmation" { query = lookup["query"]; matches = lookup["matches"]; searched = True; }
@@ -11,7 +12,7 @@ def:pub MapPlaceSearch(trip_id: str, item: any, destination: str, onSaved: any, 
     async def search(e: FormEvent) -> None {
         e.preventDefault(); busy = True; error = ""; saved = False;
         try { matches = await search_map_places(query=query); searched = True; }
-        except Exception as exc { error = str(exc); }
+        except Exception as exc { error = placeSearchError(str(exc)); }
         finally { busy = False; }
     }
     async def choose(place: any) -> None {
