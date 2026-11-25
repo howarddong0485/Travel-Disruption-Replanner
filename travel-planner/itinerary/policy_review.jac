@@ -22,6 +22,7 @@ def:pub PolicyReview(rows: any) -> JsxElement {
                 <div><dt>Next deadline</dt><dd>{row["deadline"] + " · " + (row["zone"] or "Timezone unknown")}</dd></div>
             </dl>
             {(<div role="note"><strong>Unresolved policy risk</strong><ul>{[<li key={text}>{text}</li> for text in row["unknowns"]]}</ul></div>) if row["requires_confirmation"] else None}
+            {(<div role="note"><strong>Missing for later</strong><ul>{[<li key={text}>{text}</li> for text in row.get("later_unknowns", [])]}</ul></div>) if row.get("later_unknowns") else None}
             {(<p role="status">The evidence or cancellation window expired. Refresh before relying on these terms.</p>) if expired(row) else None}
             {[<div className="policy-source" key={str(index)}><blockquote>{source["excerpt"]}</blockquote>
                 <p>{source["source"]}</p>

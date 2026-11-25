@@ -81,3 +81,28 @@ test "saving exact policy terms is versioned evidence-only and invalidates waiti
         with check.assertRaises(ValueError) { service.save_policy_terms(TEST_WORKSPACE, trip.id, "foreign", terms, "reference", "America/New_York", (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat(), result["trip_version"]); }
     }
 }
+
+test "pre-deadline refunds do not depend on whether no-show terms are stated" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH":os.path.join(directory, "trip.sqlite3")}) {
+        trip = service.save_trip(TEST_WORKSPACE, "No-show review", "Boston", "2031-01-01", "2031-01-03", "USD", "500");
+        item = service.save_item(TEST_WORKSPACE, trip.id, "Hotel", "stay", "2031-01-01", "15:00", "Boston", cost="180");
+        service.set_item_state(TEST_WORKSPACE, trip.id, item.id, False, True);
+        clause = ("Full refund to the original payment method until 6:00 PM local time on December 30, 2030. "
+            + "Cancellations after that time are charged $50.00; the remainder is refunded to the original payment method.");
+        expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat();
+        rows: list[dict[str, any]] = [];
+        for terms in (clause, clause + " No-shows are charged the full stay.") {
+            version = service.planning_state(TEST_WORKSPACE, trip.id)["trip_version"];
+            result = service.save_policy_terms(TEST_WORKSPACE, trip.id, item.id, terms, "https://example.com/terms", "America/New_York", expires, version);
+            rows.append(next(r for r in result["policy_reviews"] if r["item_id"] == item.id));
+        }
+        (missing, stated) = rows;
+        for row in rows {
+            assert row["state"] == "free_cancel_open" and not row["requires_confirmation"];
+            assert row["fee"] == "0.00 USD" and row["refund"] == "180.00 USD" and row["refund_form"] == "cash";
+            assert row["deadline"].startswith("2030-12-30T18:00") and row["unknowns"] == [];
+        }
+        assert missing["later_unknowns"] and "no-show" in missing["later_unknowns"][0].lower();
+        assert stated["later_unknowns"] == [];
+    }
+}
