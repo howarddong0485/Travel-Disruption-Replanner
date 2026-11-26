@@ -67,7 +67,7 @@ def:pub SupplierInventory(trip: any) -> JsxElement {
         {(<p className="alert error" role="alert">{error}</p>) if error else None}
         {(<div role="status">
             <h3>{"LiteAPI live quotes" if result["mode"] == "live" else "LiteAPI sandbox quotes · Test data"}</h3>
-            {(<p>No usable quotes were returned for this search.</p>) if not result["quotes"] else None}
+            {(<p>No usable quotes were returned for this search.</p>) if len(result["quotes"]) == 0 else None}
             <div className="backup-grid">{[<article className="backup-chip" key={quote["property_id"]}>
                 <h4>{quote["title"]}</h4>
                 <p>{quote["room_name"] + " · Property " + quote["property_id"]}</p>
