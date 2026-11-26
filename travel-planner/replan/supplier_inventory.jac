@@ -11,7 +11,7 @@ def providerStatus(config: dict[str, any], testLabel: str) -> str {
 def quoteTotal(quote: dict[str, any]) -> str {
     cents = quote["cost_cents"];
     fraction = cents % 100;
-    return quote["currency"] + " " + str(cents // 100) + "." + ("0" if fraction < 10 else "") + str(fraction);
+    return quote["currency"] + " " + str(int(cents / 100)) + "." + ("0" if fraction < 10 else "") + str(fraction);
 }
 
 def:pub SupplierInventory(trip: any) -> JsxElement {
