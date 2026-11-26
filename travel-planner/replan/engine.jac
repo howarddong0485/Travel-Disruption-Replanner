@@ -430,7 +430,7 @@ def build_combination(
         );
         backup = None;
         if (forced_replace or missed or (manual and choices.get(item_id))) {
-            if state.get('journey') { raise ValueError('No verified replacement is available for this route. Enter a confirmed replacement for the same city or leg in Itinerary.'); }
+            if state.get('journey') { raise ValueError('Use the journey planner for replacements; this backup source cannot verify city and transport-leg assignments.'); }
             if before['protected'] {
                 raise ValueError(
                     '{} is fixed or completed and can\'t move'.format(before['title'])
@@ -547,7 +547,7 @@ def prepare(
         'state': state,
         'event': event,
         'affected': affected,
-        'backups': [] if state.get('journey') else [b for node_id in affected for b in backups_for(nodes[node_id])]
+        'backups': [b for node_id in affected for b in backups_for(nodes[node_id])]
     };
 }
 def candidates(

@@ -432,7 +432,7 @@ def:pub app -> JsxElement {
                     <p><span>Still to pay</span><strong>{money(total - paid, current.currency)}</strong></p>
                     {(<p className="over-budget">{"Over budget by " + money(total - current.budget_cents, current.currency)}</p>) if current.budget_cents and total > current.budget_cents else None}
                 </div></section>) if tab == "budget" else None}
-                {(<ReplanPanel key={selected} trip_id={selected} currency={current.currency} onApplied={refresh} onOpenItinerary={lambda { chooseTab("itinerary"); }}/>) if tab == "replan" else None}
+                {(<ReplanPanel key={selected} trip_id={selected} currency={current.currency} onApplied={refresh}/>) if tab == "replan" else None}
                 {(<GuidedDemo key={selected} trip={current} items={items} onRefresh={refresh}
                     onViewItinerary={lambda { chooseTab("itinerary"); }}/>) if tab == "demo" else None}
                 <div className="detail-grid" data-view={itineraryView if tab == "itinerary" else ""}

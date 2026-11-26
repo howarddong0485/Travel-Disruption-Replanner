@@ -8,7 +8,6 @@ import from unittest.mock { patch }
 import from uuid { uuid4 }
 import server.main as api;
 import assistant.provider as provider;
-import tools.map_providers as maps;
 import journey.model as journey;
 import from journey.fixtures { route, plan }
 import from assistant.workflow { check_plan }
@@ -21,22 +20,6 @@ def send(trip_id: str, proposal: any) -> any {
     response = {"answer": "Review your route.", "sources": [], "plans": [proposal]};
     with patch.object(provider, "generate", return_value=response), patch.object(provider, "repair", return_value=response) {
         return api.assistant_chat(TEST_WORKSPACE, trip_id, "Plan the whole journey", "plan", False, str(uuid4()));
-    }
-}
-
-test "routed replan hides mock replacements while allowing validated delays" {
-    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH": directory + "/trip.db"}) {
-        id = create(); draft = send(id, plan())["drafts"][0];
-        with patch.object(maps, "search_places", return_value=[]) { api.assistant_review(TEST_WORKSPACE, id, draft["id"], True, True); }
-        outbound = next(item for item in api.list_items(TEST_WORKSPACE, id) if item.title == "Outbound");
-        canceled = api.propose_replan(TEST_WORKSPACE, id, outbound.id, "interrupted");
-        assert not canceled["proposals"] and not canceled["backups"];
-        assert any("No verified replacement" in warning for warning in canceled["warnings"]);
-        delayed = api.propose_replan(TEST_WORKSPACE, id, outbound.id, "delayed", 30);
-        assert len(delayed["proposals"]) == 1 and not delayed["backups"];
-        api.review_replan(TEST_WORKSPACE, id, delayed["proposals"][0]["id"], True);
-        saved = next(item for item in api.list_items(TEST_WORKSPACE, id) if item.id == outbound.id);
-        assert saved.time == "12:30" and saved.journey["arrival_time"] == "16:30";
     }
 }
 
