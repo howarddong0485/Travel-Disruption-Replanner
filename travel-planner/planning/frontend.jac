@@ -41,6 +41,15 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
         }
         return reasons[:3];
     }
+    def rejectedReasons(response: dict[str, any]) -> list[str] {
+        reasons: list[str] = [];
+        for rejection in response["rejections"] {
+            for check in rejection["checks"] {
+                if check["message"] not in reasons and len(reasons) < 5 { reasons.append(check["message"]); }
+            }
+        }
+        return reasons;
+    }
     def label(value: str) -> str {
         labels = {"weather": "Weather", "timing": "Tight timing or delayed arrival", "long_drive": "Long drive",
             "opening_hours": "Opening hours", "booking_terms": "Booking terms", "closure": "Venue closure",
@@ -240,7 +249,8 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
     scheduled = sorted([item for item in currentItems if item.category in ("activity", "food", "stay", "transport")], key=lambda (item: ItemView) -> str { item.date + "T" + item.time; });
     return <section className="card integrated-planning" aria-label="Integrated backup plans">
         <h3>Alternatives for your trip</h3><p>Choose what the plans should address, then find and compare alternatives. For more accurate checks, add traveler details first.</p>
-        <p className="muted">Inventory and prices are simulated. Accepting a plan updates your itinerary only. Nothing is booked.</p>
+        {(<p className="muted">Sample replacements and their quotes are simulated. Accepting a plan only updates your itinerary.</p>) if state and state["sample_inventory"] else
+            (<p className="muted">Sample replacement inventory covers Boston trips in USD without a saved route. This trip can still use supported timing changes with its saved items and costs.</p>) if state else None}
         {(<p role="status">Loading trip facts…</p>) if loading else None}
         {(<p role="alert" className="alert error">{failure}</p>) if failure else None}
         {(<p role="status">{notice}</p>) if notice else None}
@@ -295,6 +305,7 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
                 {(<label>Affected item<select value={target} disabled={busy} onChange={lambda (e: ChangeEvent) { target = e.target.value; clear(); }}><option value="">Choose an item</option>
                     {[<option key={item.id} value={item.id}>{item.title}</option> for item in scheduled if not item.done]}</select></label>) if reason != "detected" else None}
                 {(<label>Earliest allowed start<input type="datetime-local" value={notBefore} disabled={busy} onChange={lambda (e: ChangeEvent) { notBefore = e.target.value; clear(); }}/></label>) if reason == "timing" else None}
+                {(<p className="muted">Enter the earliest possible start after the delay. Set the trip time zone under Traveler details if it is missing.</p>) if reason == "timing" else None}
                 <label>Maximum alternatives<select value={limit} disabled={busy} onChange={lambda (e: ChangeEvent) { limit = e.target.value; clear(); }}>{[<option key={str(n)} value={str(n)}>{str(n)}</option> for n in [3, 4, 5]]}</select></label>
             </div>
             {(<p className="muted">Uses your saved budget. To change it, edit the trip.</p>) if reason == "budget_change" else None}
@@ -314,8 +325,12 @@ def:pub PlanningPanel(trip_id: str, items: list[ItemView], onGenerated: any = No
             <label className="replan-check"><input type="checkbox" checked={useAI} disabled={busy} onChange={lambda (e: ChangeEvent) { useAI = e.target.checked; clear(); }}/>Let AI choose among plans that pass the checks</label>
             <button type="button" className="primary" disabled={busy or (reason == "detected" and len(selectedRisks) == 0)} onClick={lambda { findPlans(); }}>{"Preparing plans…" if busy else "Find alternative plans"}</button>
             {(<section className="planning-results" aria-live="polite"><p>{result["message"]}</p>
+                {[<p className="section-caption" key={warning}>{warning}</p> for warning in result["warnings"]]}
+                {(<div><p>Checks that blocked these options</p><ul>{[<li key={message}>{message}</li> for message in rejectedReasons(result)]}</ul>
+                    <p>To retry, update the relevant schedule in Itinerary or confirm evidence under Traveler details and requirements.</p></div>) if not result["plans"] and result["rejections"] else None}
                 <div className="backup-grid">{[<article className="backup-option" key={plan["id"]}>
                     <h4>{"Alternative " + str(index + 1)}</h4><p>{"Ready for review" if plan["selectable"] else "Needs confirmation"}</p>
+                    <p className="section-caption">{"Uses saved items and costs" if plan["strategy"] == "reschedule" else "Includes simulated replacements"}</p>
                     {[<div key={change["replaces_id"]}><strong>{("Move " + title(change["replaces_id"])) if change["action"] == "reschedule" else title(change["replaces_id"]) + " → " + change["item"]["title"]}</strong>
                         <p>{"Originally: " + originalTime(change["replaces_id"])}</p>
                         <p>{"Proposed: " + change["item"]["start"]["local"] + " to " + change["item"]["end"]["local"] + " · " + change["item"]["start"]["zone"]}</p></div> for change in plan["replacements"]]}

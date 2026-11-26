@@ -60,9 +60,13 @@ def observe(trip: TripContext, target: ScheduledItem, provider_id: str, start: M
     return Replacement("provider:" + target.id + ":" + key, target.id, item, (), key);
 }
 
+def supports_market(destination: str, currency: str) -> bool {
+    return destination.strip().lower() in ("boston", "boston, ma", "boston, usa") and currency == "USD";
+}
+
 def search(trip: TripContext, target: ScheduledItem, earliest: Moment, destination: str,
     now: datetime, inventory_change: str = "unchanged") -> tuple[Replacement, ...] {
-    if destination.strip().lower() not in ("boston", "boston, ma", "boston, usa") or trip.currency != "USD" { return (); }
+    if not supports_market(destination, trip.currency) { return (); }
     import from zoneinfo { ZoneInfo }
     result = [];
     for row in CATALOG.get(target.category, []) {

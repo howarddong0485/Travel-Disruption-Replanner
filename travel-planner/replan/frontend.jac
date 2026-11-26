@@ -1,9 +1,10 @@
 """Disruption simulation and review of combined mock backup plans."""
 import from workspace { workspaceKey }
+import from assistant.frontend { assistantError }
 import from server.main { replan_state, replan_save_rules, replan_save_dependency,
     propose_replan, review_replan, combine_replan }
 
-def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
+def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any, onOpenItinerary: any = None) -> JsxElement {
     has state: dict[str, any] = {"items": [], "dependencies": []},
         result: dict[str, any] = {"proposals": [], "warnings": [], "affected": [], "backups": []},
         choices: dict[str, str] = {},
@@ -48,7 +49,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
                     if change["backup_id"] { choices[change["item_id"]] = change["backup_id"]; }
                 }
             }
-        } except Exception as exc { error = str(exc); }
+        } except Exception as exc { error = assistantError(exc); }
         finally { busy = False; }
     }
     async def combine(e: FormEvent) -> None {
@@ -56,7 +57,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         try {
             result = await combine_replan(workspace_key=await workspaceKey(), trip_id=trip_id, event_id=result["event_id"], choices=choices);
             message = "Your backup combination is ready to review.";
-        } except Exception as exc { error = str(exc); }
+        } except Exception as exc { error = assistantError(exc); }
         finally { busy = False; }
     }
     async def review(id: str, accept: bool) -> None {
@@ -124,7 +125,8 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
                     </select>
                     <label htmlFor="disruption-type">What happened?</label><select id="disruption-type" value={kind} onChange={lambda (e: ChangeEvent) { kind = e.target.value; }}><option value="delayed">Delayed</option><option value="interrupted">Interrupted / canceled</option></select>
                     {(<div><label htmlFor="delay-minutes">Delay in minutes</label><input id="delay-minutes" type="number" min="1" max="1440" required={True} value={delay} onChange={lambda (e: ChangeEvent) { delay = e.target.value; }}/></div>) if kind == "delayed" else None}
-                    <label className="replan-check"><input type="checkbox" checked={use_ai} onChange={lambda (e: ChangeEvent) { use_ai = e.target.checked; }}/>Let AI choose which backups to combine</label>
+                    {(<label className="replan-check"><input type="checkbox" checked={use_ai} onChange={lambda (e: ChangeEvent) { use_ai = e.target.checked; }}/>Let AI choose which backups to combine</label>) if not state.get("journey") else None}
+                    {(<p className="section-caption">This route can be checked for delays. For a cancellation, enter confirmed replacement details against the existing city or leg in Itinerary.</p>) if state.get("journey") and kind == "interrupted" else None}
                     <button className="primary" type="submit" disabled={busy or not item_id}>{"Combining backups…" if busy else "Generate replan options ↗"}</button>
                 </form>
             </section>
@@ -155,6 +157,7 @@ def:pub ReplanPanel(trip_id: str, currency: str, onApplied: any) -> JsxElement {
         </details>
         {(<section className="card"><h3>Items checked</h3><p>{", ".join([i["title"] for i in result["affected"]])}</p></section>) if len(result["affected"]) > 0 else None}
         {[<div className="alert error" role="status" key={warning}>{warning}</div> for warning in result["warnings"]]}
+        {(<button type="button" className="secondary" disabled={busy} onClick={onOpenItinerary}>Open itinerary to enter a confirmed replacement</button>) if onOpenItinerary and state.get("journey") and not result["proposals"] and any("No verified replacement" in warning for warning in result["warnings"]) else None}
         {(<div className="replan-results-heading"><p className="eyebrow">STEP 2</p><h2>Compare revised plans</h2><p>Your itinerary changes only when you accept a plan.</p></div>) if len(result["proposals"]) > 0 else None}
         <div className="replan-proposals">{[
             <article className="card proposal-card" key={p["id"]}><p className="eyebrow">{p["mode"] + " · MOCK BACKUP COMBINATION"}</p><h3>{p["title"]}</h3>

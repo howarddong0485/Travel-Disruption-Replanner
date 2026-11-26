@@ -12,7 +12,7 @@ import from replan.backups { backups_for }
 import from planning.application { apply_backup }
 import journey.model as journey_model;
 import from planning.context { read_facts }
-import from replan.connections { validate_connections }
+import from replan.connections { time_label, validate_connections }
 def install_schema(conn: sqlite3.Connection) -> None {
     conn.executescript("""
     CREATE TABLE IF NOT EXISTS trip_versions (
@@ -316,8 +316,10 @@ def save_dependency(
     }
     return snapshot(conn, trip_id);
 }
-def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
-    validate_connections(state, nodes, state.get("connection_facts", {}), datetime.now(timezone.utc));
+def validate(state: any, nodes: any, changes: any, retained_cents: any,
+    connection_requirements: list[dict[str, any]] | None = None, draft_transfers: list[dict[str, any]] | None = None) -> any {
+    facts = state.get("connection_facts", {});
+    validate_connections(state, nodes, facts, datetime.now(timezone.utc), connection_requirements, draft_transfers);
     if state.get("journey") { journey_model.validate(state["journey"], state["trip"], list(nodes.values())); }
     topological(`list(nodes.values()), state['dependencies']);
     original = {i['id']: i for i in state['items']};
@@ -354,7 +356,10 @@ def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
             )
             > start(nodes[`edge['dependent_id']])
         ) {
-            raise ValueError('This plan leaves too little time before a linked item');
+            first = nodes[edge['prerequisite_id']]; second = nodes[edge['dependent_id']];
+            raise ValueError('This plan leaves too little time before a linked item. ' + first['title'] + ' ends ' +
+                time_label(first, facts, True) + '. ' + second['title'] + ' starts ' + time_label(second, facts) +
+                '. Their buffer is ' + str(edge['buffer_minutes']) + ' minutes.');
         }
     }
     scheduled = [
@@ -378,9 +383,8 @@ def validate(state: any, nodes: any, changes: any, retained_cents: any) -> any {
     for (previous, following) in zip(scheduled, scheduled[1:]) {
         if (end(previous) > start(following)) {
             raise ValueError(
-                '{} and {} would overlap'.format(
-                    previous['title'], following['title']
-                )
+                    previous['title'] + ' and ' + following['title'] + ' would overlap. ' + previous['title'] + ' ends ' +
+                    time_label(previous, facts, True) + '. ' + following['title'] + ' starts ' + time_label(following, facts) + '.'
             );
         }
     }
@@ -426,7 +430,7 @@ def build_combination(
         );
         backup = None;
         if (forced_replace or missed or (manual and choices.get(item_id))) {
-            if state.get('journey') { raise ValueError('Use the journey planner for replacements; this backup source cannot verify city and transport-leg assignments.'); }
+            if state.get('journey') { raise ValueError('No verified replacement is available for this route. Enter a confirmed replacement for the same city or leg in Itinerary.'); }
             if before['protected'] {
                 raise ValueError(
                     '{} is fixed or completed and can\'t move'.format(before['title'])
@@ -543,7 +547,7 @@ def prepare(
         'state': state,
         'event': event,
         'affected': affected,
-        'backups': [b for node_id in affected for b in backups_for(nodes[node_id])]
+        'backups': [] if state.get('journey') else [b for node_id in affected for b in backups_for(nodes[node_id])]
     };
 }
 def candidates(

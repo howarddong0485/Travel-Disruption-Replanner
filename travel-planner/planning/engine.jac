@@ -20,6 +20,7 @@ import from schema.common { to_plain }
 
 glob VALIDATION_VERSION = "roam.planning-validator.v5";
 glob SUPPORTED_REASONS = ("weather", "timing", "long_drive", "opening_hours", "booking_terms", "closure", "cancellation", "traveler_change", "budget_change", "inventory_change");
+glob RESCHEDULE_REASONS = ("timing", "opening_hours", "traveler_change", "budget_change");
 
 def risk_context(context: dict[str, any], risk: dict[str, any], item_id: str) -> RiskContext {
     proof = parse_evidence(risk.get("evidence"));
@@ -108,11 +109,11 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
                 # quote can replace a flight or another booked transport mode.
                 reported_transport = item.category == "transport" and any(
                     r.id.startswith("itinerary-report:") for r in active_risks);
-                if not reported_transport {
+                if context["sample_inventory"] and not reported_transport {
                     options.extend(search(context["trip"], item, earliest, context["state"]["trip"]["destination"], now,
                         context["facts"].get("inventory_change", "unchanged")));
                 }
-                if any(r.trigger in ("timing", "opening_hours", "traveler_change", "budget_change") for r in active_risks) {
+                if any(r.trigger in RESCHEDULE_REASONS for r in active_risks) {
                     for minutes in (30, 60) {
                         starts = [max(instant(earliest), instant(item.start) + timedelta(minutes=minutes))];
                         if item.hours and any(r.trigger == "opening_hours" for r in active_risks) {
@@ -125,10 +126,11 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
                         }
                     }
                 }
-                if reported_transport and not any(option is not None for option in options) {
-                    warnings.append("No confirmed replacement transport found for " + item.title);
+                if not any(option is not None for option in options) {
+                    if reported_transport { warnings.append("No confirmed replacement transport found for " + item.title + ". Enter confirmed details in Itinerary."); }
+                    elif not context["sample_inventory"] { warnings.append("No compatible replacement inventory for " + item.title + ". For timing changes, report a new start time. Enter confirmed replacements in Itinerary."); }
                 }
-            } except ValueError { warnings.append("Can't search for " + item.title + ": its time is missing or unclear"); }
+            } except ValueError { warnings.append("Check the date, time and time zone for " + item.title + " in Itinerary and Traveler details, then try again."); }
         } else { warnings.append(item.title + " is fixed or completed, so it stays as is"); }
         groups.append(options);
     }
@@ -204,10 +206,7 @@ def generate_plans(context: dict[str, any], now: datetime, risk_ids: list[str] |
     }
     message = "Review the changes before accepting a plan." if plans else "No plan fits your trip details and constraints.";
     if excluded_ids and not plans { message = "No other plan fits your trip details and constraints. Your itinerary is unchanged."; }
-    if not plans and context["facts"].get("inventory_change") == "provider_failure" { message = "Availability could not be refreshed. Please try again."; }
-    if context["state"]["trip"]["destination"].strip().lower() not in ("boston", "boston, ma", "boston, usa") or context["trip"].currency != "USD" {
-        message = "Backup plans are only available for Boston trips priced in USD for now.";
-    }
+    if not plans and context["sample_inventory"] and context["facts"].get("inventory_change") == "provider_failure" { message = "Availability could not be refreshed. Please try again."; }
     if not plans and rejected and all(any(c["code"] == "budget" for c in rejection["checks"]) for rejection in rejected) {
         message = "No alternative fits your budget. Raise the budget or change the itinerary, then try again.";
     }

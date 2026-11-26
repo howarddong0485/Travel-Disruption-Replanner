@@ -16,7 +16,7 @@ import from journey.frontend { RouteEditor, journeyLabel }
 import from journey.display { itineraryOrder, journeyCity }
 import from server.main { journey_state }
 import from assistant.frontend { ChatSidebar, AIPlanner, assistantError }
-import from server.main { assistant_review, assistant_update_prices, assistant_save_preferences }
+import from server.main { assistant_review, assistant_update_prices, assistant_update_connections, assistant_save_preferences }
 
 def legLabel(route: any, leg: any) -> str {
     names = {stop["id"]: stop["city"] for stop in route["stops"]};
@@ -214,6 +214,16 @@ def:pub app -> JsxElement {
             notice = "Prices checked. Review the total, then tick the checkbox to save the plan.";
             return "";
         } except Exception as exc { error = assistantError(exc); return error; }
+        finally { busy = False; }
+    }
+    async def connectionsAI(draft_id: str, evidence: dict[str, any]) -> str {
+        if busy { return "A review is already running. Please wait."; } busy = True; error = ""; notice = "";
+        try {
+            aiData = await assistant_update_connections(workspace_key=await workspaceKey(), trip_id=selected, draft_id=draft_id, evidence=evidence);
+            aiReload += 1;
+            notice = "Travel times checked. Review the draft before saving.";
+            return "";
+        } except Exception as exc { return assistantError(exc); }
         finally { busy = False; }
     }
     async def savePreferences(pet: bool, pace: str) -> None {
@@ -414,7 +424,7 @@ def:pub app -> JsxElement {
                     <BackupPanel key={selected} trip={current} items={items} onApplied={backupApplied}/>
                 </section>) if not loading and tab == "backups" else None}
                 {mapWorkspace if tab == "planner" else None}
-                {(<AIPlanner key={"planner:" + selected} data={aiData if aiData.get("trip_id") == selected else {}} currency={current.currency} onCompose={composeAI} onReview={reviewAI} onPrices={priceAI} onPreferences={savePreferences} busy={busy}/>) if tab == "planner" else None}
+                {(<AIPlanner key={"planner:" + selected} data={aiData if aiData.get("trip_id") == selected else {}} currency={current.currency} onCompose={composeAI} onReview={reviewAI} onPrices={priceAI} onConnections={connectionsAI} onPreferences={savePreferences} busy={busy}/>) if tab == "planner" else None}
                 {(<section className="budget-overview card"><div><h2>Budget summary</h2>
                     <p>All amounts are in {current.currency}. Mark items paid as you pay them.</p></div><div className="budget-numbers">
                     <p><span>Budget</span><strong>{money(current.budget_cents, current.currency) if current.budget_cents else "Not set"}</strong></p>
@@ -422,7 +432,7 @@ def:pub app -> JsxElement {
                     <p><span>Still to pay</span><strong>{money(total - paid, current.currency)}</strong></p>
                     {(<p className="over-budget">{"Over budget by " + money(total - current.budget_cents, current.currency)}</p>) if current.budget_cents and total > current.budget_cents else None}
                 </div></section>) if tab == "budget" else None}
-                {(<ReplanPanel key={selected} trip_id={selected} currency={current.currency} onApplied={refresh}/>) if tab == "replan" else None}
+                {(<ReplanPanel key={selected} trip_id={selected} currency={current.currency} onApplied={refresh} onOpenItinerary={lambda { chooseTab("itinerary"); }}/>) if tab == "replan" else None}
                 {(<GuidedDemo key={selected} trip={current} items={items} onRefresh={refresh}
                     onViewItinerary={lambda { chooseTab("itinerary"); }}/>) if tab == "demo" else None}
                 <div className="detail-grid" data-view={itineraryView if tab == "itinerary" else ""}
