@@ -524,8 +524,13 @@ summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .message-author span { font-weight: 400; letter-spacing: 0; text-transform: capitalize; }
 .message-text { white-space: pre-wrap; line-height: 1.75; }
 .chat-sources { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.chat-sources a { display: block; max-width: 100%; border: 1px solid var(--line); padding: 5px 8px; border-radius: 6px; font-size: 10px; color: var(--link); text-decoration: none; }
-.chat-sources a:hover { background: var(--surface-muted); }
+.chat-source { display: flex; flex-direction: column; gap: 2px; max-width: 100%; border: 1px solid var(--line); padding: 5px 8px; border-radius: 6px; font-size: 10px; }
+.chat-source a { color: var(--link); text-decoration: none; }
+.chat-source a:hover { text-decoration: underline; }
+.chat-source small { color: var(--muted); font-size: 10px; }
+.chat-source .chat-source-copy { color: var(--muted); font-size: 9px; text-decoration: underline; }
+.message-link a { color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
+.message-link small { color: var(--muted); font-size: 11px; }
 .chat-research { font-size: 11px; margin-top: 12px; color: var(--muted); }
 .chat-research summary { cursor: pointer; }
 .chat-research p { margin-top: 10px; }

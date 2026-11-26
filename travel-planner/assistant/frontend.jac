@@ -18,6 +18,17 @@ def:pub assistantError(error: any) -> str {
     return "The request could not be completed. Reload the conversation and try again." if "Function " in text else text;
 }
 
+# The server splits model text into plain and https link segments. They render
+# as text nodes and anchors, so markup in model output is shown, never run.
+def linkedText(parts: any, text: str) -> any {
+    # An empty list is truthy in the compiled JavaScript, so check the length.
+    if not parts or len(parts) == 0 { return text; }
+    return [(<span key={str(index)} className="message-link"><a href={part["url"]} target="_blank" rel="noopener noreferrer nofollow"
+            data-cited={part["cited"]} title={"Cited web source" if part["cited"] else "Written by the assistant; not one of the cited web sources"}>{part["text"]}</a>
+            {(<small>{" (" + part["site"] + ")"}</small>) if part["show_site"] else None}</span>)
+        if part.get("url", "").startswith("https://") else <span key={str(index)}>{part["text"]}</span> for (index, part) in enumerate(parts)];
+}
+
 def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int = 0,
     compose: int = 0, composeMode: str = "ask", composeText: str = "", externalBusy: bool = False, onKeyChange: any = None) -> JsxElement {
     browser: any = window;
@@ -133,7 +144,7 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                 <article key={message["id"]} className={"chat-message " + message["role"]}>
                     <p className="message-author">{"YOU" if message["role"] == "user" else "JACROAM ASSISTANT"}
                         <span>{message.get("mode", "ask")}</span></p>
-                    <div className="message-text">{message["text"]}</div>
+                    <div className="message-text">{linkedText(message.get("segments", []), message["text"])}</div>
                     {[<div className="map-saved-flight" key={str(actionIndex)}><strong>{action["title"]}</strong>
                         {(<p role="status">Location / track saved to this trip.</p>) if action.get("confirmed", False) else
                             <div>{[<button type="button" className="map-list-row" disabled={busy or externalBusy or message.get("stale", False)} key={str(choiceIndex)}
@@ -145,10 +156,12 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
                     {(<p className="chat-caution">The trip changed during this request. Ask for a fresh plan before saving.</p>) if message.get("stale", False) else None}
                     {(<div className="chat-caution"><strong>Draft needs another pass</strong>{[<p key={issue}>{issue}</p> for issue in message.get("issues", [])]}</div>) if len(message.get("issues", [])) > 0 else None}
                     {(<div className="chat-sources" aria-label="Sources">{[
-                        <a key={source["url"]} href={source["url"]} target="_blank" rel="noopener noreferrer">↗ {source["title"]}</a>
-                        for source in message.get("sources", []) if source["url"].startswith("https://")
-                    ]}</div>) if len(message.get("sources", [])) > 0 else None}
-                    {(<details className="chat-research"><summary>Search notes & citations</summary><p className="message-text">{message["research"]}</p></details>) if message.get("research", "") else None}
+                        <div className="chat-source" key={source["url"]}>
+                            <a href={source["url"]} target="_blank" rel="noopener noreferrer nofollow">↗ {source["title"]}</a><small>{source["site"]}</small>
+                            {(<a className="chat-source-copy" href={source["copy_url"]} target="_blank" rel="noopener noreferrer nofollow">{source["copy_label"]}</a>) if source["copy_url"].startswith("https://") else None}
+                        </div> for source in message.get("source_links", []) if source["url"].startswith("https://")
+                    ]}</div>) if len(message.get("source_links", [])) > 0 else None}
+                    {(<details className="chat-research"><summary>Search notes & citations</summary><p className="message-text">{linkedText(message.get("research_segments", []), message["research"])}</p></details>) if message.get("research", "") else None}
                 </article> for message in data.get("messages", [])
             ]}
             {(<article className="chat-message user"><p className="message-author">YOU</p><p className="message-text">{pendingText}</p></article>) if pendingText else None}

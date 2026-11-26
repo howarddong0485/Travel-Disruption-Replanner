@@ -167,6 +167,7 @@ def generate(context: dict[str, any], history: list[dict[str, any]], message: st
         + "Use the supplied active trip, dates, currency, budget and traveler facts. Ask concise clarifying questions when needed. "
         + "Never claim a booking, cancellation, refund, payment, saved edit or verified availability. Quotes, eligibility, hours and routes may be unknown. "
         + "Distinguish sourced information from estimates, cite sources, and explain important uncertainty. Do not expose secrets. "
+        + "Prefer official primary sources such as operators, agencies and venues, and cite their direct page URLs rather than proxies, caches, archives or redirect links. "
         + "For plan/backup/replan requests research actionable options, preserve fixed, paid and confirmed items, and consider downstream dependencies. "
         + "For ordinary questions, answer directly. The current task mode is " + mode + ".";
     instructions += " You can propose edits to the active trip's name, destination, departure and return locations, departure/return dates, currency, budget and notes. "

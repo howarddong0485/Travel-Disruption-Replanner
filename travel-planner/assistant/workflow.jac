@@ -13,6 +13,7 @@ import from planning.context { read_facts }
 import from assistant.provider { configuration }
 import assistant.preferences as preferences;
 import from policy.review { saved_policy_reviews }
+import from assistant.links { message_links }
 
 def now -> str { return datetime.now(timezone.utc).isoformat(); }
 
@@ -70,8 +71,10 @@ def read(conn: any, trip_id: str) -> dict[str, any] {
     signature = fingerprint(state, facts); messages = [];
     rows = conn.execute("SELECT * FROM assistant_messages WHERE trip_id=? ORDER BY rowid DESC LIMIT 80", (trip_id,)).fetchall();
     for row in reversed(rows) {
-        messages.append({"id": row["id"], "role": row["role"], "text": row["text"],
-            "created": row["created"], **json.loads(row["payload"])});
+        message = {"id": row["id"], "role": row["role"], "text": row["text"], "created": row["created"], **json.loads(row["payload"])};
+        # Link segments are derived on read, so earlier replies get clickable links too.
+        if message["role"] == "assistant" { message.update(message_links(message)); }
+        messages.append(message);
     }
     drafts = [];
     for row in conn.execute("SELECT * FROM assistant_drafts WHERE trip_id=? ORDER BY rowid DESC LIMIT 15", (trip_id,)) {
