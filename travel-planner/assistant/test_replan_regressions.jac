@@ -95,3 +95,58 @@ test "saved reschedules retain venue-bound routes and location edits invalidate 
         assert all(r["from_id"] != item.id and r["to_id"] != item.id for r in changed["facts"]["transfers"]);
     }
 }
+
+test "backup retries a model refusal against the authoritative rain demo schedule" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH":os.path.join(directory, "trip.sqlite3")}) {
+        trip_id = service.create_planning_demo(TEST_WORKSPACE)["trip_id"];
+        item = next(i for i in service.replan_state(TEST_WORKSPACE, trip_id)["items"] if i["category"] == "activity");
+        message = "Move only the Outdoor garden visit to 11:30, keeping the venue, duration and cost.";
+        refusal = {"answer":"The fixed arrival transfer ends at 12:00.", "plans":[]};
+        proposed = {"answer":"Timing draft", "plans":[{"title":"Later garden visit", "summary":"",
+            "changes":[{**item, "item_id":item["id"], "time":"11:30"}]}]};
+        with patch.object(provider, "generate", return_value=refusal), patch.object(provider, "repair", return_value=proposed) as retry {
+            result = service.assistant_chat(TEST_WORKSPACE, trip_id, message, "backup", False, str(uuid4()));
+            assert retry.call_count == 1;
+            timeline = retry.call_args.args[0]["saved_timeline"];
+            transfer = next(row for row in timeline if row["title"] == "Arrival transfer");
+            assert "09:00" in transfer["start"] and "10:00" in transfer["end"] and "America/New_York" in transfer["end"];
+            assert retry.call_args.kwargs["message"] == message;
+        }
+        assert result["drafts"][0]["can_apply"] and result["drafts"][0]["changes"][0]["after"]["time"] == "11:30";
+        assert "12:00" not in result["messages"][-1]["text"];
+        assert next(i for i in service.list_items(TEST_WORKSPACE, trip_id) if i.id == item["id"]).time == "11:00";
+    }
+}
+
+test "venue-change drafts retain the proposal and recheck dated evidence before accepting" {
+    with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"TRAVEL_DB_PATH":os.path.join(directory, "trip.sqlite3")}) {
+        trip_id = service.create_planning_demo(TEST_WORKSPACE)["trip_id"];
+        item = next(i for i in service.replan_state(TEST_WORKSPACE, trip_id)["items"] if i["category"] == "activity");
+        venue = "Boston Public Library Central Library";
+        proposal = {"answer":"Draft", "plans":[{"title":"Indoor visit", "summary":"",
+            "changes":[{**item, "item_id":item["id"], "title":"Library visit", "location":venue}]}]};
+        with patch.object(provider, "generate", return_value=proposal), patch.object(provider, "repair") as retry {
+            result = service.assistant_chat(TEST_WORKSPACE, trip_id, "Move this activity indoors", "replan", False, str(uuid4()));
+            retry.assert_not_called();
+        }
+        draft = result["drafts"][0]; id = draft["id"];
+        requirements = draft["connection_requirements"];
+        assert len(requirements) == 2 and not draft["can_apply"] and draft["status"] == "pending";
+        arriving = next(pair for pair in requirements if pair["to_venue"] == venue);
+        assert arriving["from_title"] == "Arrival transfer" and "10:00" in arriving["departure"];
+        check = unittest.TestCase();
+        with check.assertRaisesRegex(ValueError, "travel-time evidence") { service.assistant_review(TEST_WORKSPACE, trip_id, id, True, True); }
+        with check.assertRaisesRegex(ValueError, "each connection") { service.assistant_update_connections(TEST_WORKSPACE, trip_id, id, {}); }
+        expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat();
+        evidence = {pair["id"]: {"minutes":20, "source":"Test route reference", "expires_at":expires} for pair in requirements};
+        too_long = deepcopy(evidence); too_long[arriving["id"]]["minutes"] = 90;
+        with check.assertRaisesRegex(ValueError, "90 minutes") { service.assistant_update_connections(TEST_WORKSPACE, trip_id, id, too_long); }
+        checked = service.assistant_update_connections(TEST_WORKSPACE, trip_id, id, evidence)["drafts"][0];
+        assert checked["can_apply"] and not checked["connection_requirements"] and checked["expires"] == expires;
+        assert next(i for i in service.list_items(TEST_WORKSPACE, trip_id) if i.id == item["id"]).location == item["location"];
+        with patch.object(maps, "search_places", return_value=[]) { service.assistant_review(TEST_WORKSPACE, trip_id, id, True, True); }
+        routes = service.planning_state(TEST_WORKSPACE, trip_id)["facts"]["transfers"];
+        assert len([route for route in routes if venue in (route["from_venue"], route["to_venue"])]) == 2;
+        assert next(i for i in service.list_items(TEST_WORKSPACE, trip_id) if i.id == item["id"]).location == venue;
+    }
+}

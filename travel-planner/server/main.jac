@@ -132,14 +132,19 @@ def:pub assistant_chat(workspace_key: str, trip_id: str, message: str, mode: str
             finally { conn.close(); }
         }
         failures: list[str] = [];
-        if result.get("plans", []) {
-            for plan in result.get("plans", []) {
-                try {
-                    checked = ai_workflow.check_plan(captured["state"], captured["facts"], plan);
-                    if not checked["can_apply"] { failures.append("Every item needs a realistic numeric planning estimate; some prices are missing."); }
-                } except (ValueError, KeyError, TypeError) as error { failures.append(str(error)); }
-            }
-            if failures { result = ai_provider.repair(captured["context"], result, failures, api_key); }
+        for plan in result.get("plans", []) {
+            try {
+                checked = ai_workflow.check_plan(captured["state"], captured["facts"], plan, result.get("sources", []), allow_connection_recovery=True);
+                if any(change["price_unknown"] for change in checked["changes"]) {
+                    failures.append("Some prices are missing. Use realistic numeric planning estimates.");
+                }
+            } except (ValueError, KeyError, TypeError) as error { failures.append(str(error)); }
+        }
+        missing_candidate = not result.get("plans") and mode in ["backup", "replan"] and bool(captured["context"]["saved_timeline"]);
+        if failures or missing_candidate {
+            feedback = failures or ["No candidate was supplied. For an explicit reschedule, return the exact requested change for the server to validate against the saved timeline."];
+            repaired = ai_provider.repair(captured["context"], result, feedback, api_key, message=message);
+            if repaired.get("plans") { result = repaired; }
         }
         conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
         try { return ai_workflow.finish(conn, trip_id, request_id, message, mode, captured, result); }
@@ -158,6 +163,13 @@ def:pub assistant_chat(workspace_key: str, trip_id: str, message: str, mode: str
 def:pub assistant_update_prices(workspace_key: str, trip_id: str, draft_id: str, prices: dict[str, any]) -> dict[str, any] {
     conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
     try { return ai_workflow.update_prices(conn, trip_id, draft_id, prices); }
+    except Exception { conn.rollback(); raise; }
+    finally { conn.close(); }
+}
+
+def:pub assistant_update_connections(workspace_key: str, trip_id: str, draft_id: str, evidence: dict[str, any]) -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
+    try { return ai_workflow.update_connections(conn, trip_id, draft_id, evidence); }
     except Exception { conn.rollback(); raise; }
     finally { conn.close(); }
 }

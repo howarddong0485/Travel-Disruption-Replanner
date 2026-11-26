@@ -177,9 +177,10 @@ def:pub ChatSidebar(trip_id: str, destination: str, onUpdate: any, reload: int =
     </aside>
 }
 
-def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview: any, onPrices: any, onPreferences: any, busy: bool) -> JsxElement {
+def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview: any, onPrices: any, onConnections: any, onPreferences: any, busy: bool) -> JsxElement {
     browser: any = window;
     has acknowledged: dict[str, bool] = {}, prices: dict[str, str] = {}, priceErrors: dict[str, str] = {},
+        connectionErrors: dict[str, str] = {},
         tick: float = 0, timer: Ref[any] = Ref(None), clockOffset: Ref[float] = Ref(0);
     can with [data] entry { if data.get("checked_at", "") { clockOffset.current = browser.Date.parse(data["checked_at"]) - browser.Date.now(); } tick = browser.Date.now(); }
     can with entry { tick = browser.Date.now(); timer.current = browser.setInterval(lambda { tick = browser.Date.now(); }, 1000); }
@@ -198,6 +199,21 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
         acknowledged = {**acknowledged, draft["id"]: False};
         message = await onPrices(draft["id"], values);
         priceErrors = {**priceErrors, draft["id"]: message};
+    }
+    async def saveConnections(e: FormEvent, draft: dict[str, any]) -> None {
+        e.preventDefault();
+        form: any = new(browser.FormData, e.currentTarget);
+        evidence: dict[str, any] = {};
+        message: str = "";
+        try {
+            for pair in draft["connection_requirements"] {
+                key = pair["id"];
+                evidence[key] = {"minutes": int(form.get(key + "-minutes")), "source": form.get(key + "-source"),
+                    "expires_at": new(Date, form.get(key + "-expires")).toISOString()};
+            }
+            message = await onConnections(draft["id"], evidence);
+        } except Exception { message = "Enter a source, whole travel minutes and a valid future expiry for each connection."; }
+        connectionErrors = {**connectionErrors, draft["id"]: message};
     }
     def money(value: any, unit: str = "") -> str { return "Unknown" if value is None else (unit or currency) + " " + (value / 100).toFixed(2); }
     def detail(value: any, field: str, unit: str) -> str { return money(value, unit) if field == "budget_cents" else str(value) or "Not set"; }
@@ -255,7 +271,23 @@ def:pub AIPlanner(data: dict[str, any], currency: str, onCompose: any, onReview:
                     ]}
                     {(<p className="chat-error" role="alert">{priceErrors[draft["id"]]}</p>) if priceErrors.get(draft["id"], "") else None}
                     <button className="secondary" type="submit" disabled={busy}>Check prices and budget</button>
-                </form>) if not draft["can_apply"] else None}
+                </form>) if any(change["price_unknown"] for change in draft["changes"]) else None}
+                {(<form className="ai-price-form" onSubmit={lambda (e: FormEvent) { saveConnections(e, draft); }}>
+                    <h4>Check travel times for this draft</h4>
+                    <p>Look up each route between the proposed locations. Enter the time, source and when the estimate should be checked again.</p>
+                    {[
+                        <fieldset key={pair["id"]} disabled={busy}>
+                            <legend>{pair["from_title"] + " → " + pair["to_title"]}</legend>
+                            <p>{"From " + pair["from_venue"] + " at " + pair["departure"]}</p>
+                            <p>{"To " + pair["to_venue"] + " by " + pair["arrival_by"]}</p>
+                            <label>Travel minutes<input name={pair["id"] + "-minutes"} type="number" min="0" max="1440" step="1" required={True}/></label>
+                            <label>Source or reference<input name={pair["id"] + "-source"} type="text" maxLength={500} required={True}/></label>
+                            <label>Recheck by (your local time)<input name={pair["id"] + "-expires"} type="datetime-local" required={True}/></label>
+                        </fieldset> for pair in draft.get("connection_requirements", [])
+                    ]}
+                    {(<p className="chat-error" role="alert">{connectionErrors[draft["id"]]}</p>) if connectionErrors.get(draft["id"], "") else None}
+                    <button className="secondary" type="submit" disabled={busy}>Check travel times</button>
+                </form>) if draft.get("connection_requirements") else None}
                 <div className="ai-changes">{[
                     <div key={str(index)} className="ai-change"><span className="change-type">{"EDIT" if change["item_id"] else "ADD"}</span><div>
                         {(<p className="ai-before">{change["before"]["title"] + " · " + change["before"]["date"] + " " + change["before"]["time"] + " · " + money(change["before"]["cost_cents"])}</p>) if change["before"] else None}

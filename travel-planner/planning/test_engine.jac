@@ -54,6 +54,20 @@ test "timing and opening-hours risks can reschedule without charging the origina
     assert "long_drive" in SUPPORTED_REASONS and "booking_terms" in SUPPORTED_REASONS and "closure" in SUPPORTED_REASONS;
 }
 
+test "unsupported sample market still permits timing checks on the saved items" {
+    timing = plan_sample("arrival_delay");
+    timing["state"]["trip"].update(destination="Kyoto", currency="JPY");
+    context = build_context(timing["state"], timing["facts"], PLAN_CLOCK);
+    generated = generate_plans(context, PLAN_CLOCK);
+    assert not context["sample_inventory"];
+    assert generated["plans"] and all(plan["strategy"] == "reschedule" for plan in generated["plans"]);
+    assert all(plan["comparison"]["new_purchase_quotes_minor"] == 0 for plan in generated["plans"]);
+    weather = plan_sample();
+    weather["state"]["trip"].update(destination="Kyoto", currency="JPY");
+    result = generate_plans(build_context(weather["state"], weather["facts"], PLAN_CLOCK), PLAN_CLOCK);
+    assert not result["plans"] and any("No compatible replacement inventory" in warning for warning in result["warnings"]);
+}
+
 test "missing evidence fixed nodes unknown requirements and providers cannot become selectable" {
     data = plan_sample();
     for change in ("provider_failure", "all_sold_out") {

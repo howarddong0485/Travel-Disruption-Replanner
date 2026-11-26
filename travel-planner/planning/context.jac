@@ -19,6 +19,7 @@ import from risk.analyzer { analyze_trip }
 import from policy.review { cancellation_review }
 import from backup.validation { instant, evidence_problem }
 import from backup.validation_models { TripContext, ScheduledItem, Profile, Evidence, Moment, Window, Transfer, Dependency }
+import from tools.alternatives.catalog { supports_market }
 
 glob CONTEXT_VERSION = "roam.planning-context.v1";
 
@@ -296,11 +297,12 @@ def build_context(state: dict[str, any], facts: dict[str, any], now: datetime) -
     return {"contract_version": CONTEXT_VERSION, "trip_id": trip["id"], "trip_version": state["version"],
         "checked_at": now.isoformat(),
         "base_snapshot": fingerprint, "trip": context, "risks": risks, "bundle": bundle, "facts": deepcopy(facts),
-        "ledger": ledger_view, "state": deepcopy(state), "connection_estimates": connections};
+        "ledger": ledger_view, "state": deepcopy(state), "connection_estimates": connections,
+        "sample_inventory": not state.get("journey") and supports_market(trip["destination"], trip["currency"])};
 }
 
 def public_context(context: dict[str, any]) -> dict[str, any] {
-    result = {key: context[key] for key in ("contract_version", "trip_id", "trip_version", "base_snapshot", "risks", "ledger", "facts", "checked_at")};
+    result = {key: context[key] for key in ("contract_version", "trip_id", "trip_version", "base_snapshot", "risks", "ledger", "facts", "checked_at", "sample_inventory")};
     result["policy_reviews"] = [cancellation_review(context["bundle"], item, context["facts"].get("evidence_deadlines", {}), datetime.fromisoformat(context["checked_at"])) for item in context["bundle"].itinerary.nodes];
     result["items"] = [{key: item[key] for key in ("id", "title", "category", "date", "time", "location", "cost_cents", "done", "paid")} for item in context["state"]["items"]];
     return result;
