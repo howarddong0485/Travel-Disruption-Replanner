@@ -3,6 +3,7 @@ import from workspace { workspaceKey }
 import from server.main { TripView, ItemView, list_trips, save_trip, delete_trip,
     list_items, save_item, set_item_state, delete_item, replan_demo, create_planning_demo }
 import from backup.frontend { BackupPanel }
+import from replan.supplier_inventory { SupplierInventory }
 import from replan.frontend { ReplanPanel }
 import from demo.frontend { GuidedDemo }
 import from itinerary.actions { ItemActions, focusItineraryControl }
@@ -412,6 +413,8 @@ def:pub app -> JsxElement {
                         <button type="button" className="text-button" onClick={lambda { chooseTab("replan"); }}>Replan after a disruption →</button>
                     </div>
                     <BackupPanel key={selected} trip={current} items={items} onApplied={backupApplied}/>
+                    <SupplierInventory key={selected + ":" + current.start_date + ":" + current.end_date + ":" + current.destination + ":" + current.currency}
+                        trip={current}/>
                 </section>) if not loading and tab == "backups" else None}
                 {mapWorkspace if tab == "planner" else None}
                 {(<AIPlanner key={"planner:" + selected} data={aiData if aiData.get("trip_id") == selected else {}} currency={current.currency} onCompose={composeAI} onReview={reviewAI} onPrices={priceAI} onPreferences={savePreferences} busy={busy}/>) if tab == "planner" else None}
