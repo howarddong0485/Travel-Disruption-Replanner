@@ -1,18 +1,18 @@
 # LiteAPI and Geoapify
 
-Roam's **Backup plans** and **Replan** tabs use LiteAPI for hotel rate previews and Geoapify for nearby place discovery. These integrations do not need Expedia credentials. Each provider works independently when its key is configured.
+Roam shows LiteAPI hotel rates in **Backup plans → Supplier inventory** for a saved trip. The panel also shows whether Geoapify place discovery and the separate Expedia integration are configured.
 
 ## Get the free keys
 
 1. **LiteAPI:** [Create a free account](https://dashboard.liteapi.travel/) and copy your **sandbox** API key from the developer/API keys area. According to the [signup guide](https://docs.liteapi.travel/docs/getting-a-sandbox-key), no credit card is required for sandbox access. Sandbox keys begin with `sand_` or `sandbox_`; they produce test offers. Production keys begin with `prod_` and require separate account setup.
-2. **Geoapify:** [Create an account](https://myprojects.geoapify.com/), create a project, and copy its API key. The [free plan](https://www.geoapify.com/pricing/) currently provides 3,000 credits/day without a credit card. Preserve Geoapify and OpenStreetMap attribution when displaying data; the new panel includes both links.
+2. **Geoapify:** [Create an account](https://myprojects.geoapify.com/), create a project, and copy its API key for place discovery. Hotel quotes work without this key.
 
 ## Configure and run
 
 From the project folder:
 
 ```sh
-cd "/Users/zhanhaoliu/Desktop/EECS 449/Travel-Disruption-Replanner/travel-planner"
+cd travel-planner
 export PATH="$HOME/.local/bin:$PATH"
 cp -n .env.example .env
 open -e .env
@@ -37,13 +37,12 @@ jac run --no-cache --dev travel
 
 Open the printed App URL. Use `--no-cache` to regenerate Jac API argument metadata after standalone server tests; restart the dev server with that flag if a running instance reports missing arguments after testing.
 
-## Use the app
+## Verify on JacHammer
 
-- **Hotel Plan B/C:** Create a trip with future dates and add a hotel stay with a date, local time and whole-stay original cost. In **Backup plans**, find **LiteAPI + Geoapify**, enter the destination city and country code, choose the stay, set check-out and guests, then select **Generate hotel plans**. The server automatically searches hotels by city and calculates up to two replacement drafts. No hotel IDs are needed.
-- **Hotel disruption:** Open **Replan** and use the provider panel to report an unavailable hotel or delayed arrival. Arrival delays propagate through saved dependencies. The server searches rates for the resulting check-in date, retains prior paid costs where refunds are unknown, and computes proposed downstream schedule changes.
-- **Nearby alternatives:** In either panel, choose hotels, restaurants or attractions and select **Find nearby places**. Geoapify resolves the entered destination within the selected country, displays that resolved location, and returns up to ten places within 5 km. Check the resolved destination before using the suggestions.
-
-Country inputs have different meanings: **destination country** determines the city search, while **guest nationality** is used for LiteAPI rate eligibility. Guest notation is one room: `2` for two adults, or `2-9,4` for two adults and children aged 9 and 4.
+1. In the project's server secret store, set `LITEAPI_API_KEY` to the key for the intended environment. Use a sandbox key for test data or an authorized production key for a live test. Restart the preview with the updated server environment.
+2. Create a trip with future dates. Open **Backup plans → Supplier inventory**, check the LiteAPI configuration label, and enter a city, destination country code, stay dates within the trip, guest count and guest nationality. Dates span 1–28 nights and prices use the trip currency. Guest notation is `2` for two adults in one room, or `2-9,4` to include two children aged 9 and 4.
+3. Select **Check hotel rates**. Record the observed mode, property, stay dates, occupancy, total and currency, and retrieval time. The result label distinguishes live quotes and sandbox test data. Record an empty result or provider error as such. A live acceptance check requires a returned live quote.
+4. Refresh the trip and check that the saved itinerary and costs match the state before the lookup. Searching does not create reservations or itinerary drafts.
 
 ## Behavior and limits
 
@@ -56,7 +55,7 @@ Country inputs have different meanings: **destination country** determines the c
 
 ## Developer interfaces and checks
 
-`travel_provider_status()` reports key presence and LiteAPI mode. `preview_liteapi_hotels(...)` creates hotel drafts and rejects a trip version change during the provider call. `discover_travel_places(...)` queries Geoapify for an existing trip. Provider-specific parsing stays in `tools/alternatives/liteapi.jac` and `tools/geoapify.jac`; shared read-only hotel drafting reuses `replan/expedia.jac`. Legacy Expedia endpoints remain available but are not used by the new panels.
+`travel_provider_status()` reports provider access and mode without credentials. `quote_liteapi_hotels(...)` requires ownership of the trip and returns normalized quote fields for display. The separate `preview_liteapi_hotels(...)` endpoint computes hotel drafts, and `discover_travel_places(...)` queries Geoapify for an existing trip. Provider-specific parsing stays in `tools/alternatives/liteapi.jac` and `tools/geoapify.jac`.
 
 ```sh
 jac check --nowarn

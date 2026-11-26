@@ -273,13 +273,38 @@ def:pub save_backup_refresh(workspace_key: str, session_id: str, request_id: str
 
 import from tools.alternatives.expedia { configuration as expedia_configuration }
 import from replan.expedia { plans as expedia_plans }
-import from tools.alternatives.liteapi { configuration as liteapi_configuration }
+import from tools.alternatives.liteapi { configuration as liteapi_configuration, search_hotels as search_liteapi }
 import from tools.geoapify { search as search_geoapify }
 
 def:pub travel_provider_status -> dict[str, any] {
     try { liteapi = liteapi_configuration(); }
-    except ValueError { liteapi = {"configured": False, "mode": "sandbox"}; }
-    return {"liteapi": liteapi, "geoapify": {"configured": bool(os.environ.get("GEOAPIFY_API_KEY", "").strip())}};
+    except ValueError { liteapi = {"configured": False, "mode": "sandbox", "error": "Invalid server configuration"}; }
+    try { expedia = expedia_configuration(); }
+    except ValueError { expedia = {"configured": False, "mode": "test", "error": "Invalid server configuration"}; }
+    return {"liteapi": liteapi, "expedia": expedia,
+        "geoapify": {"configured": bool(os.environ.get("GEOAPIFY_API_KEY", "").strip())}};
+}
+
+def:pub quote_liteapi_hotels(workspace_key: str, trip_id: str, checkin: str, checkout: str,
+    city: str, destination_country: str, occupancy: str = "2", nationality: str = "US") -> dict[str, any] {
+    conn = _owned_connection(_workspace_owner(workspace_key), trip_id);
+    try { trip = _require_trip(conn, trip_id); }
+    finally { conn.close(); }
+    try { checkin = _date(checkin); checkout = _date(checkout); }
+    except ValueError as error { return {"error": str(error)}; }
+    if not trip["start_date"] <= checkin < checkout <= trip["end_date"] {
+        return {"error": "Choose check-in and a later check-out within the saved trip dates."};
+    }
+    try {
+        result = search_liteapi(checkin, checkout, city, destination_country, occupancy, trip["currency"], nationality);
+    } except (ValueError, RuntimeError) as error { return {"error": str(error)}; }
+    except (AttributeError, KeyError, TypeError) { return {"error": "LiteAPI returned an unexpected rates structure. Try again later."}; }
+    return {"mode": result["mode"], "excluded_count": len(result["exclusions"]), "quotes": [{
+        "property_id": offer["property_id"], "title": str(offer["title"] or "Hotel " + offer["property_id"]),
+        "room_name": str(offer["room_name"] or "Room"), "cost_cents": offer["cost_cents"], "currency": offer["currency"],
+        "checkin": offer["checkin"], "checkout": offer["checkout"], "occupancy": offer["occupancy"],
+        "checked_at": offer["checked_at"], "refundability": str(offer["current_refundability"] or "Unknown")
+    } for offer in result["offers"]]};
 }
 
 def:pub discover_travel_places(workspace_key: str, trip_id: str, destination: str, country: str = "US", category: str = "hotels") -> dict[str, any] {

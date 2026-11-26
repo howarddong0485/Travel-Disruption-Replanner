@@ -67,8 +67,8 @@ OPENAI_PLANNING_MODEL=gpt-6-luna
 ```
 
 The server reads these settings from its environment or the project `.env`.
-No hotel, place or flight provider keys are needed for this workflow. Existing
-provider adapters are retained but their panels are removed from the main UI.
+No hotel, place or flight provider keys are needed for this workflow. The
+separate Supplier inventory section is available under **Backup plans**.
 
 OpenAI's Responses API performs optional web research with clickable sources.
 Planning requests use a separate structured-output call to convert the research
@@ -153,9 +153,11 @@ Open the **App** URL printed by Jac. Create a trip, then add details using the i
 
 A fresh clone needs an independent Python 3.14 environment; `setup.sh` creates it and installs the declared dependencies. See the [current verification guide](../docs/LOCAL_VERIFICATION.md).
 
-## LiteAPI hotel backups and Geoapify places
+## Supplier inventory
 
-The **Backup plans** and **Replan** tabs include **LiteAPI + Geoapify** panels. Configure `LITEAPI_API_KEY` with your free sandbox key for city-based hotel rates and automatic Plan B/C drafts; configure `GEOAPIFY_API_KEY` for nearby hotel, restaurant and attraction suggestions. Neither requires Expedia access. The hotel drafts check stored itinerary constraints and show costs and downstream schedule changes; Geoapify suggestions have unknown prices and availability. These are read-only previews requiring further validation. See [free-provider setup and usage](../docs/FREE_PROVIDERS.md). Legacy Expedia endpoints remain available; see [their setup guide](../docs/EXPEDIA.md).
+Open a saved trip and choose **Backup plans → Supplier inventory** to check provider configuration and look up LiteAPI hotel rates for the trip dates and currency. Each quote lists the property, stay dates, occupancy, whole-stay price, refundability and retrieval time. Checkout must be within the trip and after check-in. The lookup is read-only and separate from the simulated backup plans.
+
+Set `LITEAPI_API_KEY` in the JacHammer server secret store. A sandbox key enables test quotes. Live quotes require a production key from an authorized supplier account. Geoapify status is shown for place discovery, and Expedia remains a separate integration. See the [setup and deployed verification steps](../docs/FREE_PROVIDERS.md).
 
 ## Wikipedia destination and attraction discovery
 
